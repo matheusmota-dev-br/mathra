@@ -1,0 +1,8 @@
+/target
+*.so
+*.pyd
+*.whl
+__pycache__/
+/crates/python/.venv
+/crates/wasm/pkg
+*.profraw

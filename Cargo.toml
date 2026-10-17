@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/cli", "crates/python", "crates/wasm"]
+# python and wasm need maturin and wasm-pack to build a package; they stay out of the default `cargo build`
+default-members = ["crates/core", "crates/cli"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/matheusmota/mathra"
+
+[workspace.dependencies]
+# the published name of the core lives only here and in crates/core/Cargo.toml
+mathra = { path = "crates/core", version = "0.2.0" }
