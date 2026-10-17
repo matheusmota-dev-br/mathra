@@ -155,7 +155,7 @@ fn array_with_vertical_rule_and_cline_for_factoring() {
 #[test]
 fn cases_with_text() {
     let r = pt(r"|x| = \begin{cases} x, & x \ge 0 \\ -x, & x < 0 \end{cases}");
-    assert!(r.speech.starts_with("barra x barra é igual a casos: caso 1: x"), "{}", r.speech);
+    assert!(r.speech.starts_with("módulo de x é igual a casos: caso 1: x"), "{}", r.speech);
 }
 
 #[test]

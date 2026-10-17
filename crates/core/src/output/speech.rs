@@ -65,6 +65,7 @@ impl Speaker {
                 self.say(o);
             }
             Node::Row { children } => {
+                let children = &pair_bars(children);
                 let cl = classes(children, self.loc, None, false);
                 for (child, class) in children.iter().zip(cl) {
                     match (child, class) {
@@ -109,9 +110,21 @@ impl Speaker {
             }
             Node::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref()),
             Node::Delimited { open, close, parts, middles } => {
-                if *open == Some('|') && *close == Some('|') && parts.len() == 1 {
-                    let x = self.spoken(&parts[0]);
-                    self.say(self.t(&format!("módulo de {x}"), &format!("absolute value of {x}")));
+                // |x| and ‖v‖; a longer content gets an end marker, like roots: "absolute value of, a plus b, end absolute value"
+                // (pt-BR name, pt-BR end marker, English name)
+                let unit = match (open, close) {
+                    (Some('|'), Some('|')) => Some(("módulo", "fim do módulo", "absolute value")),
+                    (Some('‖'), Some('‖')) => Some(("norma", "fim da norma", "norm")),
+                    _ => None,
+                };
+                if let (Some((pt, pt_end, en)), [inner]) = (unit, parts.as_slice()) {
+                    let x = self.spoken(inner);
+                    let phrase = if is_simple(inner) {
+                        self.t(&format!("{pt} de {x}"), &format!("{en} of {x}"))
+                    } else {
+                        self.t(&format!("{pt} de, {x}, {pt_end}"), &format!("{en} of, {x}, end {en}"))
+                    };
+                    self.say(phrase);
                     return;
                 }
                 if let Some(a) = open {
@@ -355,6 +368,31 @@ impl Speaker {
         };
         self.say(phrase);
     }
+}
+
+/// `|x|` and `‖v‖` written with plain bars read as one unit, like `\left| x \right|`: each bar is
+/// paired with the next equal one, when there is something between them.
+fn pair_bars(children: &[Node]) -> Vec<Node> {
+    let bar = |n: &Node| match n {
+        Node::Operator { symbol: c @ ('|' | '‖'), .. } => Some(*c),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(children.len());
+    let mut i = 0;
+    while i < children.len() {
+        let close = bar(&children[i]).and_then(|c| children[i + 1..].iter().position(|n| bar(n) == Some(c)).map(|p| (c, i + 1 + p)));
+        match close {
+            Some((c, j)) if j > i + 1 => {
+                out.push(Node::Delimited { open: Some(c), close: Some(c), parts: vec![Node::row(children[i + 1..j].to_vec()).simplify()], middles: Vec::new() });
+                i = j + 1;
+            }
+            _ => {
+                out.push(children[i].clone());
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// A single token: number, letter, or the same thing with a simple subscript.
