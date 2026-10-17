@@ -163,3 +163,14 @@ fn error_points_to_column() {
     let e = convert("{x", &strict).unwrap_err();
     assert_eq!(e.to_string(), "column 1: '{' without a matching '}'");
 }
+
+#[test]
+fn l_txt_1_tex_quotes_become_typographic_in_text() {
+    let r = en(r"\text{``quoted'' and `single' don't}");
+    assert_eq!(r.text, "“quoted” and ‘single’ don’t");
+    assert!(rules(&r).contains(&"L-TXT-1"));
+    // in math mode ' is still a prime
+    let r = en("f'");
+    assert!(!rules(&r).contains(&"L-TXT-1"));
+    assert!(r.speech.contains("prime"), "{}", r.speech);
+}

@@ -56,6 +56,10 @@ In **pt-BR**, a `]` without an operand before it (at the start, or after a relat
 
 `\small`, `\scriptsize`, `\large` and similar are ignored: the size comes from whoever uses the SVG.
 
+### L-TXT-1 · Quotes in text
+
+Inside `\text{…}` (and every text argument), TeX's quote ligatures become typographic quotes: ``` `` ``` → “, `''` → ”, `` ` `` → ‘, `'` → ’. In math mode `'` is still a prime.
+
 ## Macros
 
 ### L-MAC-1 · Substitution macros

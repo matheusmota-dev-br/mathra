@@ -1883,6 +1883,19 @@ impl Reader<'_> {
                         }
                     }
                 }
+                // L-TXT-1: TeX's quote ligatures in text: `` '' ` ' become “ ” ‘ ’
+                q @ ('`' | '\'') => {
+                    let double = c.get(i + 1) == Some(&q);
+                    let typographic = match (q, double) {
+                        ('`', true) => '“',
+                        ('`', false) => '‘',
+                        (_, true) => '”',
+                        _ => '’',
+                    };
+                    self.registry.note(rules::L_TXT_1, format!("{} written as {typographic}", if double { format!("{q}{q}") } else { q.to_string() }));
+                    current.push(typographic);
+                    i += if double { 2 } else { 1 };
+                }
                 other => {
                     current.push(other);
                     i += 1;
