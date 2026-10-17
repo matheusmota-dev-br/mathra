@@ -43,6 +43,7 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/macros_and_packages.rs` | 11 | Substitution macros (L-MAC-1), package commands and the boundary (`spec/boundary.md`). |
 | `crates/core/tests/tolerance.rs` | 11 | Tolerant versus strict mode (`spec/tolerance.md`). |
 | `crates/core/tests/banner.rs` | 1 | The README banner (`examples/banner.rs`) is deterministic and matches `docs/banner.svg`. |
+| `crates/core/tests/examples.rs` | 2 | The README gallery: every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. |
 | `crates/core/src/font.rs` (unit) | 2 | A glyph without an outline and a quadratic curve, which the embedded font does not have. |
 | `crates/cli/tests/cli.rs` | 15 | The binary run as a process: arguments, stdin, `--batch`, writing files, exit codes. |
 | `crates/wasm/tests/native.rs` | 2 | Exported functions outside the browser, and the errors before they become a `JsError`. |
