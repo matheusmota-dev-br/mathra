@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "mathra"
+description = "Accessible SVG equations from LaTeX, without a TeX install."
+requires-python = ">=3.9"
+dynamic = ["version"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "mathra._mathra"
+features = ["pyo3/extension-module"]
