@@ -1,0 +1,1113 @@
+//! LaTeX reader (input/latex.rs and input/symbols.rs): every command and environment the reader
+//! knows, the recovery paths of tolerant mode and, at the end, problem inputs that
+//! must not crash or hang the reader.
+
+use mathra::input::latex::{read_with, undo_doubled_backslashes, NESTING_LIMIT};
+use mathra::input::symbols;
+use mathra::rules::Registry;
+use mathra::{convert, Error, Locale, Node, Options};
+
+fn read_in(tex: &str, locale: Locale, strict: bool) -> (Result<Node, Error>, Registry) {
+    let mut registry = Registry::default();
+    let r = read_with(tex, locale, &mut registry, strict);
+    (r, registry)
+}
+
+/// Tolerant mode's tree (as Debug, to search for pieces) and the warnings.
+fn tolerant(tex: &str) -> (String, Vec<String>) {
+    let (r, registry) = read_in(tex, Locale::PtBr, false);
+    let node = r.unwrap_or_else(|e| panic!("{tex}: {e}"));
+    (format!("{node:?}"), registry.warnings.iter().map(|a| format!("{}: {}", a.rule, a.description)).collect())
+}
+
+/// Tree of a valid input: read the same in both modes, with no warnings.
+fn tree(tex: &str) -> String {
+    let (strict, _) = read_in(tex, Locale::PtBr, true);
+    let strict = strict.unwrap_or_else(|e| panic!("{tex}: {e}"));
+    let (t, warnings) = tolerant(tex);
+    assert!(warnings.is_empty(), "{tex}: {warnings:?}");
+    assert_eq!(format!("{strict:?}"), t, "{tex}");
+    t
+}
+
+/// Error message in strict mode.
+fn strict_error(tex: &str) -> String {
+    match read_in(tex, Locale::PtBr, true).0 {
+        Ok(node) => panic!("{tex}: strict mode accepted: {node:?}"),
+        Err(e) => e.to_string(),
+    }
+}
+
+/// Error message, which also happens in tolerant mode.
+fn always_error(tex: &str) -> String {
+    let (r, _) = read_in(tex, Locale::PtBr, false);
+    match r {
+        Ok(node) => panic!("{tex}: tolerant mode accepted: {node:?}"),
+        Err(e) => e.to_string(),
+    }
+}
+
+/// Invalid: strict mode refuses, tolerant mode draws with a warning from the expected rule.
+fn recovers(tex: &str, rule: &str) -> String {
+    strict_error(tex);
+    let (t, a) = tolerant(tex);
+    assert!(a.iter().any(|a| a.starts_with(rule)), "{tex}: expected {rule}, got {a:?}");
+    t
+}
+
+fn has(t: &str, snippets: &[&str]) {
+    for snippet in snippets {
+        assert!(t.contains(snippet), "missing {snippet:?} in {t}");
+    }
+}
+
+// ---------- input preparation ----------
+
+#[test]
+fn lone_trailing_backslash_is_ignored() {
+    let t = recovers(r"x + 1\", "E-REC-9");
+    has(&t, &["\"x\"", "\"1\""]);
+}
+
+#[test]
+fn json_control_characters_become_commands() {
+    // \v, \a, \r and \n stored unescaped become VT, BEL, CR and LF
+    for (tex, expected) in [("\u{0B}ec{v}", "Accent"), ("\u{07}lpha", "α"), ("\\left( x \right)", "Delimited"), ("a \neq b", "≠")] {
+        let (t, a) = tolerant(tex);
+        assert!(t.contains(expected), "{tex:?}: {t}");
+        assert!(a.iter().any(|a| a.starts_with("E-REC-2")), "{tex:?}: {a:?}");
+    }
+}
+
+// ---------- raw arguments ----------
+
+#[test]
+fn raw_argument_single_char_or_unclosed() {
+    has(&tree(r"\mathrm x"), &["\"x\"", "Upright"]);
+    let t = recovers(r"\text{abc", "E-REC-4");
+    has(&t, &["abc"]);
+    recovers(r"\text", "E-REC-7");
+    recovers(r"\mathrm", "E-REC-7");
+}
+
+#[test]
+fn optional_with_braces_and_unclosed() {
+    has(&tree(r"\sqrt[\frac{1}{2}]{x}"), &["Root", "index: Some(Fraction"]);
+    // '[' without ']' is not an optional argument: the bracket becomes the radicand
+    has(&tree(r"\sqrt[3 x"), &["Root", "index: None", "'['"]);
+}
+
+#[test]
+fn sub_reader_stopping_before_the_end() {
+    let t = recovers(r"\mathrm{a & b}", "E-REC-5");
+    has(&t, &["\"a\""]);
+}
+
+// ---------- top-level structure ----------
+
+#[test]
+fn top_level_ampersand_and_break_become_alignment() {
+    has(&tree("a &= b"), &["Table", "Aligned"]);
+    has(&tree(r"a \\ b"), &["Table", "Centered"]);
+    // a break at the end does not create an empty row
+    let t = tree(r"a \\ b \\");
+    assert_eq!(t.matches("Row { children: [Identifier").count(), 0, "{t}");
+    has(&tree(r"a \hline b \cline{1-1} c"), &["\"c\""]);
+    assert!(always_error(r"a \cline{x-y} b").contains("the form"));
+    has(&tree(r"a \\ \intertext{and also} b"), &["and also"]);
+}
+
+#[test]
+fn closings_without_opening_at_top() {
+    recovers(r"x \end{foo}", "E-REC-5");
+    has(&recovers(r"x \right)", "E-REC-5"), &["')'", "Close"]);
+    recovers(r"x \right.", "E-REC-5");
+    recovers(r"a \middle| b", "E-REC-5");
+    recovers("a } b", "E-REC-4");
+}
+
+// ---------- atoms ----------
+
+#[test]
+fn special_atoms() {
+    has(&tree("a~b"), &["Space"]);
+    // a dollar sign in the middle: a leftover delimiter
+    has(&tree("a$b"), &["\"a\"", "\"b\""]);
+    has(&recovers("a # b", "E-REC-9"), &["'#'"]);
+    has(&tree("a*b"), &["'∗'"]);
+}
+
+#[test]
+fn group_ending_in_something_else() {
+    recovers(r"{a \end{x}}", "E-REC-4");
+    recovers("{a & b}", "E-REC-4");
+}
+
+#[test]
+fn thousands_followed_by_short_group_is_not_thousands() {
+    // 1.000.00: the last group has two digits, so it is not a thousands separator
+    let t = tree("1.000.00");
+    assert!(!t.contains("thousands: Some"), "{t}");
+}
+
+#[test]
+fn missing_arguments() {
+    recovers(r"{\frac}", "E-REC-7");
+    recovers(r"\frac\\ b", "E-REC-7");
+}
+
+// ---------- scripts ----------
+
+#[test]
+fn brace_with_label_on_the_other_side() {
+    // \overbrace takes its label in ^; a _ becomes an ordinary subscript
+    has(&tree(r"\overbrace{x}_{a}"), &["Scripts", "Brace"]);
+    has(&tree(r"\underbrace{x}^{a}"), &["Scripts", "Brace"]);
+    has(&tree(r"\underbrace{x}_{a}"), &["label: Some"]);
+}
+
+#[test]
+fn scripts_continuing_after_empty_command() {
+    // \nolimits leaves no node: the following ^ attaches to the previous script
+    has(&tree(r"\sum_{i}\nolimits^{n}"), &["sup: Some", "sub: Some"]);
+    // a prime after a superscript: it comes before it
+    has(&tree(r"x^a\relax'"), &["'′'", "\"a\""]);
+    has(&tree(r"f'^{2}"), &["'′'", "\"2\""]);
+    has(&tree("f''''"), &["'‴'"]);
+}
+
+// ---------- simple commands ----------
+
+#[test]
+fn tex_primitives() {
+    has(&tree(r"\bgroup a \egroup"), &["\"a\""]);
+    has(&tree(r"x\sp 2 \sb 3"), &["sup: Some", "sub: Some"]);
+    has(&tree(r"a \hfill b \hss c"), &["Space { em: 1.0 }"]);
+    has(&tree(r"a \vrule b"), &["Rule"]);
+}
+
+#[test]
+fn starred_commands() {
+    has(&tree(r"\operatorname*{argmax}_x"), &["argmax", "limits: true"]);
+    has(&tree(r"x \tag*{A}"), &["\"A\""]);
+    has(&tree(r"x \tag{1}"), &["\"(1)\""]);
+    has(&tree(r"\smash*{x}"), &["Smashed"]);
+}
+
+#[test]
+fn measured_spaces() {
+    for tex in [
+        r"a\hspace{1em}b",
+        r"a\hspace*{2pt}b",
+        r"a\kern 3pt b",
+        r"a\kern-1em b",
+        r"a\mkern 2mu b",
+        r"a\hskip 1.5ex b",
+        r"a\mskip3mu b",
+        r"a\kern 1,5cm b",
+        r"a\kern2in b",
+        r"a\kern3mm b",
+        r"a\mspace{4mu}b",
+        r"a\hspace{2px}b",
+    ] {
+        has(&tree(tex), &["Space"]);
+    }
+    assert!(always_error(r"a\hspace{3qq}b").contains("unrecognized measure"));
+    // a space before the unit ends the measure
+    assert!(always_error(r"a\kern 3 pt b").contains("unrecognized measure"));
+}
+
+#[test]
+fn styles_until_end_of_group() {
+    for (tex, level) in [(r"\displaystyle x", 0), (r"\textstyle x", 1), (r"\scriptstyle x", 2), (r"\scriptscriptstyle x", 3)] {
+        has(&tree(tex), &[&format!("Style {{ level: {level}")]);
+    }
+    has(&tree(r"{\color{red} x} y"), &["Colored", "red"]);
+}
+
+#[test]
+fn plain_tex_fractions() {
+    has(&tree(r"a \over b"), &["Fraction", "rule: true"]);
+    has(&tree(r"{n \choose k}"), &["Some('(')", "rule: false"]);
+    has(&tree(r"a \atop b"), &["rule: false"]);
+    has(&tree(r"a \brack b"), &["Some('[')"]);
+    has(&tree(r"a \brace b"), &["Some('{')"]);
+}
+
+#[test]
+fn font_switches() {
+    for (tex, variant) in [
+        (r"\bf x", "Bold"),
+        (r"\boldmath x", "Bold"),
+        (r"\rm x", "Upright"),
+        (r"\normalfont x", "Upright"),
+        (r"\sf x", "SansSerif"),
+        (r"\tt x", "Monospace"),
+        (r"\cal X", "Calligraphic"),
+        (r"\bf a \it x", "Italic"),
+        (r"\bf a \mit x", "Italic"),
+        (r"\bf a \unboldmath x", "Italic"),
+    ] {
+        let t = tree(tex);
+        let last_row = t.rsplit("variant: ").next().unwrap();
+        assert!(last_row.starts_with(variant), "{tex}: {t}");
+    }
+    has(&tree(r"\large x \Huge y"), &["\"y\""]);
+}
+
+#[test]
+fn explicit_limits() {
+    has(&tree(r"\sum\limits_{i}"), &["limits: Some(true)"]);
+    has(&tree(r"\sum\nolimits_{i}"), &["limits: Some(false)"]);
+    has(&tree(r"\sum\displaylimits_{i}"), &["limits: None"]);
+    has(&tree(r"\lim\nolimits_{x}"), &["limits: false"]);
+    has(&tree(r"\sum_{i}\limits"), &["limits: Some(true)"]);
+    has(&tree(r"\mathop{\sum}\limits_{i}"), &["limits: Some(true)"]);
+    // \limits with no operator before it: nothing to change
+    has(&tree(r"\limits x"), &["\"x\""]);
+    has(&tree(r"x\limits"), &["\"x\""]);
+}
+
+#[test]
+fn labels_and_references() {
+    has(&tree(r"x \label{eq:1}"), &["\"x\""]);
+    has(&tree(r"\ref{eq:1}"), &["\"eq:1\""]);
+    has(&tree(r"\eqref{eq:1}"), &["\"(eq:1)\""]);
+    has(&tree(r"\strut x \mathstrut"), &["Phantom"]);
+}
+
+#[test]
+fn fractions_roots_and_boxes() {
+    has(&tree(r"\cfrac[l]{1}{2}"), &["Display"]);
+    has(&tree(r"\fbox{x}"), &["Framed", "Rectangle"]);
+    has(&tree(r"\framebox{y}"), &["Framed"]);
+}
+
+#[test]
+fn math_alphabets() {
+    for (cmd, variant) in [
+        ("mathrm", "Upright"),
+        ("mathup", "Upright"),
+        ("symrm", "Upright"),
+        ("mathit", "Italic"),
+        ("mathnormal", "Italic"),
+        ("symit", "Italic"),
+        ("mathbf", "Bold"),
+        ("symbf", "Bold"),
+        ("boldsymbol", "BoldItalic"),
+        ("bm", "BoldItalic"),
+        ("pmb", "BoldItalic"),
+        ("mathbfit", "BoldItalic"),
+        ("mathsf", "SansSerif"),
+        ("mathtt", "Monospace"),
+        ("mathbb", "DoubleStruck"),
+        ("mathds", "DoubleStruck"),
+        ("mathbbm", "DoubleStruck"),
+        ("Bbb", "DoubleStruck"),
+        ("mathcal", "Calligraphic"),
+        ("mathscr", "Calligraphic"),
+        ("mathfrak", "Fraktur"),
+    ] {
+        has(&tree(&format!(r"\{cmd}{{R}}")), &[&format!("variant: {variant}")]);
+    }
+}
+
+#[test]
+fn forced_classes() {
+    for (cmd, class) in
+        [("mathop", "Op"), ("mathrel", "Rel"), ("mathbin", "Bin"), ("mathopen", "Open"), ("mathclose", "Close"), ("mathpunct", "Punct"), ("mathinner", "Inner"), ("mathord", "Ord")]
+    {
+        has(&tree(&format!(r"\{cmd}{{x}}")), &[&format!("ForcedClass {{ class: {class}")]);
+    }
+}
+
+#[test]
+fn stacked_and_extensible_arrows() {
+    has(&tree(r"\overset{a}{=}"), &["class: Rel", "Stacked"]);
+    has(&tree(r"\stackrel{def}{=}"), &["class: Rel"]);
+    has(&tree(r"\underset{n}{\lim}"), &["class: Op"]);
+    has(&tree(r"\overset{a}{x}"), &["class: Ord"]);
+    has(&tree(r"\overset{a}="), &["class: Rel"]);
+    for (cmd, arrow) in [
+        ("xrightarrow", '→'),
+        ("xleftarrow", '←'),
+        ("xRightarrow", '⇒'),
+        ("xLeftarrow", '⇐'),
+        ("xleftrightarrow", '↔'),
+        ("xLeftrightarrow", '⇔'),
+        ("xrightleftharpoons", '⇌'),
+        ("xleftrightharpoons", '⇋'),
+        ("xmapsto", '↦'),
+        ("xhookrightarrow", '↪'),
+        ("xlongequal", '='),
+    ] {
+        has(&tree(&format!(r"\{cmd}[b]{{a}}")), &[&format!("symbol: '{arrow}'"), "below: Some"]);
+    }
+    has(&tree(r"\xrightarrow{}"), &["above: None"]);
+}
+
+#[test]
+fn cancels_frames_and_phantoms() {
+    has(&tree(r"\cancelto{0}{x}"), &["Canceled", "sup: Some"]);
+    has(&tree(r"\bcancel{x} \xcancel{y} \sout{z}"), &["Backslash", "X }"]);
+    has(&tree(r"\circled{1} \circledcirc{2}"), &["Circle"]);
+    has(&tree(r"\phantom{x}"), &["width: true, height: true"]);
+    has(&tree(r"\hphantom{x}"), &["width: true, height: false"]);
+    has(&tree(r"\vphantom{x}"), &["width: false, height: true"]);
+    has(&tree(r"\textcolor{blue}{x}"), &["blue"]);
+    has(&tree(r"\colorbox{yellow}{nota}"), &["yellow", "nota"]);
+}
+
+#[test]
+fn not_negates_or_strikes() {
+    for (tex, negated) in [
+        ("=", '≠'),
+        (r"\in", '∉'),
+        (r"\subset", '⊄'),
+        (r"\supset", '⊅'),
+        (r"\subseteq", '⊈'),
+        (r"\supseteq", '⊉'),
+        (r"\equiv", '≢'),
+        ("<", '≮'),
+        (">", '≯'),
+        (r"\leq", '≰'),
+        (r"\geq", '≱'),
+        (r"\sim", '≁'),
+        (r"\approx", '≉'),
+        (r"\exists", '∄'),
+        (r"\mid", '∤'),
+        (r"\parallel", '∦'),
+        (r"\to", '↛'),
+    ] {
+        has(&tree(&format!(r"a \not{tex} b")), &[&format!("'{negated}'")]);
+    }
+    has(&tree(r"\not+"), &["Canceled", "'+'"]);
+    has(&tree(r"\not x"), &["Canceled", "\"x\""]);
+    assert!(always_error(r"\not").contains("with no symbol"));
+    assert!(always_error(r"\not\\").contains("\\not before"));
+}
+
+#[test]
+fn fixed_size_delimiters() {
+    for (tex, class, size) in [(r"\bigl(", "Open", 1), (r"\Bigr)", "Close", 2), (r"\biggm|", "Rel", 3), (r"\Bigg\{", "Ord", 4), (r"\big(", "Open", 1), (r"\big|", "Ord", 1)] {
+        has(&tree(tex), &[&format!("class: {class}, size: {size}")]);
+    }
+    recovers(r"x \big", "E-REC-7");
+}
+
+// ---------- units ----------
+
+#[test]
+fn siunitx_units() {
+    has(&tree(r"\si{\meter}"), &["\"m\""]);
+    has(&tree(r"\unit{\kilo\gram}"), &["\"kg\""]);
+    has(&tree(r"\SI{3}{\meter\tothe{3}}"), &["value: \"3\""]);
+    has(&tree(r"\si{\per\second\raiseto{2}}"), &["\"1\"", "\"s\"", "\"2\""]);
+    // the exponent applies to the prefixed unit: km²
+    has(&tree(r"\si{\square\kilo\meter}"), &["\"km\"", "\"2\""]);
+    has(&tree(r"\si{\kilo\cubic\meter}"), &["\"km\"", "\"3\""]);
+    has(&tree(r"\si{\newton\meter}"), &["\"N\"", "\"m\"", "Space"]);
+    has(&tree(r"\si{\meter\per\second\per\kilogram}"), &["'('", "'·'"]);
+    has(&tree(r"\si{m/s}"), &["\"m\""]);
+    // \squared with no unit before it: there is nothing to raise
+    has(&tree(r"\si{\squared\per\cubed}"), &["Quantity"]);
+    has(&tree(r"\SI{-5}{\meter}"), &["value: None", "'−'"]);
+    assert!(always_error(r"\si{\foo}").contains("unsupported unit"));
+    assert!(always_error(r"\SI{abc}{\meter}").contains("is not a number"));
+    has(&tree(r"\unit[3]{m}"), &["\"3\"", "\"m\""]);
+}
+
+#[test]
+fn every_unit_has_a_symbol() {
+    for name in [
+        "watt",
+        "pascal",
+        "hertz",
+        "coulomb",
+        "volt",
+        "ohm",
+        "farad",
+        "tesla",
+        "weber",
+        "henry",
+        "siemens",
+        "liter",
+        "litre",
+        "hour",
+        "minute",
+        "day",
+        "degreeCelsius",
+        "celsius",
+        "degree",
+        "electronvolt",
+        "calorie",
+        "bar",
+        "atm",
+        "atmosphere",
+        "percent",
+        "mmHg",
+        "hectare",
+        "tonne",
+    ] {
+        assert!(symbols::unit(name).is_some(), "{name}");
+        has(&tree(&format!(r"\si{{\{name}}}")), &["Quantity"]);
+    }
+    assert!(symbols::unit("parsec").is_none());
+}
+
+#[test]
+fn siunitx_numbers() {
+    has(&tree(r"\num{1e5}"), &["'×'", "\"10\"", "\"5\""]);
+    has(&tree(r"\num{-3}"), &["'−'"]);
+    has(&tree(r"\num{+3}"), &["'+'"]);
+    has(&tree(r"\num{1,5e-3}"), &["\"1.5\"", "'−'"]);
+    has(&tree(r"\num{2E+4}"), &["\"4\""]);
+    assert!(always_error(r"\num{1.2.3}").contains("is not a number"));
+    assert!(always_error(r"\num{3e}").contains("is not a number"));
+    assert!(always_error(r"\num{3e2x}").contains("is not a number"));
+    has(&tree(r"\ang{30}"), &["'°'"]);
+    assert!(always_error(r"\ang{x}").contains("is not a number"));
+}
+
+// ---------- arithmetic and other commands ----------
+
+#[test]
+fn column_arithmetic_and_unicode() {
+    for op in ["+", "-", "x", r"\times", "×", "*"] {
+        has(&tree(&format!(r"\contaarmada{{{op}}}{{12}}{{3}}")), &["ColumnArithmetic"]);
+    }
+    // invalid ones: strict mode refuses; tolerant mode writes the calculation inline
+    has(&recovers(r"\contaarmada{/}{1}{2}", "E-REC-9"), &["'/'", "\"1\"", "\"2\""]);
+    has(&recovers(r"\contaarmada{+}{a}{2}", "E-REC-9"), &["'+'", "\"a\""]);
+    has(&recovers(r"\divchave{10}{0}", "E-REC-9"), &["'÷'", "\"10\"", "\"0\""]);
+    has(&recovers(&format!(r"\divchave{{{}}}{{7}}", "9".repeat(31)), "E-REC-9"), &["'÷'"]);
+    assert!(strict_error(r"\divchave{10}{0}").contains("nonzero divisor"));
+    has(&tree(r"\unicode{x221E}"), &["'∞'"]);
+    has(&tree(r"\unicode{U+00B2}"), &["'²'"]);
+    assert!(always_error(r"\unicode{zz}").contains("invalid code point"));
+    has(&tree(r"\LaTeX \TeX"), &["\"LaTeX\"", "\"TeX\""]);
+}
+
+#[test]
+fn genfrac_in_all_forms() {
+    has(&tree(r"\genfrac{}{}{0pt}{1}{a}{b}"), &["style: Row", "rule: false"]);
+    has(&tree(r"\genfrac{}{}{}{0}{a}{b}"), &["style: Display", "rule: true"]);
+    has(&tree(r"\genfrac{\langle}{\rangle}{1pt}{}{a}{b}"), &["Some('⟨')", "Some('⟩')", "style: Auto"]);
+    has(&tree(r"\genfrac(]{}{}{a}{b}"), &["Some('(')", "Some(']')"]);
+}
+
+#[test]
+fn boxes_and_rules() {
+    has(&tree(r"\mathllap{x} \mathrlap{y} \mathclap{z}"), &["side: 'l'", "side: 'r'", "side: 'c'"]);
+    has(&tree(r"\llap{a} \rlap{b} \clap{c}"), &["Overlapped"]);
+    has(&tree(r"\raisebox{2pt}[1pt][1pt]{a}"), &["Raised"]);
+    assert!(always_error(r"\raisebox{x}{a}").contains("unrecognized measure"));
+    has(&tree(r"\scalebox{2}[1]{a}"), &["Scaled"]);
+    assert!(always_error(r"\scalebox{dobro}{a}").contains("takes a number"));
+    has(&tree(r"\rule[1pt]{2em}{1ex}"), &["Rule"]);
+    assert!(always_error(r"\rule{a}{b}").contains("unrecognized measures"));
+    has(&tree(r"\smash[t]{x} \smash[b]{y}"), &["height: true, depth: false", "height: false, depth: true"]);
+}
+
+#[test]
+fn sideset_and_text_scripts() {
+    has(&tree(r"\sideset{_a}{^b}\sum_{i}^{n}"), &["LargeOperator", "\"a\"", "\"b\""]);
+    has(&tree(r"\sideset{}{'}\sum"), &["LargeOperator"]);
+    has(&tree(r"\textsuperscript{a}"), &["sup: Some"]);
+    has(&tree(r"\textsubscript{x}"), &["sub: Some"]);
+}
+
+#[test]
+fn verbatim() {
+    has(&tree(r"\verb|a b-c|"), &["Monospace", "Space { em: 0.525 }", "'-'"]);
+    has(&tree(r"\verb*+x+"), &["Monospace"]);
+    assert!(always_error(r"\verb|abc").contains("without the closing '|'"));
+    assert!(always_error(r"\verb").contains("without a delimiter"));
+}
+
+#[test]
+fn multiple_columns_and_dots() {
+    has(&tree(r"\multicolumn{2}{|r|}{x}"), &["columns: 2", "alignment: 'r'"]);
+    assert!(always_error(r"\multicolumn{n}{c}{x}").contains("takes a number"));
+    has(&tree(r"\hdotsfor{3}"), &["columns: 3"]);
+    has(&tree(r"\dotsfor[2]{x}"), &["columns: 1"]);
+}
+
+#[test]
+fn modular_arithmetic_and_misc() {
+    has(&tree(r"a \bmod b"), &["class: Bin", "mod"]);
+    has(&tree(r"a \pmod{3}"), &["'('", "mod"]);
+    has(&tree(r"a \mod{4}"), &["mod"]);
+    has(&tree(r"a \pod{2}"), &["'('"]);
+    has(&tree(r"\imath \jmath"), &["ı", "ȷ"]);
+    has(&tree(r"a \lt b \gt c"), &["'<'", "'>'"]);
+}
+
+// ---------- colors and delimiters ----------
+
+#[test]
+fn color_models() {
+    has(&tree(r"\color[HTML]{FF0000} x"), &["#FF0000"]);
+    has(&tree(r"\textcolor[rgb]{1,0,0}{x}"), &["rgb(1,0,0)"]);
+    // invalid color: strict mode refuses; tolerant mode draws without color
+    for tex in [r"\color{re;d} x", r#"\textcolor{red" onload="x}{a}"#, r"\colorbox{}{a}", r"\color[HTML]{<script>} x"] {
+        let t = recovers(tex, "E-REC-9");
+        assert!(!t.contains("Colored"), "{tex}: {t}");
+    }
+}
+
+#[test]
+fn invalid_delimiters() {
+    recovers(r"\left\foo x \right)", "E-REC-9");
+    has(&recovers(r"\left a x \right)", "E-REC-9"), &["Some('a')"]);
+    recovers(r"\left", "E-REC-7");
+    has(&recovers(r"\left( a }", "E-REC-5"), &["close: None"]);
+    recovers(r"\left( a", "E-REC-5");
+    has(&tree(r"\left( a \middle| b \middle. c \right)"), &["middles: ['|', '|']"]);
+}
+
+#[test]
+fn all_delimiters_by_name() {
+    for (name, expected) in [
+        ("|", '‖'),
+        ("Vert", '‖'),
+        ("lVert", '‖'),
+        ("rVert", '‖'),
+        ("lbrack", '['),
+        ("rbrack", ']'),
+        ("llbracket", '⟦'),
+        ("lBrack", '⟦'),
+        ("rrbracket", '⟧'),
+        ("rBrack", '⟧'),
+        ("uparrow", '↑'),
+        ("downarrow", '↓'),
+        ("updownarrow", '↕'),
+        ("backslash", '\\'),
+    ] {
+        assert_eq!(symbols::delimiter_command(name), Some(Some(expected)), "{name}");
+    }
+    assert_eq!(symbols::delimiter_command("foo"), None);
+    assert_eq!(symbols::delimiter_char('<'), Some(Some('⟨')));
+    assert_eq!(symbols::delimiter_char('>'), Some(Some('⟩')));
+    assert_eq!(symbols::delimiter_char('a'), None);
+}
+
+// ---------- environments ----------
+
+#[test]
+fn single_line_environments() {
+    has(&tree(r"\begin{subequations} a \end{subequations}"), &["\"a\""]);
+    for env in ["equation", "equation*", "displaymath", "math"] {
+        has(&tree(&format!(r"\begin{{{env}}} a \end{{{env}}}")), &["\"a\""]);
+        assert!(always_error(&format!(r"\begin{{{env}}} a")).contains("without \\end"));
+    }
+    assert!(always_error(r"\begin{subequations} a").contains("without \\end"));
+}
+
+#[test]
+fn environments_with_options() {
+    has(&tree(r"\begin{alignat}{2} a &= b \end{alignat}"), &["Aligned"]);
+    has(&tree(r"\begin{pmatrix*}[r] 1 & -2 \\ 3 & 4 \end{pmatrix*}"), &["columns: ['r', 'r']"]);
+    has(&tree(r"\begin{bmatrix*} 1 \end{bmatrix*}"), &["BMatrix"]);
+    has(&tree(r"\begin{subarray}{l} a \\ b \end{subarray}"), &["Substack"]);
+}
+
+#[test]
+fn badly_closed_table_body() {
+    has(&recovers(r"\begin{matrix} a & b \end{pmatrix}", "E-REC-5"), &["\"b\""]);
+    has(&recovers(r"\begin{matrix} a & b", "E-REC-5"), &["\"b\""]);
+    recovers(r"\begin{matrix} a } b \end{matrix}", "E-REC-4");
+    recovers(r"\begin{matrix} a \middle| b \end{matrix}", "E-REC-5");
+    recovers(r"\begin{foo} a \end{foo}", "E-REC-6");
+    has(&tree(r"\begin{matrix} a \\ \intertext{ou} b \end{matrix}"), &["intertexts: [1]"]);
+}
+
+#[test]
+fn argument_tables() {
+    for cmd in ["substack", "cases", "matrix", "pmatrix", "bordermatrix", "eqalign", "eqalignno", "displaylines"] {
+        has(&tree(&format!(r"\{cmd}{{a & b \cr c & d}}")), &["Table"]);
+    }
+}
+
+#[test]
+fn array_column_specs() {
+    has(&tree(r"\begin{array}{p{2cm} m{1cm} b X c} a \end{array}"), &["columns: ['l', 'l', 'l', 'l', 'c']"]);
+    has(&tree(r"\begin{array}{c@{\hspace{1em}}c!{,}c} a \end{array}"), &["between: [(1,", "(2,"]);
+    has(&tree(r"\begin{array}{*{3}{c}|r} a \end{array}"), &["columns: ['c', 'c', 'c', 'r']", "verticals: [3]"]);
+    has(&tree(r"\begin{tabular}[t]{l c} a \end{tabular}"), &["Array"]);
+    recovers(r"\begin{array}{cq} a \end{array}", "E-REC-9");
+}
+
+#[test]
+fn commutative_diagram() {
+    let t = tree(r"\begin{CD} A @>{f_1}>> B \\ @VgVV @AAhA \\ C @<<k< D \end{CD}");
+    has(&t, &["Diagram", "'→'", "'↓'", "'↑'", "'←'"]);
+    has(&tree(r"\begin{CD} A @= B \\ @| @. \end{CD}"), &["'='", "'‖'"]);
+    // a label without its closing: it runs to the end of the row
+    has(&tree(r"\begin{CD} A @>f \end{CD}"), &["'→'"]);
+    assert!(always_error(r"\begin{CD} A @x B \end{CD}").contains("unknown diagram arrow"));
+    has(&recovers(r"\begin{CD} A @>>> B", "E-REC-5"), &["Diagram"]);
+}
+
+// ---------- text ----------
+
+#[test]
+fn math_inside_text() {
+    has(&tree(r"\text{a $x^2$ b}"), &["Math(", "\"a \""]);
+    has(&tree(r"\text{$x$}"), &["Math("]);
+    has(&tree(r"\text{a \(x\) b \[y\]}"), &["Math("]);
+    has(&recovers(r"\text{a $ b}", "E-REC-9"), &["$"]);
+    has(&recovers(r"\text{a \( b}", "E-REC-9"), &["("]);
+}
+
+#[test]
+fn bold_and_groups_in_text() {
+    has(&tree(r"\text{a {b} c}"), &["\"a b c\""]);
+    has(&tree(r"\text{\textbf{neg} x}"), &["\\u{e000}neg\\u{e001} x"]);
+    has(&tree(r"\text{{\bf a} b}"), &["\\u{e000}a\\u{e001} b"]);
+    // \bfseries until the end of the text
+    has(&tree(r"\text{\bfseries abc}"), &["\\u{e000}abc\\u{e001}"]);
+    has(&tree(r"\text{} \text{\}}"), &["\"}\""]);
+}
+
+#[test]
+fn text_accents() {
+    has(&tree(r#"\text{\'e \`a \^o \~n \"u \=a \.z}"#), &["é à ô ñ ü ā ż"]);
+    has(&tree(r"\text{\c{c} \u{a} \v{s} \c c}"), &["ç ă š ç"]);
+    // an accent with no known composition: the letter stays
+    has(&tree(r#"\text{\"q}"#), &["q\\u{308}"]);
+    has(&tree(r"\text{\'{\i}}"), &["Text"]);
+}
+
+#[test]
+fn text_commands() {
+    has(&tree(r"\text{\%\$\&\#\_\{\}}"), &["%$&#_{}"]);
+    has(&tree(r"\text{a\|b}"), &["a‖b"]);
+    has(&tree(r"\text{a\,b\;c\:d\ e\!f\\g}"), &["a b c d e\\u{200b}f g"]);
+    for (cmd, output) in [
+        ("quad", "\\u{2003}"),
+        ("qquad", "\\u{2003}\\u{2003}"),
+        ("ldots", "…"),
+        ("dots", "…"),
+        ("textdegree", "°"),
+        ("degree", "°"),
+        ("o", "ø"),
+        ("ss", "ß"),
+        ("aa", "å"),
+        ("AA", "Å"),
+        ("ae", "æ"),
+        ("textendash", "–"),
+        ("textemdash", "—"),
+        ("textasciitilde", "~"),
+        ("textbackslash", "\\\\"),
+        ("times", "×"),
+        ("LaTeX", "LaTeX"),
+        ("TeX", "TeX"),
+        ("alpha", "α"),
+        ("infty", "∞"),
+        ("textit", "x"),
+    ] {
+        has(&tree(&format!(r"\text{{\{cmd} x}}")), &[output]);
+    }
+    has(&recovers(r"\text{a \@ b}", "E-REC-1"), &["@"]);
+    has(&recovers(r"\text{a \foo b}", "E-REC-1"), &["\\\\foo"]);
+}
+
+#[test]
+fn all_text_accents_compose() {
+    for (mark, letter, expected) in [('`', 'a', 'à'), ('^', 'o', 'ô'), ('"', 'u', 'ü'), ('=', 'a', 'ā'), ('.', 'z', 'ż'), ('u', 'a', 'ă'), ('v', 's', 'š')] {
+        assert_eq!(symbols::text_accent(mark, letter), Some(expected), "{mark}{letter}");
+    }
+    assert_eq!(symbols::text_accent('?', 'a'), None);
+}
+
+// ---------- chemistry ----------
+
+#[test]
+fn chemical_formulas() {
+    has(&tree(r"\ce{2H2O -> 2H2 + O2}"), &["\"2\"", "'→'", "'+'"]);
+    has(&tree(r"\ce{NaCl(aq) <- Na+ + Cl-}"), &["\"Na\"", "\"(aq)\"", "'←'"]);
+    has(&tree(r"\ce{SO4^{2-}}"), &["\"2−\""]);
+    has(&tree(r"\ce{Fe^3+}"), &["\"3+\""]);
+    has(&tree(r"\ce{H2O(l) <=> H2O(g)}"), &["'⇌'", "\"(l)\"", "\"(g)\""]);
+    has(&tree(r"\ce{NaCl(s) = A ^ v}"), &["\"(s)\"", "'↑'", "'↓'"]);
+    has(&tree(r"\ce{[Cu(NH3)4]}"), &["'['", "'('", "class: Close"]);
+    has(&tree(r"\ce{CuSO4.5H2O}"), &["'·'"]);
+    has(&tree(r"\ce{A*B H-Cl}"), &["'·'", "'−'"]);
+    has(&tree(r"\ce{^{2+}}"), &["\"2+\""]);
+    has(&tree(r"\pu{3 mol}"), &["\"3\""]);
+    assert!(always_error(r"\ce{H☃}").contains("unsupported character in \\ce"));
+}
+
+// ---------- macros ----------
+
+#[test]
+fn paired_delimiter() {
+    let def = r"\DeclarePairedDelimiter\norma{\lVert}{\rVert}";
+    has(&tree(&format!(r"{def} \norma{{x}}")), &["ForcedClass { class: Open"]);
+    has(&tree(&format!(r"{def} \norma*{{x}}")), &["Delimited"]);
+    has(&tree(&format!(r"{def} \norma[\big]{{x}}")), &["FixedDelimiter"]);
+}
+
+#[test]
+fn macro_arguments() {
+    // '#' without a digit, at the end of the body, #0 and #2 with no second argument: only the nonexistent disappears
+    has(&tree(r"\newcommand\a[1]{#1 + \#} \a{x}"), &["\"x\"", "'#'"]);
+    has(&recovers(r"\newcommand\b[1]{#1#} \b{y}", "E-REC-9"), &["'#'"]);
+    has(&tree(r"\newcommand\c[1]{[#0]} \c{z}"), &["'['"]);
+    has(&tree(r"\newcommand\d[1]{(#2)} \d{z}"), &["'('"]);
+    has(&tree(r"\newcommand\e[2][1]{#1/#2} \e{a} \e[b]{c}"), &["\"b\"", "\"c\""]);
+    has(&tree(r"\newcommand*\f{x} \f"), &["\"x\""]);
+    has(&tree(r"\newcommand{\g}{x} \providecommand{\g}{y} \g"), &["\"x\""]);
+    has(&tree(r"\providecommand{\h}{y} \h"), &["\"y\""]);
+    has(&recovers(r"\newcommand\h{#a} \h", "E-REC-9"), &["'#'"]);
+    assert!(always_error(r"\newcommand x").contains("missing macro name"));
+    assert!(always_error(r"\newcommand{}{x}").contains("empty macro name"));
+    assert!(always_error(r"\newcommand\a[x]{y}").contains("invalid number of arguments"));
+}
+
+#[test]
+fn def_and_let() {
+    has(&tree(r"\def\a #1#2{#2#1} \a xy"), &["\"y\""]);
+    assert!(always_error(r"\def\a").contains("without a body"));
+    assert!(always_error(r"\def\a.{x}").contains("delimited"));
+    has(&tree(r"\let\a = \alpha \a"), &["α"]);
+    has(&tree(r"\def\b{x} \let\a\b \a"), &["\"x\""]);
+    has(&tree(r"\let\a x \a"), &["\"x\""]);
+    assert!(always_error(r"\let\a").contains("without a target"));
+}
+
+#[test]
+fn defined_operators_and_environments() {
+    has(&tree(r"\DeclareMathOperator*\argmax{arg\,max} \argmax_x"), &["limits: true"]);
+    has(&tree(r"\DeclareMathOperator\sen{sen} \sen x"), &["\"sen\""]);
+    assert!(always_error(r"\newenvironment{foo}[1]{a}{b}").contains("with arguments"));
+    let t = tree(r"\newenvironment{e}[0]{(}{)} \begin{e}\begin{e}x\end{e}\end{e}");
+    assert_eq!(t.matches("'('").count(), 2, "{t}");
+    has(&recovers(r"\newenvironment{e}{(}{)} \begin{e} x", "E-REC-5"), &["\"x\""]);
+}
+
+#[test]
+fn discarded_commands() {
+    has(&tree(r"\aftergroup\x a"), &["\"a\""]);
+    has(&tree(r"\aftergroup x a"), &["\"a\""]);
+    has(&tree(r"a \aftergroup"), &["\"a\""]);
+    has(&tree(r"\usepackage[x]{amsmath} \makeatletter \bfseries a"), &["\"a\""]);
+}
+
+#[test]
+fn package_commands() {
+    has(&tree(r"\dv{f}"), &["Fraction"]);
+    has(&tree(r"\dv[2]{f}"), &["\"2\""]);
+    has(&tree(r"\dv{f}{x}"), &["\"x\""]);
+    has(&tree(r"\dv[2]{f}{x}"), &["\"2\""]);
+    has(&tree(r"\pdv{f}{x}{y}"), &["'∂'", "\"y\""]);
+    has(&tree(r"\Set{x | x>0}"), &["middles: ['|']"]);
+    has(&tree(r"\set{a,b}"), &["Some('{')"]);
+    has(&tree(r"\bra{a}\ket{b}\braket{a|b}"), &["Some('⟨')"]);
+    has(&tree(r"\abs{x} \norm{y}"), &["Some('|')", "Some('‖')"]);
+    has(&tree(r"\sfrac{1}{2} \unitfrac[3]{m}{s}"), &["\"3\""]);
+}
+
+// ---------- unknown commands ----------
+
+#[test]
+fn json_escapes_and_backslashes_before_symbols() {
+    has(&recovers(r"x\u00b2", "E-REC-2"), &["'²'"]);
+    // \u without four hex digits is not an escape
+    has(&recovers(r"\u12", "E-REC-1"), &["\\\\u"]);
+    has(&recovers(r#"\"a"#, "E-REC-1"), &["\"a\""]);
+    has(&recovers(r"\5", "E-REC-1"), &["\"5\""]);
+    // JSON \t only when the name is short: \tx is tab + x, \txyz is an unknown command
+    has(&recovers(r"a\tx", "E-REC-2"), &["\"x\""]);
+    has(&recovers(r"a\txyz", "E-REC-1"), &["\\\\txyz"]);
+    assert!(strict_error(r"\foobar").contains("unsupported command"));
+}
+
+#[test]
+fn doubled_backslashes() {
+    assert_eq!(undo_doubled_backslashes(r"\\frac{1}{2}").as_deref(), Some(r"\frac{1}{2}"));
+    // a single backslash proves the doubles are real line breaks
+    assert_eq!(undo_doubled_backslashes(r"a \\ \frac{1}{2}"), None);
+    assert_eq!(undo_doubled_backslashes("a + b"), None);
+    assert_eq!(undo_doubled_backslashes(r"a \\ b"), None);
+}
+
+#[test]
+fn english_locale_reads_thousands_comma() {
+    let (r, _) = read_in("12,345.67", Locale::En, true);
+    assert!(format!("{:?}", r.unwrap()).contains("thousands: Some(',')"));
+    let (r, _) = read_in("3,5", Locale::En, true);
+    assert!(!format!("{:?}", r.unwrap()).contains("\"3.5\""));
+}
+
+// ---------- problem cases ----------
+//
+// Each input below has crashed, hung or fooled some LaTeX reader. The rule is the same for
+// all of them: never a panic or a hang; strict mode returns an error with a message, tolerant mode draws
+// with a warning (or, when there is nothing to recover, also returns an error).
+
+/// Both modes finish: no panic. Returns (strict mode error, tolerant mode warnings or error).
+fn finishes(tex: &str) -> (Option<String>, Result<Vec<String>, String>) {
+    let (strict, _) = read_in(tex, Locale::PtBr, true);
+    let (tol, registry) = read_in(tex, Locale::PtBr, false);
+    let tol = tol.map(|_| registry.warnings.iter().map(|a| a.rule.to_string()).collect()).map_err(|e| e.to_string());
+    (strict.err().map(|e| e.to_string()), tol)
+}
+
+#[test]
+fn p_unbalanced_braces() {
+    for tex in ["{{{a", "a}}}", "}{", r"\frac{a}{b", r"x^{2"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_some(), "{tex}");
+        assert!(t.as_ref().is_ok_and(|a| a.iter().any(|r| r == "E-REC-4")), "{tex}: {t:?}");
+    }
+}
+
+#[test]
+fn p_left_without_right_and_vice_versa() {
+    for tex in [r"\left( x", r"x \right)", r"\left( \left[ x \right)", r"\right\} \left\{"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_some() && t.is_ok(), "{tex}: {e:?} {t:?}");
+    }
+}
+
+#[test]
+fn p_alignment_outside_environment() {
+    // & and \\ at the top level are an implicit alignment: valid in both modes
+    for tex in ["a & b", r"a \\ b", r"& \\ &", r"\\\\\\", "&&&&"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_none() && t.is_ok(), "{tex}: {e:?} {t:?}");
+    }
+}
+
+#[test]
+fn p_unpaired_begin_and_end() {
+    for tex in
+        [r"\begin{pmatrix} 1 & 2", r"1 & 2 \end{pmatrix}", r"\begin{pmatrix} 1 \end{bmatrix}", r"\begin{cases} a \begin{matrix} b \end{cases}", r"\begin", r"\end", r"\begin{"]
+    {
+        let (e, t) = finishes(tex);
+        assert!(e.is_some() && t.is_ok(), "{tex}: {e:?} {t:?}");
+    }
+}
+
+#[test]
+fn p_recursive_macro() {
+    for tex in [r"\newcommand\a{\a} \a", r"\def\a{\a\a} \a", r"\def\a{x\a} \a", r"\newcommand\a[1]{\a{#1#1}} \a{x}", r"\newcommand\a{\abs{\a}} \a"] {
+        let (e, t) = finishes(tex);
+        let e = e.unwrap_or_else(|| panic!("{tex}: strict mode accepted"));
+        // \abs{\a} also nests: the depth limit arrives before the expansion limit
+        if e.contains("nesting") {
+            assert!(t.is_err_and(|t| t.contains("nesting")), "{tex}");
+            continue;
+        }
+        assert!(e.contains("too many macros"), "{tex}: {e}");
+        let a = t.unwrap_or_else(|e| panic!("{tex}: {e}"));
+        // a single warning for the cause, not one per discarded expansion
+        assert_eq!(a.iter().filter(|r| *r == "E-REC-1").count(), 1, "{tex}: {a:?}");
+    }
+}
+
+#[test]
+fn p_exponential_expansion() {
+    // each level doubles: 2^30 copies if nobody stops it
+    let mut tex = String::from(r"\def\a{xx}");
+    for (i, name) in "bcdefghijklmnopqrstuvwxyz".chars().enumerate() {
+        let previous = if i == 0 { 'a' } else { "bcdefghijklmnopqrstuvwxyz".chars().nth(i - 1).unwrap() };
+        tex.push_str(&format!(r"\def\{name}{{\{previous}\{previous}}}"));
+    }
+    tex.push_str(r"\z");
+    let start = std::time::Instant::now();
+    let (e, t) = finishes(&tex);
+    assert!(e.is_some() && t.is_ok(), "{e:?} {t:?}");
+    assert!(start.elapsed().as_secs() < 10, "{:?}", start.elapsed());
+}
+
+#[test]
+fn p_deep_nesting_does_not_overflow_the_stack() {
+    let n = 10_000;
+    for tex in [
+        format!("{}x{}", "{".repeat(n), "}".repeat(n)),
+        format!("{}x{}", r"\frac{".repeat(n), "}{y}".repeat(n)),
+        format!("{}x", r"\frac".repeat(n)),
+        format!("{}x{}", r"\sqrt{".repeat(n), "}".repeat(n)),
+        format!("{}x{}", r"\left(".repeat(n), r"\right)".repeat(n)),
+        format!("x{}", "^{a".repeat(n)),
+        format!("x{}", "^a".repeat(n)),
+        format!("{}x", r"\not".repeat(n)),
+        format!("{}x{}", r"\text{$".repeat(n), "$}".repeat(n)),
+        format!(r"\begin{{array}}{{{}c{}}} a \end{{array}}", "*{1}{".repeat(n), "}".repeat(n)),
+    ] {
+        // runs on a thread with the default test stack (2 MiB)
+        let tex2 = tex.clone();
+        let r = std::thread::spawn(move || finishes(&tex2)).join();
+        let (e, t) = r.unwrap_or_else(|_| panic!("panic with {}…", &tex[..40]));
+        if let Some(e) = &e {
+            assert!(e.contains("nesting") || e.contains("without") || e.contains("double"), "{}…: {e}", &tex[..40]);
+        }
+        let _ = t;
+    }
+    // at the limit it still reads; one more level is a clear error
+    let inside = format!("{}x{}", "{".repeat(NESTING_LIMIT - 2), "}".repeat(NESTING_LIMIT - 2));
+    assert!(finishes(&inside).0.is_none());
+    let outside = format!("{}x{}", "{".repeat(NESTING_LIMIT + 1), "}".repeat(NESTING_LIMIT + 1));
+    assert!(always_error(&outside).contains("nesting"));
+}
+
+#[test]
+fn p_nesting_at_the_limit_still_draws() {
+    // the reader accepts; drawing the tree must also fit on the stack
+    let bottom = (NESTING_LIMIT / 2) - 2;
+    for tex in [format!("{}x{}", r"\frac{".repeat(bottom), "}{y}".repeat(bottom)), format!("{}x{}", "{".repeat(NESTING_LIMIT - 2), "}".repeat(NESTING_LIMIT - 2))] {
+        let r = std::thread::spawn(move || convert(&tex, &Options::default()).map(|r| r.svg.len())).join();
+        assert!(r.is_ok_and(|r| r.is_ok()));
+    }
+}
+
+#[test]
+fn p_one_megabyte_input() {
+    let tex = "x + ".repeat(250_000) + "1";
+    let start = std::time::Instant::now();
+    let (e, t) = finishes(&tex);
+    assert!(e.is_none() && t.is_ok());
+    // groups and macros too: expansion must not go quadratic or hit the growth cap
+    let groups = r"\bgroup a \egroup ".repeat(60_000);
+    let (e, _) = finishes(&groups);
+    assert!(e.is_none(), "{e:?}");
+    // expansions that grow the text have a cap: past it strict mode refuses and tolerant mode discards
+    let (e, t) = finishes(&r"\abs{x}".repeat(140_000));
+    assert!(e.is_some_and(|e| e.contains("too many macros")) && t.is_ok_and(|a| a.iter().any(|r| r == "E-REC-1")));
+    let (e, _) = finishes(&r"\begin{CD} A @>>> B \end{CD}".repeat(30_000));
+    assert!(e.is_none(), "{e:?}");
+    assert!(start.elapsed().as_secs() < 30, "{:?}", start.elapsed());
+}
+
+#[test]
+fn p_empty_and_only_spaces() {
+    for tex in ["", " ", "   \t  ", "\u{00A0}\u{2003}", "$$", "$ $", r"\[\]", "{}"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_none() && t.is_ok(), "{tex:?}: {e:?} {t:?}");
+    }
+}
+
+#[test]
+fn p_control_characters_and_nul() {
+    for tex in ["a\u{0}b", "a\u{1}b", "\u{7F}", "x\u{1B}[31m"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_some(), "{tex:?}: strict mode accepted");
+        let a = t.unwrap_or_else(|e| panic!("{tex:?}: {e}"));
+        assert!(!a.is_empty(), "{tex:?}");
+    }
+    // and the drawing does not carry the control character into the SVG
+    let svg = convert("a\u{0}b", &Options::default()).unwrap().svg;
+    assert!(!svg.contains('\u{0}'));
+}
+
+#[test]
+fn p_emoji_combining_marks_and_rtl() {
+    // the reader accepts any character; whatever has no glyph becomes a box in the drawing (E-REC-8)
+    for tex in ["🙂 + 1", "e\u{0301}", "\u{0301}", "שלום + 1", "مرحبا", "x\u{200D}y", "\u{FEFF}x", "👩‍👩‍👧"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_none() && t.is_ok(), "{tex:?}: {e:?} {t:?}");
+        let r = convert(tex, &Options::default());
+        assert!(r.is_ok(), "{tex:?}: {r:?}");
+    }
+    // JSON escape of half a surrogate pair: it does not become an invalid character
+    let (e, t) = finishes(r"\ud83d\ude42");
+    assert!(e.is_some() && t.is_ok(), "{e:?} {t:?}");
+}
+
+#[test]
+fn p_repeated_backslashes() {
+    for n in 1..=12 {
+        let tex = "\\".repeat(n);
+        let (_, t) = finishes(&tex);
+        assert!(t.is_ok(), "{n} barras: {t:?}");
+        let (_, t) = finishes(&format!("a{}b", "\\".repeat(n)));
+        assert!(t.is_ok(), "a{n}b: {t:?}");
+    }
+}
+
+#[test]
+fn p_scripts_without_base_and_repeated() {
+    for tex in ["^^", "^", "_", "^_^_", "x^^2", "x__2", "'", "x^", "x_", "^{}_{}", "x^1^2^3^4_1_2_3"] {
+        let (_, t) = finishes(tex);
+        assert!(t.is_ok(), "{tex}: {t:?}");
+    }
+    assert!(finishes("^_^_").0.is_some());
+}
+
+#[test]
+fn p_unclosed_optionals_and_arguments() {
+    for tex in [r"\sqrt[", r"\sqrt[3", r"\sqrt[3]", r"\sqrt{", r"\frac", r"\frac{", r"\binom{1}", r"\left", r"\text{", r"\begin{array}{", r"\cfrac[", r"\xrightarrow["] {
+        let (_, t) = finishes(tex);
+        assert!(t.is_ok(), "{tex}: {t:?}");
+    }
+}
+
+#[test]
+fn p_absurd_numbers_and_measures() {
+    for tex in [
+        r"\hdotsfor{99999999999999999999}",
+        r"\multicolumn{99999}{c}{x}",
+        r"\scalebox{1e30}{x}",
+        r"\scalebox{NaN}{x}",
+        r"\hspace{1e30em}",
+        r"\rule{-5em}{-1em}",
+        r"\begin{array}{*{50}{*{50}{*{50}{c}}}} a \end{array}",
+        r"\cline{0-99999}",
+        "9".repeat(10_000).as_str(),
+    ] {
+        let (_, t) = finishes(tex);
+        if let Ok(a) = &t {
+            let _ = a;
+        }
+        // the drawing also finishes and does not blow up memory
+        let tex = tex.to_string();
+        let r = std::thread::spawn(move || convert(&tex, &Options::default()).map(|r| r.svg.len())).join();
+        assert!(r.is_ok(), "panic");
+        if let Ok(Ok(size)) = r {
+            assert!(size < 20_000_000, "SVG of {size} bytes");
+        }
+    }
+}
+
+#[test]
+fn p_reading_fits_in_a_one_megabyte_stack() {
+    // wasm and worker threads have short stacks: reading, even unoptimized, fits in 1 MiB
+    let cases = [
+        format!("{}x{}", r"\frac{".repeat(100), "}{y}".repeat(100)),
+        format!("{}x{}", "{".repeat(10_000), "}".repeat(10_000)),
+        format!("{}x{}", r"\left(".repeat(1_000), r"\right)".repeat(1_000)),
+        format!("x{}", "_1".repeat(10_000)),
+        format!("{}x{}", r"\begin{matrix}".repeat(1_000), r"\end{matrix}".repeat(1_000)),
+    ];
+    for tex in cases {
+        let r = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let (strict, _) = read_in(&tex, Locale::PtBr, true);
+                let (tol, _) = read_in(&tex, Locale::PtBr, false);
+                (strict.map(|_| ()), tol.map(|_| ()))
+            })
+            .unwrap()
+            .join()
+            .expect("reading must not overflow the stack");
+        // either it reads, or it refuses with a clear message
+        for side in [r.0, r.1] {
+            if let Err(e) = side {
+                let e = e.to_string();
+                assert!(e.contains("nesting") || e.contains("double"), "{e}");
+            }
+        }
+    }
+}
+
+#[test]
+fn mathtools_colon_equals_and_centernot() {
+    has(&tree(r"A \coloneqq B"), &["'≔'", "Rel"]);
+    has(&tree(r"A \coloneq B \eqcolon C \eqqcolon D \Coloneqq E"), &["'≔'", "'≕'", "'⩴'"]);
+    // \centernot reads like \not: a negated relation when one exists, a slash otherwise
+    assert_eq!(tree(r"a \centernot= b"), tree(r"a \not= b"));
+    assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b"));
+}

@@ -1,0 +1,16 @@
+[package]
+name = "mathra"
+description = "Equation converter: math LaTeX to a tree of meaning and accessible SVG, with locale rules (English and pt-BR)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+include = ["src/**", "fontes/**", "Cargo.toml"]
+
+[dependencies]
+ttf-parser = "0.25"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+roxmltree = "0.20"

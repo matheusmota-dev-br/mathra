@@ -1,0 +1,184 @@
+//! Box model: everything drawn has a width, a height above the baseline
+//! and a depth below it. Coordinates in font units, y pointing up.
+
+use ttf_parser::GlyphId;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Item {
+    Glyph {
+        id: GlyphId,
+        x: f32,
+        y: f32,
+        scale: f32,
+        color: Option<String>,
+    },
+    /// Filled rectangle; (x, y) is the lower left corner.
+    Rule {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: Option<String>,
+    },
+    /// Straight segment (cancels).
+    Line {
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        thickness: f32,
+        color: Option<String>,
+    },
+    /// Ellipse outline (`\textcircled`).
+    Ellipse {
+        cx: f32,
+        cy: f32,
+        rx: f32,
+        ry: f32,
+        thickness: f32,
+        color: Option<String>,
+    },
+}
+
+impl Item {
+    fn shift(&mut self, dx: f32, dy: f32) {
+        match self {
+            Item::Glyph { x, y, .. } | Item::Rule { x, y, .. } => {
+                *x += dx;
+                *y += dy;
+            }
+            Item::Line { x1, y1, x2, y2, .. } => {
+                *x1 += dx;
+                *x2 += dx;
+                *y1 += dy;
+                *y2 += dy;
+            }
+            Item::Ellipse { cx, cy, .. } => {
+                *cx += dx;
+                *cy += dy;
+            }
+        }
+    }
+
+    fn colorize(&mut self, new: &str) {
+        let color = match self {
+            Item::Glyph { color, .. } | Item::Rule { color, .. } | Item::Line { color, .. } | Item::Ellipse { color, .. } => color,
+        };
+        if color.is_none() {
+            *color = Some(new.to_string());
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MathBox {
+    pub width: f32,
+    pub height: f32,
+    pub depth: f32,
+    pub items: Vec<Item>,
+    /// Italic correction of the last glyph: how far right the superscript should move.
+    pub italic: f32,
+    /// Where an accent should be centered, when the box is a single glyph.
+    pub accent_point: Option<f32>,
+    /// The box is a single glyph (affects scripts and accents).
+    pub single_glyph: bool,
+}
+
+impl MathBox {
+    pub fn empty() -> MathBox {
+        MathBox::default()
+    }
+
+    pub fn space(width: f32) -> MathBox {
+        MathBox { width, ..MathBox::default() }
+    }
+
+    pub fn bar(width: f32, thickness: f32, base: f32) -> MathBox {
+        MathBox {
+            width,
+            height: (base + thickness).max(0.0),
+            depth: (-base).max(0.0),
+            items: vec![Item::Rule { x: 0.0, y: base, width, height: thickness, color: None }],
+            ..MathBox::default()
+        }
+    }
+
+    /// Places `other` with its origin at (dx, dy) and updates height and depth. The width does not change.
+    pub fn place(&mut self, other: &MathBox, dx: f32, dy: f32) {
+        for item in &other.items {
+            let mut i = item.clone();
+            i.shift(dx, dy);
+            self.items.push(i);
+        }
+        if !other.items.is_empty() || other.height > 0.0 || other.depth > 0.0 {
+            self.height = self.height.max(other.height + dy);
+            self.depth = self.depth.max(other.depth - dy);
+        }
+        self.single_glyph = false;
+    }
+
+    /// Appends `other` on the right, on the same baseline.
+    pub fn append(&mut self, other: &MathBox) {
+        let x = self.width;
+        self.place(other, x, 0.0);
+        self.width += other.width;
+        self.italic = other.italic;
+    }
+
+    pub fn shift_vertical(&mut self, dy: f32) {
+        for item in &mut self.items {
+            item.shift(0.0, dy);
+        }
+        self.height += dy;
+        self.depth -= dy;
+    }
+
+    /// Multiplies everything by `f`, from the origin (`\scalebox`).
+    pub fn scale_box(&mut self, f: f32) {
+        for item in &mut self.items {
+            match item {
+                Item::Glyph { x, y, scale, .. } => {
+                    *x *= f;
+                    *y *= f;
+                    *scale *= f;
+                }
+                Item::Rule { x, y, width, height, .. } => {
+                    *x *= f;
+                    *y *= f;
+                    *width *= f;
+                    *height *= f;
+                }
+                Item::Line { x1, y1, x2, y2, thickness, .. } => {
+                    *x1 *= f;
+                    *y1 *= f;
+                    *x2 *= f;
+                    *y2 *= f;
+                    *thickness *= f;
+                }
+                Item::Ellipse { cx, cy, rx, ry, thickness, .. } => {
+                    *cx *= f;
+                    *cy *= f;
+                    *rx *= f;
+                    *ry *= f;
+                    *thickness *= f;
+                }
+            }
+        }
+        self.width *= f;
+        self.height *= f;
+        self.depth *= f;
+        self.italic *= f;
+        self.accent_point = self.accent_point.map(|p| p * f);
+        self.single_glyph = false;
+    }
+
+    pub fn colorize(&mut self, color: &str) {
+        for item in &mut self.items {
+            item.colorize(color);
+        }
+    }
+
+    pub fn total(&self) -> f32 {
+        self.height + self.depth
+    }
+}
