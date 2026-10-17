@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/banner.svg" alt="mathra" width="100%"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/banner.svg" alt="mathra" width="100%"></p>
 
 # mathra
 
@@ -41,7 +41,7 @@ Besides the outlines, every SVG follows the contract in `spec/svg.md`: speech fo
 **Terminal**
 
 ```console
-$ cargo install --path crates/cli
+$ cargo install mathra-cli
 $ mathra 'x \le 2.75; y \ge 1' -o inequality.svg
 $ mathra '3,14 + \sin x' --locale pt-BR
 $ mathra 'x = -1' --speech        # x equals negative 1
@@ -65,7 +65,7 @@ const svg = texToSvg("3.14");
 const pt = texToSvg("3,14", "pt-BR");
 ```
 
-**Rust**
+**Rust** (`cargo add mathra`)
 
 ```rust
 let r = mathra::convert("3.14", &mathra::Options::default())?;

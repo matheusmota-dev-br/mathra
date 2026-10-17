@@ -7,6 +7,11 @@ name = "mathra"
 description = "Accessible SVG equations from LaTeX, without a TeX install."
 requires-python = ">=3.9"
 dynamic = ["version"]
+license = { text = "(MIT OR Apache-2.0) AND OFL-1.1" }
+keywords = ["latex", "math", "svg", "accessibility"]
+
+[project.urls]
+Repository = "https://github.com/matheusmota-dev-br/mathra"
 
 [tool.maturin]
 python-source = "python"

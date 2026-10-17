@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["latex", "math", "svg", "accessibility", "cli"]
+categories = ["command-line-utilities", "text-processing", "rendering"]
 
 [[bin]]
 name = "mathra"

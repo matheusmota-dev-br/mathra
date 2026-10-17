@@ -3,8 +3,13 @@ name = "mathra"
 description = "Equation converter: math LaTeX to a tree of meaning and accessible SVG, with locale rules (English and pt-BR)."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+# the code is MIT OR Apache-2.0; the embedded STIX Two Math font is OFL-1.1
+license = "(MIT OR Apache-2.0) AND OFL-1.1"
 repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["latex", "math", "svg", "accessibility", "equation"]
+categories = ["text-processing", "rendering", "accessibility", "mathematics"]
 include = ["src/**", "fonts/**", "Cargo.toml"]
 
 [dependencies]
