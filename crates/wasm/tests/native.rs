@@ -1,0 +1,17 @@
+//! Outside the browser: the happy path of the exported functions, and the errors before they become
+//! a `JsError` (creating a `JsError` only works inside wasm; that is in tests/web.rs).
+
+use mathra_wasm::{convert, tex_to_svg, tex_to_tree};
+
+#[test]
+fn happy_path() {
+    assert!(tex_to_svg("x", None).unwrap().starts_with("<svg"));
+    assert!(tex_to_tree("x", Some("pt-BR".into())).unwrap().contains("identifier"));
+}
+
+#[test]
+fn errors_become_text() {
+    assert!(convert("x", Some("xx")).unwrap_err().contains("unknown locale"));
+    let deep = format!("{}x{}", "{".repeat(100), "}".repeat(100));
+    assert!(convert(&deep, None).unwrap_err().contains("nesting"));
+}
