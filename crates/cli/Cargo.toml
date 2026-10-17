@@ -1,0 +1,14 @@
+[package]
+name = "mathra-cli"
+description = "mathra command line: SVG equations without a TeX install."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "mathra"
+path = "src/main.rs"
+
+[dependencies]
+mathra.workspace = true
