@@ -95,13 +95,13 @@ svg = mathra.tex_to_svg(r"\sin x = 0.5")              # <title>…sine of x equa
 tree = mathra.tex_to_tree("3,14", locale="pt-BR")      # JSON
 ```
 
-**JavaScript** (`crates/wasm`; the `.wasm` builds with `cargo build -p mathra-wasm --release --target wasm32-unknown-unknown`, packaging with wasm-pack is still to do)
+**JavaScript** (`npm install mathra`; Node, bundlers and browsers, with TypeScript types, see [`npm/README.md`](npm/README.md))
 
 ```js
-import { texToSvg, render } from "mathra";
-const svg = texToSvg("3.14");
-const pt = texToSvg("3,14", "pt-BR");
-const all = JSON.parse(render("x^2"));   // svg, speech, text, tree, applied, warnings
+import { init, texToSvg, render } from "mathra";
+await init();                                          // browsers and bundlers only; Node needs nothing
+const svg = texToSvg("3,14", { locale: "pt-BR" });
+const { speech, warnings } = render("x^2", { locale: "fr" });
 ```
 
 **Rust** (`cargo add mathra`)

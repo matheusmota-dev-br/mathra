@@ -5,7 +5,7 @@ use mathra_wasm::{convert, tex_to_svg, tex_to_tree};
 
 #[test]
 fn happy_path() {
-    assert!(tex_to_svg("x", None).unwrap().starts_with("<svg"));
+    assert!(tex_to_svg("x", None, None, None).unwrap().starts_with("<svg"));
     assert!(tex_to_tree("x", Some("pt-BR".into())).unwrap().contains("identifier"));
 }
 
