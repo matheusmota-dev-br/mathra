@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mathra</title>
-<meta name="description" content="Math LaTeX to accessible SVG, without a TeX install. Try it in the browser: it runs on WebAssembly.">
+<meta name="description" content="Math LaTeX, MathML and AsciiMath to accessible SVG and braille, without a TeX install. Try it in the browser: it runs on WebAssembly.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -24,6 +24,7 @@
       <a href="#gallery">Gallery</a>
       <a href="#benchmark">Benchmark</a>
       <a href="#docs">Docs</a>
+      <a href="reference.html">Reference</a>
       <a href="philosophy.html">Philosophy</a>
       <a href="https://github.com/matheusmota-dev-br/mathra">GitHub</a>
       <button class="theme" id="theme" type="button" aria-label="Toggle dark mode">◐</button>
@@ -33,7 +34,7 @@
   <header class="hero">
     <div class="logo" id="logo" role="img" aria-label="mathra"></div>
     <p class="tagline">Math LaTeX to <em>accessible</em> SVG.<br>No TeX install. JavaScript, Python, Rust or the terminal.</p>
-    <p class="sub">mathra reads the equation, builds a tree of meaning and draws it with numbered, tested rules. Every SVG says the equation out loud to screen readers.</p>
+    <p class="sub">mathra reads the equation (LaTeX, MathML or AsciiMath), builds a tree of meaning and draws it with numbered, tested rules. Every SVG says the equation out loud to screen readers and carries it in braille.</p>
     <div class="cta">
       <a class="button solid" href="#playground">Try it now</a>
       <a class="button" href="#benchmark">See the benchmark</a>
@@ -47,7 +48,14 @@
 
   <div class="play" id="playground">
     <div class="card editor">
-      <span class="label">LaTeX</span>
+      <div class="editor-head">
+        <span class="label" id="input-label">LaTeX</span>
+        <div class="seg" id="input" role="group" aria-label="Input notation">
+          <button type="button" data-input="latex" aria-pressed="true">LaTeX</button>
+          <button type="button" data-input="mathml" aria-pressed="false">MathML</button>
+          <button type="button" data-input="asciimath" aria-pressed="false">AsciiMath</button>
+        </div>
+      </div>
       <div class="code">
         <pre id="highlight" aria-hidden="true"></pre>
         <textarea id="tex" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="LaTeX input">x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}</textarea>
@@ -55,6 +63,13 @@
       <div class="controls">
         <label class="lang">Language
           <select id="locale"><option value="en">English</option></select>
+        </label>
+        <label class="lang">Braille
+          <select id="braille">
+            <option value="">by language</option>
+            <option value="cmu">CMU</option>
+            <option value="nemeth">Nemeth</option>
+          </select>
         </label>
         <label><input type="checkbox" id="inline"> Inline</label>
         <label><input type="checkbox" id="strict"> Strict</label>
@@ -80,6 +95,7 @@
   <div class="card inspect">
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="speech" aria-selected="true">Speech</button>
+      <button role="tab" data-tab="braille" aria-selected="false">Braille</button>
       <button role="tab" data-tab="text" aria-selected="false">Plain text</button>
       <button role="tab" data-tab="rules" aria-selected="false">Rules</button>
       <button role="tab" data-tab="tree" aria-selected="false">Tree</button>
@@ -106,6 +122,16 @@
         <div class="eq" data-tex="\vertA\vert = C_{16,2}"></div>
         <h3>It forgives broken input</h3>
         <p>Typos and editor leftovers are fixed and reported as numbered warnings. <em>Strict</em> refuses them, like TeX.</p>
+      </div>
+      <div class="card feature">
+        <div class="eq" data-tex="sum_(i=1)^n i^2" data-input="asciimath"></div>
+        <h3>It reads LaTeX, MathML and AsciiMath</h3>
+        <p>MathML pasted from Word or Google Docs, AsciiMath like <code>sum_(i=1)^n i^2</code>: the same tree of meaning, the same drawing and speech. See the <a href="reference.html">reference</a>.</p>
+      </div>
+      <div class="card feature">
+        <div class="eq"><span class="braille-sample" data-braille="\frac{3}{4} + \sqrt{x}" data-locale="pt-BR"></span><small>CMU</small></div>
+        <h3>It writes braille</h3>
+        <p>Every equation also comes out in braille: the CMU for Portuguese and Spanish, Nemeth for English, following their official documents.</p>
       </div>
       <div class="card feature">
         <div class="eq"><span class="stat">17.9<span> µs</span></span></div>
@@ -162,7 +188,8 @@
 
 await init();  // browsers and bundlers; Node needs nothing
 const svg = texToSvg("3,14", { locale: "pt-BR" });
-const { speech, warnings } = render("x^2");</pre>
+const { speech, braille, warnings } = render("x^2");
+render("sqrt(x)/2", { input: "asciimath" });  // or "mathml"</pre>
       </div>
       <div class="card platform">
         <div class="platform-head"><h3>Python</h3><a class="pill live" href="https://pypi.org/project/mathra/">on PyPI</a></div>
@@ -172,7 +199,8 @@ const { speech, warnings } = render("x^2");</pre>
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")
 r = mathra.render(r"\frac{3}{4}", locale="fr")
-r["speech"]   # 'trois quarts'</pre>
+r["speech"]   # 'trois quarts'
+mathra.render("x^2", locale="pt-BR")["braille"]  # '⠭⠡⠼⠃'</pre>
       </div>
       <div class="card platform">
         <div class="platform-head"><h3>Terminal</h3><a class="pill live" href="https://crates.io/crates/mathra-cli">on crates.io</a></div>
@@ -181,7 +209,9 @@ r["speech"]   # 'trois quarts'</pre>
 <pre>mathra 'x \le 2.75' -o inequality.svg
 mathra '3,14 + \sin x' --locale pt-BR
 mathra 'x = -1' --speech
-mathra '\vertA\vert' --explain</pre>
+mathra '\vertA\vert' --explain
+mathra 'sum_(i=1)^n i' --from asciimath
+mathra '\frac{3}{4}' -l pt-BR --braille</pre>
       </div>
       <div class="card platform">
         <div class="platform-head"><h3>Rust</h3><a class="pill live" href="https://crates.io/crates/mathra">on crates.io</a></div>
@@ -197,16 +227,16 @@ println!("{}", r.speech);</pre>
       <h2 style="margin-top:48px">What the SVG carries</h2>
       <ul>
         <li><strong>Speech</strong> in <code>&lt;title&gt;</code>, linked with <code>aria-labelledby</code>.</li>
-        <li>The source LaTeX and the tree of meaning in <code>&lt;metadata&gt;</code>.</li>
+        <li>The source (LaTeX, MathML or AsciiMath), the tree of meaning and the braille in <code>&lt;metadata&gt;</code>.</li>
         <li>Color from the page (<code>currentColor</code>), size in <code>em</code>, baseline aligned with the text around it.</li>
         <li>A transparent text layer for selection, reused glyphs and ids unique to each equation.</li>
       </ul>
 
       <h2 style="margin-top:40px">Broken LaTeX</h2>
-      <p>By default mathra draws what it can and reports what it fixed, as <code>E-REC-1</code> to <code>E-REC-9</code> (<a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/tolerance.md">spec/tolerance.md</a>). Every rule that shapes the output is numbered in <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/rules.md">spec/rules.md</a>; the <em>Rules</em> tab shows which ones acted on your equation.</p>
+      <p>By default mathra draws what it can and reports what it fixed, as <code>E-REC-1</code> to <code>E-REC-10</code> (<a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/tolerance.md">spec/tolerance.md</a>). Every rule that shapes the output is numbered in <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/rules.md">spec/rules.md</a>; the <em>Rules</em> tab shows which ones acted on your equation.</p>
 
       <h2 style="margin-top:40px">What it converts</h2>
-      <p>Fractions, roots, scripts and limits, stretchy delimiters, matrices and <code>array</code>, <code>cases</code>, <code>aligned</code>, accents and braces, <code>\text</code>, alphabets, <code>\cancel</code>, <code>\boxed</code>, <code>\color</code>, siunitx, basic <code>\ce</code>, physics and braket, <code>\newcommand</code> and friends, amscd diagrams, and the computed <code>\divchave</code> and <code>\contaarmada</code>. The full list is in the <a href="https://github.com/matheusmota-dev-br/mathra#what-it-converts">README</a>.</p>
+      <p>Fractions, roots, scripts and limits, stretchy delimiters, matrices and <code>array</code>, <code>cases</code> and <code>rcases</code>, <code>aligned</code>, accents and braces, <code>\text</code>, alphabets, every amssymb symbol and negation, <code>\cancel</code>, <code>\boxed</code>, <code>\colorbox</code>, siunitx with ranges and lists, mhchem (<code>\ce</code> with labeled arrows, hydrates, isotopes, bonds), physics and braket, tensor indices, <code>\newcommand</code> and friends, amscd diagrams, and the computed <code>\divchave</code> and <code>\contaarmada</code>. Also MathML and AsciiMath as input. Every construction, with its drawing and its braille, is in the <a href="reference.html">reference</a>; the full list is in the <a href="https://github.com/matheusmota-dev-br/mathra#what-it-converts">README</a>.</p>
     </div>
   </section>
 
@@ -245,21 +275,36 @@ println!("{}", r.speech);</pre>
     ["Commutative diagram", "en", String.raw`\begin{CD} A @>f>> B \\ @VgVV @VVhV \\ C @>k>> D \end{CD}`],
     ["Trigonometry", "pt-BR", String.raw`\sen^2 \theta + \cos^2 \theta = 1,\quad x \in \left]0{,}5;\, 2{,}5\right[`],
     ["Divisão armada", "pt-BR", String.raw`\divchave{247}{5}`],
+    ["Reaction with a label", "en", String.raw`\ce{N2 + 3H2 <=>[\text{Fe}] 2NH3}`],
+    ["Quantum mechanics (physics)", "en", String.raw`\expval{H}{\psi} = \mel{\psi}{H}{\psi},\quad \comm{x}{p} = i\hbar`],
+    ["AsciiMath", "en", "sum_(i=1)^n i^2 = (n(n+1)(2n+1))/6", "asciimath"],
+    ["MathML", "en", `<math>
+  <mi>x</mi><mo>=</mo>
+  <mfrac>
+    <mrow><mo>−</mo><mi>b</mi><mo>±</mo><msqrt><msup><mi>b</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn><mi>a</mi><mi>c</mi></msqrt></mrow>
+    <mrow><mn>2</mn><mi>a</mi></mrow>
+  </mfrac>
+</math>`, "mathml"],
   ];
+  // the benchmark keeps the 18 gallery equations it was published with (bench/famous.json): LaTeX only
+  const BENCH = EXAMPLES.slice(0, 18);
   const WIDE = ["Schrödinger equation"];
-  const CHIPS = ["Quadratic formula", "Maxwell's equations", "Matrix", "Piecewise", "Chemistry (mhchem)", "Trigonometry", "Divisão armada"];
+  const CHIPS = ["Quadratic formula", "Maxwell's equations", "Matrix", "Piecewise", "Reaction with a label", "Trigonometry", "Divisão armada", "AsciiMath", "MathML"];
+  const INPUT_NAMES = { latex: "LaTeX", mathml: "MathML", asciimath: "AsciiMath" };
+  const BRAILLE_NAMES = { cmu: "CMU · Código Matemático Unificado", nemeth: "Nemeth Braille Code" };
 
   const $ = (id) => document.getElementById(id);
   const tex = $("tex"), inline = $("inline"), strict = $("strict");
   const preview = $("preview"), messages = $("messages"), panel = $("panel");
-  let render = null, last = null, tab = "speech", locale = "en";
+  let render = null, last = null, tab = "speech", locale = "en", input = "latex";
 
 
   const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  function convert(src, loc, display, strictMode) {
-    return JSON.parse(render(src, loc, display, strictMode));
+  function convert(src, loc, display, strictMode, inp = "latex", braille = null) {
+    return JSON.parse(render(src, loc, display, strictMode, inp, braille));
   }
+  const brailleCode = () => $("braille").value || null;
 
   // the wordmark, drawn by mathra: the box of each glyph and the baseline, as in docs/banner.svg
   function drawLogo() {
@@ -297,6 +342,8 @@ println!("{}", r.speech);</pre>
     if (!p.has("tex")) return;
     tex.value = p.get("tex");
     setLocale(p.get("locale") || "en");
+    setInput(p.get("input") || "latex");
+    $("braille").value = p.get("braille") || "";
     inline.checked = p.get("inline") === "1";
     strict.checked = p.get("strict") === "1";
   }
@@ -304,6 +351,8 @@ println!("{}", r.speech);</pre>
   function link() {
     const p = new URLSearchParams({ tex: tex.value });
     if (locale !== "en") p.set("locale", locale);
+    if (input !== "latex") p.set("input", input);
+    if (brailleCode()) p.set("braille", brailleCode());
     if (inline.checked) p.set("inline", "1");
     if (strict.checked) p.set("strict", "1");
     return `${location.href.split("#")[0]}#${p}`;
@@ -314,11 +363,34 @@ println!("{}", r.speech);</pre>
     $("locale").value = l;
   }
 
+  function setInput(i) {
+    input = INPUT_NAMES[i] ? i : "latex";
+    for (const b of document.querySelectorAll("#input button")) b.setAttribute("aria-pressed", String(b.dataset.input === input));
+    $("input-label").textContent = INPUT_NAMES[input];
+    tex.setAttribute("aria-label", `${INPUT_NAMES[input]} input`);
+  }
+
   // LaTeX colors for the editor: commands, environments, braces, scripts, numbers, alignment, comments
   const TOKENS = /(%[^\n]*)|(\\(?:begin|end))(\{)([^}\n]*)(\})|(\\\\)|(\\[a-zA-Z@]+\*?|\\.)|([{}\[\]])|([\^_])|(&)|(\d+(?:[.,]\d+)*)/g;
+  // MathML: tags and entities
+  const XML_TOKENS = /(<\/?)([\w:.-]+)([^>]*)(\/?>)|(&[#\w]+;)/g;
   function highlight() {
     const src = tex.value;
     let html = "", at = 0;
+    if (input === "asciimath") {
+      $("highlight").innerHTML = escape(src) + "\n";
+      return;
+    }
+    if (input === "mathml") {
+      for (const m of src.matchAll(XML_TOKENS)) {
+        html += escape(src.slice(at, m.index));
+        const span = (cls, t) => `<span class="t-${cls}">${escape(t)}</span>`;
+        html += m[5] ? span("num", m[5]) : span("brace", m[1]) + span("cmd", m[2]) + span("env", m[3]) + span("brace", m[4]);
+        at = m.index + m[0].length;
+      }
+      $("highlight").innerHTML = html + escape(src.slice(at)) + "\n";
+      return;
+    }
     for (const m of src.matchAll(TOKENS)) {
       html += escape(src.slice(at, m.index));
       const span = (cls, t) => `<span class="t-${cls}">${escape(t)}</span>`;
@@ -356,7 +428,7 @@ println!("{}", r.speech);</pre>
   }
   async function measure() {
     if (!last) return;
-    const args = [tex.value, locale, !inline.checked, strict.checked];
+    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode()];
     let runs = 0;
     const start = performance.now();
     while (runs < 400 && performance.now() - start < 30) { render(...args); runs++; }
@@ -377,8 +449,8 @@ println!("{}", r.speech);</pre>
     if (!render) return;
     messages.replaceChildren();
     try {
-      last = convert(tex.value, locale, !inline.checked, strict.checked);
-      preview.innerHTML = tex.value.trim() ? last.svg : '<span class="status">Type some LaTeX on the left.</span>';
+      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode());
+      preview.innerHTML = tex.value.trim() ? last.svg : `<span class="status">Type some ${INPUT_NAMES[input]} on the left.</span>`;
       fit();
       scheduleStats();
       for (const w of last.warnings) {
@@ -403,6 +475,11 @@ println!("{}", r.speech);</pre>
     for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
     if (!last) { panel.innerHTML = '<p class="empty">No output.</p>'; return; }
     if (tab === "speech") { panel.innerHTML = `<p class="speech">${escape(last.speech)}</p>`; return; }
+    if (tab === "braille") {
+      panel.innerHTML = `<p class="braille" lang="${escape(locale)}">${escape(last.braille).replace(/\n/g, "<br>")}</p>` +
+        `<p class="braille-code">${escape(BRAILLE_NAMES[last.braille_code] || last.braille_code)} · <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md">what is covered</a></p>`;
+      return;
+    }
     if (tab === "rules") {
       const rows = [...last.warnings, ...last.applied];
       panel.innerHTML = rows.length
@@ -414,9 +491,10 @@ println!("{}", r.speech);</pre>
     panel.innerHTML = `<pre>${escape(text)}</pre>`;
   }
 
-  function load(src, loc) {
+  function load(src, loc, inp = "latex") {
     tex.value = src;
     setLocale(loc);
+    setInput(inp);
     update();
   }
 
@@ -489,10 +567,10 @@ println!("{}", r.speech);</pre>
       const time = [], clean = [];
       for (let e = 0; e < engines.length; e++) {
         let total = 0, ok = 0;
-        for (let i = 0; i < EXAMPLES.length; i++) {
-          out.innerHTML = `<p class="empty">Timing ${LIBS[e]}: ${i + 1} / ${EXAMPLES.length}</p>`;
+        for (let i = 0; i < BENCH.length; i++) {
+          out.innerHTML = `<p class="empty">Timing ${LIBS[e]}: ${i + 1} / ${BENCH.length}</p>`;
           await new Promise((r) => setTimeout(r));
-          const src = EXAMPLES[i][2];
+          const src = BENCH[i][2];
           const run = () => { try { return engines[e](src); } catch (err) { return false; } };
           if (run()) ok++;
           let runs = 0;
@@ -500,7 +578,7 @@ println!("{}", r.speech);</pre>
           while (runs < 200 && performance.now() - start < 40) { run(); runs++; }
           total += ((performance.now() - start) * 1000) / runs;
         }
-        time.push(total / EXAMPLES.length);
+        time.push(total / BENCH.length);
         clean.push(ok);
       }
       out.innerHTML =
@@ -517,15 +595,19 @@ println!("{}", r.speech);</pre>
   function drawStatic() {
     drawBench();
     for (const el of document.querySelectorAll("[data-tex]")) {
-      el.innerHTML = convert(el.dataset.tex, el.dataset.locale || "en", true, false).svg;
+      el.innerHTML = convert(el.dataset.tex, el.dataset.locale || "en", true, false, el.dataset.input || "latex").svg;
+    }
+    for (const el of document.querySelectorAll("[data-braille]")) {
+      el.textContent = convert(el.dataset.braille, el.dataset.locale || "en", true, false).braille;
     }
     const tiles = $("tiles");
-    for (const [caption, loc, src] of EXAMPLES) {
+    for (const [caption, loc, src, inp = "latex"] of EXAMPLES) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = WIDE.includes(caption) ? "card tile wide" : "card tile";
-      b.innerHTML = `<div class="eq">${convert(src, loc, true, false).svg}</div><div class="cap"><span>${escape(caption)}</span><span>${loc === "en" ? "" : loc}</span></div>`;
-      b.onclick = () => { load(src, loc); $("playground").scrollIntoView(); tex.focus({ preventScroll: true }); };
+      const tag = [loc === "en" ? "" : loc, inp === "latex" ? "" : INPUT_NAMES[inp]].filter(Boolean).join(" · ");
+      b.innerHTML = `<div class="eq">${convert(src, loc, true, false, inp).svg}</div><div class="cap"><span>${escape(caption)}</span><span>${escape(tag)}</span></div>`;
+      b.onclick = () => { load(src, loc, inp); $("playground").scrollIntoView(); tex.focus({ preventScroll: true }); };
       tiles.append(b);
     }
   }
@@ -553,14 +635,16 @@ println!("{}", r.speech);</pre>
   $("install-copy").onclick = async (e) => { await navigator.clipboard.writeText($("install-cmd").textContent); flash(e.target, "Copied"); };
 
   for (const name of CHIPS) {
-    const [caption, loc, src] = EXAMPLES.find((e) => e[0] === name);
+    const [caption, loc, src, inp = "latex"] = EXAMPLES.find((e) => e[0] === name);
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = caption.replace(/ \(.*\)$/, "");
-    b.onclick = () => load(src, loc);
+    b.onclick = () => load(src, loc, inp);
     $("chips").append(b);
   }
   $("locale").addEventListener("change", (e) => { setLocale(e.target.value); update(); });
+  $("braille").addEventListener("change", update);
+  for (const b of document.querySelectorAll("#input button")) b.onclick = () => { setInput(b.dataset.input); update(); };
   for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => { tab = b.dataset.tab; showTab(); };
   tex.addEventListener("input", update);
   inline.addEventListener("change", update);

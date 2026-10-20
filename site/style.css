@@ -215,3 +215,38 @@
   .platform pre { margin-top: 2px; }
   .pill { font: 600 11px/1 Inter, system-ui, sans-serif; letter-spacing: 0.04em; text-transform: uppercase; padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; text-decoration: none; }
   .pill.live { color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+  /* input notation and braille in the playground */
+  .editor-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  /* braille: a font that has the cells, large enough to see the dots */
+  .braille, .braille-sample, .ref td.braille { font-family: "Segoe UI Symbol", "Apple Braille", "DejaVu Sans", system-ui, sans-serif; letter-spacing: 0.08em; }
+  .panel .braille { font-size: 28px; line-height: 1.5; margin: 0 0 10px; overflow-wrap: anywhere; }
+  .panel .braille-code { margin: 0; color: var(--muted); font-size: 13px; }
+  .feature .braille-sample { font-size: 30px; }
+
+  /* reference page */
+  .ref-head { padding: 32px 0 8px; }
+  .ref-head h1 { font-family: "STIX Two Text", Georgia, serif; font-weight: 600; font-size: clamp(32px, 5vw, 44px); margin: 0 0 8px; }
+  .ref-head p { color: var(--muted); max-width: 760px; margin: 0 0 18px; }
+  .ref-tools { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .ref-tools .tabs { border-bottom: 0; padding: 0; }
+  .ref-tools .controls { margin-left: auto; }
+  .ref-toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 4px; }
+  .ref-toc a { font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+  .ref-toc a:hover { border-color: var(--accent); }
+  .ref-section { margin-top: 34px; scroll-margin-top: 70px; }
+  .ref-section h2 { font-family: "STIX Two Text", Georgia, serif; font-weight: 600; font-size: 24px; margin: 0 0 10px; }
+  .ref-scroll { overflow-x: auto; }
+  table.ref { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+  table.ref th { text-align: left; font: 600 12px/1.2 Inter, system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); padding: 10px 12px; }
+  table.ref td { padding: 8px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+  table.ref td code { white-space: pre-wrap; overflow-wrap: anywhere; }
+  table.ref td.drawn { font-size: 22px; color: var(--ink); min-width: 120px; }
+  table.ref td.drawn svg { max-width: 100%; height: auto; }
+  table.ref td.braille { font-size: 20px; white-space: pre; }
+  table.ref td.try a { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  table.ref tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .grammar { background: var(--surface-2); border-radius: 10px; padding: 14px 16px; font-size: 13.5px; overflow-x: auto; }
+  @media (max-width: 700px) { table.ref td.braille, table.ref th.braille { display: none; } }
+  /* what to type must read as typed: no ligatures (-> would show as an arrow) */
+  table.ref code, .grammar, .code pre, .code textarea { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }

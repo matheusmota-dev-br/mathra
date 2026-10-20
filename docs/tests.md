@@ -34,23 +34,29 @@ cargo llvm-cov report --summary-only        # or --html
 
 | File | Tests | What it checks |
 |---|---:|---|
-| `crates/core/tests/rules.rs` | 20 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
+| `crates/core/tests/rules.rs` | 24 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
 | `crates/core/tests/structures.rs` | 24 | Fractions, roots, matrices, cases, alignments: what sits above, below or beside what. |
-| `crates/core/tests/latex_reader.rs` | 80 | Every command and environment the reader knows, every recovery path and, at the end (`p_*`), the problem inputs. |
-| `crates/core/tests/layout.rs` | 61 | From the tree to boxes: geometric properties (width, height, alignment, stretching), not exact coordinates. Includes the layout problem cases. |
-| `crates/core/tests/outputs.rs` | 9 | Screen reader speech in English and pt-BR, linear text, public shortcuts, error messages, locales. |
-| `crates/core/tests/locales.rs` | 5 | The 16 languages: every phrase present, the whole corpus in each one, region codes, speech and number conventions per language. |
-| `crates/core/tests/hostile_output.rs` | 5 | Hostile input: the SVG stays valid XML and injects no markup. |
-| `crates/core/tests/macros_and_packages.rs` | 11 | Substitution macros (L-MAC-1), package commands and the boundary (`spec/boundary.md`). |
-| `crates/core/tests/tolerance.rs` | 11 | Tolerant versus strict mode (`spec/tolerance.md`). |
+| `crates/core/tests/latex_reader.rs` | 90 | Every command and environment the reader knows (including every amssymb symbol and negation, drawn in strict mode so the font must have it), every recovery path and, at the end (`p_*`), the problem inputs. |
+| `crates/core/tests/layout.rs` | 65 | From the tree to boxes: geometric properties (width, height, alignment, stretching), not exact coordinates. Includes the layout problem cases. |
+| `crates/core/tests/outputs.rs` | 11 | Screen reader speech in English and pt-BR, linear text, public shortcuts, error messages, locales. |
+| `crates/core/tests/locales.rs` | 8 | The 16 languages: every phrase present, the whole corpus, the chemistry, physics and siunitx constructions and the MathML and AsciiMath inputs in each one, region codes, speech and number conventions per language. |
+| `crates/core/tests/hostile_output.rs` | 7 | Hostile input, in LaTeX, MathML and AsciiMath: the SVG stays valid XML and injects no markup; an XML entity bomb stays bounded. |
+| `crates/core/tests/macros_and_packages.rs` | 19 | Substitution macros (L-MAC-1), package commands (physics, braket, siunitx ranges and lists, tensor, mathtools) and the boundary (`spec/boundary.md`). |
+| `crates/core/tests/chemistry.rs` | 16 | mhchem (L-CHE-1): arrows with labels, hydrates, coefficients, bonds, isotopes, charges and radicals, `\frac` inside `\ce`, `\pu`. |
+| `crates/core/tests/tolerance.rs` | 15 | Tolerant versus strict mode (`spec/tolerance.md`). |
+| `crates/core/tests/mathml.rs` | 13 | MathML input (`spec/input.md`): the same speech and text as the LaTeX of each equation, every element, fences around tables, decorations, entities and namespaces, L-ENT-4, E-REC-10 and invalid XML. |
+| `crates/core/tests/asciimath.rs` | 8 | AsciiMath input (`spec/input.md`): the same speech and text as the LaTeX of each equation, brackets removed from fractions and scripts, intervals, matrices and cases, commands, unpaired brackets (E-REC-5). |
+| `crates/core/tests/braille.rs` | 12 | Braille (`spec/braille.md`): the examples of the Nemeth code (BANA 2022) and of the CMU (MEC 2006), each cited by section or example number; the code chosen by the locale; braille in the SVG and the JSON; S-BRL-1; the whole corpus in both codes. |
+| `crates/core/tests/reference.rs` | 5 | The reference page (`site/reference.html`, data in `corpus/reference.json`): every row converts in strict mode with no warning, each AsciiMath and MathML row has the same speech as its LaTeX column, every row has braille in both codes. |
 | `crates/core/tests/banner.rs` | 1 | The README banner (`examples/banner.rs`) is deterministic and matches `docs/banner.svg`. |
 | `crates/core/tests/examples.rs` | 2 | The README gallery: every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. |
+| `crates/core/src/input/asciimath.rs` (unit) | 1 | Every AsciiMath symbol's LaTeX spelling is valid LaTeX in strict mode. |
 | `crates/core/src/font.rs` (unit) | 2 | A glyph without an outline and a quadratic curve, which the embedded font does not have. |
-| `crates/cli/tests/cli.rs` | 15 | The binary run as a process: arguments, stdin, `--batch`, writing files, exit codes. |
-| `crates/wasm/tests/native.rs` | 2 | Exported functions outside the browser, and the errors before they become a `JsError`. |
+| `crates/cli/tests/cli.rs` | 17 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes. |
+| `crates/wasm/tests/native.rs` | 6 | Exported functions outside the browser, and the errors before they become a `JsError`. |
 | `crates/wasm/tests/web.rs` | 2 | The same functions inside wasm, on Node, including the `JsError`. |
-| `npm/test/*.test.*` | 7 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales. Run with `npm/build.sh && npm/test/run.sh`. |
-| `crates/python/tests/test_mathra.py` | 11 | The installed Python package: SVG, tree, `render`, `locales`, `display` and `strict`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
+| `npm/test/*.test.*` | 9 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales, input notations, braille. Run with `npm/build.sh && npm/test/run.sh`. |
+| `crates/python/tests/test_mathra.py` | 13 | The installed Python package: SVG, tree, `render`, `locales`, `display`, `strict`, `input` and `braille`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
 
 ## Coverage
 
