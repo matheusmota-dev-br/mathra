@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const mathra = require("mathra");
+const mathra = require("@mathra/mathra");
 
 test("require works too", () => {
   assert.match(mathra.texToSvg("x"), /^<svg/);
