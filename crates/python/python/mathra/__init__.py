@@ -1,3 +1,72 @@
-from ._mathra import __version__, tex_to_svg, tex_to_tree
+"""Math LaTeX to accessible SVG, without a TeX install.
 
-__all__ = ["__version__", "tex_to_svg", "tex_to_tree"]
+>>> import mathra
+>>> mathra.render(r"\\frac{3}{4}", locale="fr")["speech"]
+'trois quarts'
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, List, TypedDict
+
+from . import _mathra
+
+__version__: str = _mathra.__version__
+#: The version of mathra's core inside this package.
+core_version: str = _mathra.core_version
+
+
+class Rule(TypedDict):
+    """A numbered rule from spec/rules.md or spec/tolerance.md, and what it did to this equation."""
+
+    rule: str
+    description: str
+
+
+class Result(TypedDict):
+    svg: str
+    """Standalone SVG with the speech in <title> and the source and tree in <metadata>."""
+    speech: str
+    """The phrase a screen reader says, in the locale's language."""
+    text: str
+    """Linear text, close to UnicodeMath."""
+    tree: Any
+    """The tree of meaning."""
+    applied: List[Rule]
+    """Rules that changed something in this equation, in the order they acted."""
+    warnings: List[Rule]
+    """Input problems the tolerant mode worked around (E-REC-*); empty in strict mode."""
+
+
+class Language(TypedDict):
+    code: str
+    name: str
+
+
+def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False) -> str:
+    """Converts math LaTeX to SVG.
+
+    ``locale`` is a language code such as "en", "pt-BR", "fr" or "ja" (see :func:`locales`); ``display``
+    False gives inline style; ``strict`` refuses invalid LaTeX instead of recovering with warnings.
+    Raises ValueError on input it cannot read.
+    """
+    return _mathra.tex_to_svg(tex, locale, display=display, strict=strict)
+
+
+def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False) -> str:
+    """The tree of meaning, as a JSON string."""
+    return _mathra.tex_to_tree(tex, locale, display=display, strict=strict)
+
+
+def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False) -> Result:
+    """Every output at once: svg, speech, text, tree, applied and warnings."""
+    return json.loads(_mathra.render(tex, locale, display=display, strict=strict))
+
+
+def locales() -> List[Language]:
+    """The supported languages, English first."""
+    return [{"code": code, "name": name} for code, name in _mathra.locales()]
+
+
+__all__ = ["Language", "Result", "Rule", "__version__", "core_version", "locales", "render", "tex_to_svg", "tex_to_tree"]
