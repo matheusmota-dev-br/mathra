@@ -16,7 +16,7 @@ Wheels for Linux, macOS and Windows, for Python 3.9 and later; nothing else to i
 import mathra
 
 svg = mathra.tex_to_svg(r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}")
-open("quadratic.svg", "w").write(svg)
+open("quadratic.svg", "w", encoding="utf-8").write(svg)
 
 r = mathra.render(r"\frac{3}{4}", locale="fr")
 r["speech"]        # 'trois quarts'

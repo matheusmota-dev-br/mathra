@@ -68,7 +68,7 @@ Without a bundler, from a CDN:
 | `texToSvg(tex, options?)` | The SVG as a string. |
 | `render(tex, options?)` | `{ svg, speech, text, tree, applied, warnings }`. |
 | `locales()` | `[{ code: "en", name: "English" }, …]`. |
-| `version` | The mathra version inside the package. |
+| `version` | The version of mathra's core inside the package (the npm package has its own version). |
 
 Options: `locale` (`"en"` by default, `"pt-BR"`, `"es"`, `"fr"`, `"de"`, `"it"`, `"ru"`, `"zh"`, `"ja"`, `"ko"`, `"hi"`, `"ar"`, `"id"`, `"tr"`, `"nl"`, `"pl"`), `display` (`true` by default; `false` for inline style) and `strict` (`false` by default: broken LaTeX is drawn with warnings instead of throwing). A plain string as the second argument is read as the locale.
 

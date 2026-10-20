@@ -108,7 +108,7 @@
         <p>Typos and editor leftovers are fixed and reported as numbered warnings. <em>Strict</em> refuses them, like TeX.</p>
       </div>
       <div class="card feature">
-        <div class="eq"><span class="stat">18.7<span> µs</span></span></div>
+        <div class="eq"><span class="stat">17.9<span> µs</span></span></div>
         <h3>It is fast and stable</h3>
         <p>Mean time per equation on the corpus. The same input always writes the same bytes.</p>
       </div>
@@ -142,7 +142,7 @@
       <ul>
         <li><strong>KaTeX is faster and lighter to ship.</strong> It writes HTML that depends on its stylesheet and web fonts, so its output is not a standalone image: it cannot go into an email, a README, a slide or a PDF as is. That is why its output looks smallest.</li>
         <li><strong>MathJax's SVG output is the closest equivalent</strong> to mathra's: one standalone SVG per equation. Here mathra is about 5× faster, with output of similar size.</li>
-        <li><strong>mathra's download is mostly its font</strong>: 628 of the 926 KB are STIX Two Math, embedded so the output never depends on what is installed; the 16 languages add 34 KB. Outside the browser (CLI, Rust, Python) nothing is downloaded at all, and a native conversion takes <strong>17 µs</strong> on average.</li>
+        <li><strong>mathra's download is mostly its font</strong>: 628 of the 926 KB are STIX Two Math, embedded so the output never depends on what is installed; the 16 languages add 34 KB. Outside the browser (CLI, Rust, Python) nothing is downloaded at all, and a native conversion takes <strong>17.9 µs</strong> on average.</li>
         <li><strong>The corpus favors mathra</strong>: its 116 constructions were written while building it, and include pt-BR and mathra-only commands. The 18 gallery equations are standard LaTeX except three that only mathra reads (<code>\SI</code>, <code>\sen</code>, <code>\divchave</code>).</li>
         <li>“Converted cleanly” means no error and no command drawn in red. MathJax runs with all its TeX packages except <code>noundefined</code>; KaTeX with <code>throwOnError</code> and mhchem.</li>
         <li>Snapshot: Node 24, Apple M5, 50 conversions per equation after a warm-up. The script is in <a href="https://github.com/matheusmota-dev-br/mathra/tree/main/bench"><code>bench/</code></a>: <code>cd bench &amp;&amp; npm install &amp;&amp; npm run compare</code>.</li>
@@ -165,27 +165,28 @@ const svg = texToSvg("3,14", { locale: "pt-BR" });
 const { speech, warnings } = render("x^2");</pre>
       </div>
       <div class="card platform">
-        <div class="platform-head"><h3>Python</h3><span class="pill">from GitHub</span></div>
-        <p>A native module; building it needs Rust. PyPI is on the way.</p>
-        <code class="cmd">pip install "mathra @ git+https://github.com/matheusmota-dev-br/mathra#subdirectory=crates/python"</code>
+        <div class="platform-head"><h3>Python</h3><a class="pill live" href="https://pypi.org/project/mathra/">on PyPI</a></div>
+        <p>Python 3.9 and later, wheels for Linux, macOS and Windows. Types included.</p>
+        <code class="cmd">pip install mathra</code>
 <pre>import mathra
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")
-tree = mathra.tex_to_tree("3,14", locale="pt-BR")</pre>
+r = mathra.render(r"\frac{3}{4}", locale="fr")
+r["speech"]   # 'trois quarts'</pre>
       </div>
       <div class="card platform">
-        <div class="platform-head"><h3>Terminal</h3><span class="pill">from GitHub</span></div>
+        <div class="platform-head"><h3>Terminal</h3><a class="pill live" href="https://crates.io/crates/mathra-cli">on crates.io</a></div>
         <p>One binary, SVG to stdout or files; <code>--batch</code> for many at once.</p>
-        <code class="cmd">cargo install --git https://github.com/matheusmota-dev-br/mathra mathra-cli</code>
+        <code class="cmd">cargo install mathra-cli</code>
 <pre>mathra 'x \le 2.75' -o inequality.svg
 mathra '3,14 + \sin x' --locale pt-BR
 mathra 'x = -1' --speech
 mathra '\vertA\vert' --explain</pre>
       </div>
       <div class="card platform">
-        <div class="platform-head"><h3>Rust</h3><span class="pill">from GitHub</span></div>
-        <p>The core itself, for servers and native apps. crates.io is on the way.</p>
-        <code class="cmd">cargo add mathra --git https://github.com/matheusmota-dev-br/mathra</code>
+        <div class="platform-head"><h3>Rust</h3><a class="pill live" href="https://crates.io/crates/mathra">on crates.io</a></div>
+        <p>The core itself, for servers and native apps. API docs on <a href="https://docs.rs/mathra">docs.rs</a>.</p>
+        <code class="cmd">cargo add mathra</code>
 <pre>let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
 println!("{}", r.svg);
 println!("{}", r.speech);</pre>
@@ -428,7 +429,7 @@ println!("{}", r.speech);</pre>
   // measured with bench/compare.mjs (Node 24, Apple M5); see "Reading the numbers"
   const LIBS = ["mathra", "MathJax (SVG)", "KaTeX (HTML)"];
   const SNAPSHOT = {
-    time: [110.5, 606.4, 67.0],
+    time: [120.9, 643.4, 68.5],
     famous: [18, 15, 15],
     corpus: [109, 70, 62],
     out: [2.32, 2.43, 0.95],
@@ -532,9 +533,9 @@ println!("{}", r.speech);</pre>
   // the install command for each platform, in the hero
   const INSTALL = [
     ["npm", "npm install @mathlabs/mathra"],
-    ["pip", 'pip install "mathra @ git+https://github.com/matheusmota-dev-br/mathra#subdirectory=crates/python"'],
-    ["CLI", "cargo install --git https://github.com/matheusmota-dev-br/mathra mathra-cli"],
-    ["Rust", "cargo add mathra --git https://github.com/matheusmota-dev-br/mathra"],
+    ["pip", "pip install mathra"],
+    ["CLI", "cargo install mathra-cli"],
+    ["Rust", "cargo add mathra"],
   ];
   function showInstall(i) {
     $("install-cmd").textContent = INSTALL[i][1];
