@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { init, texToSvg, render, locales, version } from "@mathra/mathra";
+import { init, texToSvg, render, locales, version } from "@mathlabs/mathra";
 
 test("works right away in Node, init is optional", async () => {
   assert.match(texToSvg("x^2"), /^<svg/);

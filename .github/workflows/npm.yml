@@ -1,6 +1,6 @@
 # Publishes the npm package when a version tag (v1.2.3) is pushed, with npm trusted publishing:
 # no token, and npm attaches the provenance of this workflow run. Set it up once on npmjs.com, in the
-# settings of @mathra/mathra: Trusted Publisher → GitHub Actions, repository matheusmota-dev-br/mathra, workflow npm.yml.
+# settings of @mathlabs/mathra: Trusted Publisher → GitHub Actions, repository matheusmota-dev-br/mathra, workflow npm.yml.
 name: npm
 
 on:
