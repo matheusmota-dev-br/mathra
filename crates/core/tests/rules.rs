@@ -174,3 +174,34 @@ fn l_txt_1_tex_quotes_become_typographic_in_text() {
     assert!(!rules(&r).contains(&"L-TXT-1"));
     assert!(r.speech.contains("prime"), "{}", r.speech);
 }
+
+#[test]
+fn l_uni_2_ranges_and_lists_repeat_the_unit() {
+    let r = en(r"\SIrange{1}{10}{\kilo\gram}");
+    assert_eq!(r.text, "1 kg – 10 kg");
+    assert!(rules(&r).contains(&"L-UNI-2"));
+    let r = pt(r"\SIlist{1;2;3}{\meter}");
+    assert_eq!(r.text, "1 m, 2 m e 3 m");
+    assert!(rules(&r).contains(&"L-UNI-2"));
+}
+
+#[test]
+fn l_che_1_labeled_arrow_in_chemistry() {
+    let r = en(r"\ce{A ->[\Delta] B}");
+    assert!(matches!(r.tree.children()[2], Node::Arrow { symbol: '→', above: Some(_), below: None }), "{:?}", r.tree);
+    assert!(rules(&r).contains(&"L-CHE-1"));
+}
+
+#[test]
+fn l_ent_4_mathml_pasted_as_latex_is_read_as_mathml() {
+    let r = en("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
+    assert_eq!(r.text, "x^2");
+    assert!(rules(&r).contains(&"L-ENT-4"));
+}
+
+#[test]
+fn s_svg_9_braille_in_metadata() {
+    let r = pt(r"\sqrt{x}");
+    assert!(r.svg.contains(r#"<mathra:braille code="cmu">⠫⠱⠭</mathra:braille>"#), "{}", r.svg);
+    assert!(en(r"\sqrt{x}").svg.contains(r#"<mathra:braille code="nemeth">⠜⠭⠻</mathra:braille>"#));
+}

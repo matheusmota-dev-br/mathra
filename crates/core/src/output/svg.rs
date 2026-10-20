@@ -11,9 +11,13 @@ use crate::VERSION;
 pub struct Content<'a> {
     pub math_box: &'a MathBox,
     pub source: &'a str,
+    /// The notation of the source: `latex`, `mathml` or `asciimath`.
+    pub input: crate::Input,
     pub tree_json: &'a str,
     pub speech: &'a str,
     pub text: &'a str,
+    pub braille: &'a str,
+    pub braille_code: crate::BrailleCode,
     pub locale: Locale,
     pub warnings: &'a [crate::Applied],
 }
@@ -56,9 +60,12 @@ pub fn generate(c: &Content) -> String {
     // S-SVG-3: source and tree, to recover the equation
     let _ = write!(
         s,
-        r#"<metadata><mathra:source type="latex">{}</mathra:source><mathra:tree>{}</mathra:tree><mathra:font>{}</mathra:font>{}</metadata>"#,
+        r#"<metadata><mathra:source type="{}">{}</mathra:source><mathra:tree>{}</mathra:tree><mathra:braille code="{}">{}</mathra:braille><mathra:font>{}</mathra:font>{}</metadata>"#,
+        c.input,
         escape(c.source),
         escape(c.tree_json),
+        c.braille_code,
+        escape(c.braille),
         NAME,
         c.warnings.iter().map(|a| format!(r#"<mathra:warning rule="{}">{}</mathra:warning>"#, a.rule, escape(&a.description))).collect::<String>(),
     );

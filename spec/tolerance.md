@@ -6,15 +6,16 @@ Warnings show up in `--explain`, on the CLI's stderr, in `Output::warnings` and 
 
 | Rule | Problem | What mathra does |
 |---|---|---|
-| E-REC-1 | Unknown command | If it starts with a known command (`\vertA`), reads it as `\vert A`. If it is a backslash before a symbol (`\5`), drops the backslash. Otherwise writes the name in red. A macro that never stops expanding is discarded, with a single warning. |
-| E-REC-2 | Leftover JSON escape (`\n`, `²`) | `\n` becomes a line break (a space); `\uXXXX` becomes the character. |
+| E-REC-1 | Unknown command | If it is `\n` before a known relation (`\nlesssim`), reads it as its negation, `\not\lesssim`. If it starts with a known command (`\vertA`), reads it as `\vert A`. If it is a backslash before a symbol (`\5`), drops the backslash. Otherwise writes the name in red. An unknown siunitx unit (`\SI{3}{\furlong}`) is written by its name. A macro that never stops expanding is discarded, with a single warning. |
+| E-REC-2 | Leftover JSON escape (`\n`, `²`) | `\n` becomes a line break (a space); `\uXXXX` becomes the character. The negations amssymb defines (`\nleq`, `\nsim`, `\nRightarrow`…) are known commands and never read this way. |
 | E-REC-3 | Double script (`x_1_2`, `\text{O}^+_{(aq)}` after `_4`) | The second script attaches to an empty base, as if the author had written `{}`. |
 | E-REC-4 | Unbalanced braces | A stray `}` is ignored; an unpaired `{` is closed at the end. |
 | E-REC-5 | Unpaired `\left`, `\right`, `\begin`, `\end` | `\left` without `\right` closes with an empty delimiter; a lone `\right` draws its delimiter; `\end` without `\begin` is ignored. |
 | E-REC-6 | Unknown environment | Read as a centered table, with whatever cells and rows it has. |
 | E-REC-7 | Missing argument (`\frac{1}`, `\xrightleftharpoons`) | The argument is left empty. |
 | E-REC-8 | Character the font lacks | Draws a box (□). |
-| E-REC-9 | Others: unpaired `$` in `\text`, stray `#`, unknown `array` column, invalid delimiter, invalid color, control character (NUL, ESC…), `\divchave`/`\contaarmada` without integers or with a zero divisor | The character is drawn as is, or ignored; an invalid color is ignored; the calculation is written inline (`a ÷ 0`). |
+| E-REC-10 | MathML: unknown element or named entity, element with the wrong number of children (`<mfrac>` with one) | An unknown element's children are read as a row; an unknown entity is dropped; a missing child is left empty. Content MathML is reported as such. Broken XML is an error in both modes: there is no tree to recover. |
+| E-REC-9 | Others: unpaired `$` in `\text`, stray `#`, unknown `array` column, invalid delimiter, invalid color, control character (NUL, ESC…), `\divchave`/`\contaarmada` without integers or with a zero divisor, a siunitx value that is not a number (`\SI{x}{\meter}`, `\num{1.2.3}`), `\ang` with more than three parts, a character or bond `\ce` does not know | The character is drawn as is, or ignored; an invalid color is ignored; the calculation is written inline (`a ÷ 0`); the value is drawn as written. |
 
 Tolerant mode never changes the meaning of what was correct: every valid equation produces the same tree and the same SVG in both modes (test `t_tol_valid_equation_same_in_both_modes`).
 

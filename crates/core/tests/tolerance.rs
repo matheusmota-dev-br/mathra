@@ -93,3 +93,52 @@ fn e_rec_2_doubled_backslashes() {
     // with any single-backslash command, the doubles are real line breaks
     assert!(tolerant(r"\begin{cases} a \\ b \end{cases}").warnings.is_empty());
 }
+
+/// These inputs used to stop tolerant mode with an error and no SVG at all, against "draw what it can".
+#[test]
+fn units_angles_and_physics_qty_never_stop_the_drawing() {
+    for tex in [r"\qty(\frac{a}{b})", r"\SI{1}{\angstrom}", r"\ang{12;30;15}", r"\qty[x]", r"\qty|x|"] {
+        let r = tolerant(tex);
+        assert!(r.warnings.is_empty(), "{tex}: {:?}", r.warnings);
+        assert!(strict(tex).is_ok(), "{tex}");
+        assert!(r.svg.contains("<use"), "{tex}: nothing drawn");
+    }
+    // what is still unknown is drawn as written, with a warning, instead of refused
+    let r = tolerant(r"\SI{3}{\furlong}");
+    assert_eq!(r.text, "3 furlong");
+    assert_eq!(warning_rules(r"\SI{3}{\furlong}"), vec!["E-REC-1"]);
+    assert!(strict(r"\SI{3}{\furlong}").is_err());
+    assert_eq!(tolerant(r"\SI{x}{\meter}").text, "x m");
+    assert_eq!(warning_rules(r"\SI{x}{\meter}"), vec!["E-REC-9"]);
+    assert_eq!(warning_rules(r"\ang{1;2;3;4}"), vec!["E-REC-9"]);
+    assert_eq!(tolerant(r"\num{1.2.3}").text, "1,2,3");
+}
+
+#[test]
+fn e_rec_1_negation_of_a_known_relation() {
+    // amssymb has no \nlesssim, but \lesssim exists: a crossed ≲, not a line break and "lesssim"
+    let r = tolerant(r"a \nlesssim b");
+    assert_eq!(warning_rules(r"a \nlesssim b"), vec!["E-REC-1"]);
+    assert!(r.speech.contains("≲") && !r.speech.contains("l e s s"), "{}", r.speech);
+    assert!(strict(r"a \nlesssim b").is_err());
+    // the existing negations are not recovered: they are known, with no warning
+    assert!(tolerant(r"a \nleq b \ngeq c \nsim d").warnings.is_empty());
+}
+
+#[test]
+fn e_rec_9_unknown_character_and_bond_in_ce() {
+    assert_eq!(warning_rules(r"\ce{H☃}"), vec!["E-REC-9"]);
+    assert_eq!(warning_rules(r"\ce{A \bond{?} B}"), vec!["E-REC-9"]);
+    assert!(strict(r"\ce{A \bond{?} B}").is_err());
+}
+
+#[test]
+fn e_rec_10_unknown_mathml() {
+    let mathml = |src: &str, strict: bool| convert(src, &Options { input: mathra::Input::MathMl, strict, ..Default::default() });
+    let r = mathml("<math><mi>x</mi><mfoo><mn>1</mn></mfoo></math>", false).unwrap();
+    assert_eq!(r.text, "x1");
+    assert_eq!(r.warnings.iter().map(|a| a.rule).collect::<Vec<_>>(), vec!["E-REC-10"]);
+    assert!(mathml("<math><mi>x</mi><mfoo><mn>1</mn></mfoo></math>", true).is_err());
+    // the XML itself must be well formed in both modes: there is no tree to recover from
+    assert!(mathml("<math><mi>x</math>", false).is_err());
+}

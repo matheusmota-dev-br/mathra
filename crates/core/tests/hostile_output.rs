@@ -58,3 +58,40 @@ fn unique_ids_across_different_equations() {
     assert_ne!(id(&a), id(&b));
     assert_eq!(id(&a), id(&valid_svg("x")), "same input, same id");
 }
+
+fn valid_svg_from(source: &str, input: mathra::Input) -> Option<String> {
+    let r = convert(source, &Options { input, ..Options::default() }).ok()?;
+    if let Err(e) = roxmltree::Document::parse(&r.svg) {
+        panic!("{source:?} produced invalid XML: {e}");
+    }
+    Some(r.svg)
+}
+
+#[test]
+fn markup_in_mathml_and_asciimath_does_not_become_markup() {
+    use mathra::Input;
+    for (source, input) in [
+        ("<math><mtext>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</mtext></math>", Input::MathMl),
+        (r#"<math><mi mathcolor="red&quot; onload=&quot;x">a</mi></math>"#, Input::MathMl),
+        (r#"<math><mstyle mathbackground="url(javascript:x)"><mi>a</mi></mstyle></math>"#, Input::MathMl),
+        ("<math><mtext><![CDATA[</title><script>x</script>]]></mtext></math>", Input::MathMl),
+        (r#""</title><script>alert(1)</script>""#, Input::AsciiMath),
+        (r#"color(red" onload="x)(a)"#, Input::AsciiMath),
+    ] {
+        let svg = valid_svg_from(source, input).unwrap_or_else(|| panic!("{source}"));
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        assert!(doc.descendants().all(|n| n.tag_name().name() != "script"), "{source}");
+        assert!(doc.descendants().all(|n| n.attributes().all(|a| !a.name().starts_with("on"))), "{source}");
+        // the source keeps the text, escaped, in <metadata>; no attribute may carry it
+        assert!(doc.descendants().all(|n| n.attributes().all(|a| !a.value().contains("javascript"))), "{source}");
+    }
+}
+
+#[test]
+fn mathml_entity_bombs_stay_bounded() {
+    // the "billion laughs": the XML parser refuses it instead of expanding it
+    let bomb = r#"<!DOCTYPE math [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;"><!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;"><!ENTITY d "&c;&c;&c;&c;&c;&c;&c;&c;&c;&c;"><!ENTITY e "&d;&d;&d;&d;&d;&d;&d;&d;&d;&d;"><!ENTITY f "&e;&e;&e;&e;&e;&e;&e;&e;&e;&e;"><!ENTITY g "&f;&f;&f;&f;&f;&f;&f;&f;&f;&f;">]><math><mi>&g;</mi></math>"#;
+    let start = std::time::Instant::now();
+    let _ = valid_svg_from(bomb, mathra::Input::MathMl);
+    assert!(start.elapsed().as_secs() < 5, "took {:?}", start.elapsed());
+}

@@ -75,3 +75,20 @@ def test_locales():
 
 def test_core_version():
     assert mathra.core_version.count(".") == 2
+
+
+def test_mathml_and_asciimath_input():
+    assert mathra.render("sqrt(x)/2", input="asciimath")["speech"] == mathra.render(r"\frac{\sqrt{x}}{2}")["speech"]
+    assert mathra.render("<math><msup><mi>x</mi><mn>2</mn></msup></math>", input="mathml")["text"] == "x^2"
+    assert 'type="mathml"' in mathra.tex_to_svg("<math><mi>y</mi></math>")
+    with pytest.raises(ValueError, match="unknown input format"):
+        mathra.tex_to_svg("x", input="word")
+
+
+def test_braille():
+    r = mathra.render(r"\frac{3}{4}", locale="pt-BR")
+    assert r["braille"] == "⠼⠒⠙"
+    assert r["braille_code"] == "cmu"
+    assert mathra.render(r"\frac{3}{4}", braille="nemeth")["braille"] == "⠹⠒⠌⠲⠼"
+    with pytest.raises(ValueError, match="unknown braille code"):
+        mathra.render("x", braille="ueb")

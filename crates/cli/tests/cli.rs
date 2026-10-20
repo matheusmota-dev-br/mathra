@@ -188,3 +188,32 @@ fn huge_argument() {
     assert!(o.status.success());
     assert_eq!(stdout(&o).trim().chars().filter(|c| *c == '+').count(), 50_000);
 }
+
+#[test]
+fn input_formats() {
+    let o = mathra(&["sum_(i=1)^n i", "--from", "asciimath", "--text"], None);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "∑_(i = 1)^ni");
+    let o = mathra(&["-f", "mathml", "--speech"], Some(b"<math><msqrt><mi>x</mi></msqrt></math>"));
+    assert_eq!(stdout(&o).trim(), "square root of x");
+    // MathML passed as LaTeX is recognized
+    let o = mathra(&["<math><mn>1</mn><mo>+</mo><mn>2</mn></math>", "--explain"], None);
+    assert!(stdout(&o).contains("L-ENT-4"), "{}", stdout(&o));
+    let o = mathra(&["x", "--from", "word"], None);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(stderr(&o).contains("unknown input format"));
+    assert!(stdout(&mathra(&["--help"], None)).contains("--from"));
+}
+
+#[test]
+fn braille_output() {
+    let o = mathra(&[r"\frac{3}{4}", "--locale", "pt-BR", "--braille"], None);
+    assert_eq!(stdout(&o).trim(), "⠼⠒⠙");
+    let o = mathra(&[r"\frac{3}{4}", "--braille", "--braille-code", "nemeth"], None);
+    assert_eq!(stdout(&o).trim(), "⠹⠒⠌⠲⠼");
+    let o = mathra(&["x^2", "--explain"], None);
+    assert!(stdout(&o).contains("braille  ⠭⠘⠆ (nemeth)"), "{}", stdout(&o));
+    let o = mathra(&["x", "--braille-code", "ueb"], None);
+    assert_eq!(o.status.code(), Some(2));
+    assert!(stderr(&o).contains("unknown braille code"));
+}
