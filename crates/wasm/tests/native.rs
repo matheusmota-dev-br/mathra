@@ -15,3 +15,12 @@ fn errors_become_text() {
     let deep = format!("{}x{}", "{".repeat(100), "}".repeat(100));
     assert!(convert(&deep, None).unwrap_err().contains("nesting"));
 }
+
+#[test]
+fn render_carries_every_output() {
+    let json: serde_json::Value = serde_json::from_str(&mathra_wasm::render_json(r"\vertA\vert", None, true, false).unwrap()).unwrap();
+    assert!(json["svg"].as_str().unwrap().starts_with("<svg"));
+    assert!(json["speech"].as_str().unwrap().contains("absolute value"));
+    assert_eq!(json["warnings"][0]["rule"], "E-REC-1");
+    assert!(mathra_wasm::render_json(r"\vertA\vert", None, true, true).is_err());
+}

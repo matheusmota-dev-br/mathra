@@ -151,6 +151,7 @@ name = "mathra-wasm"
 version = "1.0.0"
 dependencies = [
  "mathra",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
