@@ -22,17 +22,17 @@ $ mathra 'f(1, 5) = \sin x - 2.5' -o function.svg
 
 ## Examples
 
-Every image below is an SVG written by mathra; the LaTeX for each one is in [`crates/core/tests/examples.rs`](crates/core/tests/examples.rs), which also checks that the files match the code. They are shown on a white card so they read well on dark pages too.
+Every image below is an SVG written by mathra; the LaTeX for each one is in [`crates/core/tests/examples.rs`](https://github.com/matheusmota-dev-br/mathra/blob/main/crates/core/tests/examples.rs), which also checks that the files match the code. They are shown on a white card so they read well on dark pages too.
 
 ### Famous equations
 
 <table>
-<tr><td align="center"><img src="docs/examples/euler.svg" alt="Euler's identity"><br><sub>Euler's identity</sub></td><td align="center"><img src="docs/examples/gaussian.svg" alt="Gaussian integral"><br><sub>Gaussian integral</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/basel.svg" alt="Basel problem"><br><sub>Basel problem</sub></td><td align="center"><img src="docs/examples/quadratic.svg" alt="Quadratic formula"><br><sub>Quadratic formula</sub></td></tr>
-<tr><td align="center" colspan="2"><img src="docs/examples/maxwell.svg" alt="Maxwell's equations"><br><sub>Maxwell's equations</sub></td></tr>
-<tr><td align="center" colspan="2"><img src="docs/examples/schrodinger.svg" alt="Schrödinger equation"><br><sub>Schrödinger equation</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/einstein.svg" alt="Einstein field equations"><br><sub>Einstein field equations</sub></td><td align="center"><img src="docs/examples/cauchy.svg" alt="Cauchy's integral formula"><br><sub>Cauchy's integral formula</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/fourier.svg" alt="Fourier transform"><br><sub>Fourier transform</sub></td><td align="center"><img src="docs/examples/bayes.svg" alt="Bayes' theorem"><br><sub>Bayes' theorem</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/euler.svg" alt="Euler's identity"><br><sub>Euler's identity</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/gaussian.svg" alt="Gaussian integral"><br><sub>Gaussian integral</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/basel.svg" alt="Basel problem"><br><sub>Basel problem</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/quadratic.svg" alt="Quadratic formula"><br><sub>Quadratic formula</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/maxwell.svg" alt="Maxwell's equations"><br><sub>Maxwell's equations</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/schrodinger.svg" alt="Schrödinger equation"><br><sub>Schrödinger equation</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/einstein.svg" alt="Einstein field equations"><br><sub>Einstein field equations</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/cauchy.svg" alt="Cauchy's integral formula"><br><sub>Cauchy's integral formula</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/fourier.svg" alt="Fourier transform"><br><sub>Fourier transform</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/bayes.svg" alt="Bayes' theorem"><br><sub>Bayes' theorem</sub></td></tr>
 </table>
 
 ### Beyond the basics
@@ -40,11 +40,11 @@ Every image below is an SVG written by mathra; the LaTeX for each one is in [`cr
 Continued fractions, matrices with dots, `cases`, binomials, labeled braces, chemistry (`\ce`), units (`\SI`), commutative diagrams, the pt-BR locale and computed long division:
 
 <table>
-<tr><td align="center"><img src="docs/examples/golden.svg" alt="Golden ratio as a continued fraction"><br><sub>Golden ratio as a continued fraction</sub></td><td align="center"><img src="docs/examples/matrix.svg" alt="m × n matrix with dots"><br><sub>m × n matrix with dots</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/piecewise.svg" alt="Piecewise definition"><br><sub>Piecewise definition</sub></td><td align="center"><img src="docs/examples/binomial.svg" alt="Binomial theorem"><br><sub>Binomial theorem</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/braces.svg" alt="Labeled brace"><br><sub>Labeled brace</sub></td><td align="center"><img src="docs/examples/chemistry.svg" alt="Chemical equation (mhchem)"><br><sub>Chemical equation (mhchem)</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/units.svg" alt="Quantity with units (siunitx)"><br><sub>Quantity with units (siunitx)</sub></td><td align="center"><img src="docs/examples/diagram.svg" alt="Commutative diagram (amscd)"><br><sub>Commutative diagram (amscd)</sub></td></tr>
-<tr><td align="center"><img src="docs/examples/ptbr.svg" alt="pt-BR locale: sen, decimal comma, open interval"><br><sub>pt-BR locale: sen, decimal comma, open interval</sub></td><td align="center"><img src="docs/examples/division.svg" alt="Long division, computed (pt-BR)"><br><sub>Long division, computed (pt-BR)</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/golden.svg" alt="Golden ratio as a continued fraction"><br><sub>Golden ratio as a continued fraction</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/matrix.svg" alt="m × n matrix with dots"><br><sub>m × n matrix with dots</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/piecewise.svg" alt="Piecewise definition"><br><sub>Piecewise definition</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/binomial.svg" alt="Binomial theorem"><br><sub>Binomial theorem</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/braces.svg" alt="Labeled brace"><br><sub>Labeled brace</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/chemistry.svg" alt="Chemical equation (mhchem)"><br><sub>Chemical equation (mhchem)</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/units.svg" alt="Quantity with units (siunitx)"><br><sub>Quantity with units (siunitx)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/diagram.svg" alt="Commutative diagram (amscd)"><br><sub>Commutative diagram (amscd)</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/ptbr.svg" alt="pt-BR locale: sen, decimal comma, open interval"><br><sub>pt-BR locale: sen, decimal comma, open interval</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/division.svg" alt="Long division, computed (pt-BR)"><br><sub>Long division, computed (pt-BR)</sub></td></tr>
 </table>
 
 ### What a screen reader hears
@@ -70,7 +70,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 
 ## Locales
 
-16 languages: `en` (default), `pt-BR`, `es`, `fr`, `de`, `it`, `ru`, `zh`, `ja`, `ko`, `hi`, `ar`, `id`, `tr`, `nl` and `pl`, with `--locale` (or `locale="fr"` in Python and JavaScript). The locale changes how the equation is read, written and spoken: in pt-BR `3,14` is one number with a decimal comma, `1.000` is one thousand, `\sin` is written `sen` and `]a, b[` is an open interval; in fr `\frac{3}{4}` is spoken "trois quarts"; in zh `\frac{1}{2}` is "2 分之 1". Each language is a JSON file in `crates/core/src/locales/`, described in [`spec/locales.md`](spec/locales.md) with how to add one. English and pt-BR are reviewed; the other languages still need a native speaker's review of the speech. Every rule that depends on the locale is numbered in `spec/rules.md`.
+16 languages: `en` (default), `pt-BR`, `es`, `fr`, `de`, `it`, `ru`, `zh`, `ja`, `ko`, `hi`, `ar`, `id`, `tr`, `nl` and `pl`, with `--locale` (`locale="fr"` in Python, `{ locale: "fr" }` in JavaScript). The locale changes how the equation is read, written and spoken: in pt-BR `3,14` is one number with a decimal comma, `1.000` is one thousand, `\sin` is written `sen` and `]a, b[` is an open interval; in fr `\frac{3}{4}` is spoken "trois quarts"; in zh `\frac{1}{2}` is "2 分之 1". Each language is a JSON file in `crates/core/src/locales/`, described in [`spec/locales.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/locales.md) with how to add one. English and pt-BR are reviewed; the other languages still need a native speaker's review of the speech. Every rule that depends on the locale is numbered in `spec/rules.md`.
 
 ## What the SVG carries
 
@@ -78,18 +78,16 @@ Besides the outlines, every SVG follows the contract in `spec/svg.md`: speech fo
 
 ## Install and use
 
-| Where | Install | |
+| Where | Install | Registry |
 |---|---|---|
 | JavaScript and TypeScript: Node, bundlers, browsers | `npm install @mathlabs/mathra` | [npm](https://www.npmjs.com/package/@mathlabs/mathra) |
-| Python | `pip install "mathra @ git+https://github.com/matheusmota-dev-br/mathra#subdirectory=crates/python"` | from GitHub; needs Rust to build |
-| Terminal | `cargo install --git https://github.com/matheusmota-dev-br/mathra mathra-cli` | from GitHub |
-| Rust | `cargo add mathra --git https://github.com/matheusmota-dev-br/mathra` | from GitHub |
-
-The npm package is published; the Python, CLI and Rust packages install from this repository until they are on PyPI and crates.io.
+| Python 3.9+: wheels for Linux, macOS and Windows | `pip install mathra` | [PyPI](https://pypi.org/project/mathra/) |
+| Terminal | `cargo install mathra-cli` | [crates.io](https://crates.io/crates/mathra-cli) |
+| Rust | `cargo add mathra` | [crates.io](https://crates.io/crates/mathra) · [docs.rs](https://docs.rs/mathra) |
 
 ### JavaScript and TypeScript
 
-Types included. In Node it works right away; in browsers and bundlers, await `init()` once. More in [`npm/README.md`](npm/README.md).
+Types included. In Node it works right away; in browsers and bundlers, await `init()` once. More in [`npm/README.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/npm/README.md).
 
 ```js
 import { init, texToSvg, render } from "@mathlabs/mathra";
@@ -104,9 +102,13 @@ const { speech, warnings } = render(String.raw`\frac{3}{4}`, { locale: "fr" }); 
 ```python
 import mathra
 
-svg = mathra.tex_to_svg(r"\sin x = 0.5")              # <title>…sine of x equals 0.5</title>
-tree = mathra.tex_to_tree("3,14", locale="pt-BR")      # JSON
+svg = mathra.tex_to_svg(r"\sin x = 0.5")                 # <title>…sine of x equals 0.5</title>
+r = mathra.render(r"\frac{3}{4}", locale="fr")            # dict: svg, speech, text, tree, applied, warnings
+r["speech"]                                               # 'trois quarts'
+mathra.tex_to_svg(r"\vertA\vert", strict=True)            # ValueError, like TeX
 ```
+
+Types included; more on [PyPI](https://pypi.org/project/mathra/).
 
 ### Terminal
 
@@ -156,8 +158,8 @@ Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ,
 | Tolerant: no warning | 109 (94.0%) |
 | Tolerant: with warnings | 7 (6.0%) |
 | Tolerant: error | 0 (0.0%) |
-| Time per equation, mean | 18.7 µs |
-| Time per equation, p95 | 46.9 µs |
+| Time per equation, mean | 17.9 µs |
+| Time per equation, p95 | 46.5 µs |
 
 Times vary by a few microseconds between runs. The 7 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and diagrams (`tikz-cd`, `xymatrix`, `\tikz`, `\chemfig`). Tolerant mode draws them as text with a warning.
 
@@ -168,7 +170,7 @@ Times vary by a few microseconds between runs. The 7 that strict mode refuses ar
 | | mathra (wasm) | MathJax (SVG) | KaTeX (HTML) |
 |---|---|---|---|
 | Gallery, 18 equations: clean | 18 | 15 | 15 |
-| Gallery: time per equation, mean | 114 µs | 631 µs | 76 µs |
+| Gallery: time per equation, mean | 121 µs | 643 µs | 69 µs |
 | Corpus, 116 constructions: clean | 109 | 70 | 62 |
 | Output per equation, gzip | 2.32 KB | 2.43 KB | 0.95 KB + CSS and fonts |
 | Download to render in a browser, gzip | 926 KB | 660 KB | 77 KB + up to 254 KB of fonts |
@@ -206,10 +208,10 @@ Every pull request runs the same checks (`.github/workflows/ci.yml`): fmt, clipp
 
 To change behavior, write the rule in `spec/`, cite its id in the code and add a test with the same id.
 
-The tests cover 100% of the lines of the core, the CLI and the Python module. [docs/tests.md](docs/tests.md) explains how to run each suite (including wasm on Node and pytest), what each file checks, the coverage per file and the problem inputs already tested.
+The tests cover 100% of the lines of the core, the CLI and the Python module. [docs/tests.md](https://github.com/matheusmota-dev-br/mathra/blob/main/docs/tests.md) explains how to run each suite (including wasm on Node and pytest), what each file checks, the coverage per file and the problem inputs already tested.
 
 The banner above is drawn by mathra itself (`cargo run -p mathra --example banner`); `tests/banner.rs` fails if it goes stale.
 
 ## Licenses
 
-Code: your choice of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`).
+Code: your choice of [MIT](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`).

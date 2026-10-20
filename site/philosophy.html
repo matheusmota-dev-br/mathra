@@ -87,7 +87,7 @@
         <p>Before anything is drawn, mathra builds a <strong>tree of meaning</strong>: this is the number 3.14, this is the identifier <em>x</em>, this is a fraction whose numerator is… Drawing, speech and plain text are three readings of the same tree.</p>
 <pre>$ echo '3,14' | mathra --locale pt-BR --tree
 {"type":"row","children":[{"type":"number","value":"3.14"}]}</pre>
-        <p>That is why the speech is right (“3.14”, not “3 comma 14”), why a locale can change how a number is written without changing what it is, and why the tree travels inside every SVG.</p>
+        <p>That is why the speech reads one number, not “3 comma 14”, why a locale can change how a number is written without changing what it is, and why the tree travels inside every SVG.</p>
       </div>
     </div>
 
@@ -153,7 +153,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
       <div class="num">9</div>
       <div>
         <h2>One core, no runtime</h2>
-        <p>The core is plain Rust, with three small dependencies: one to read the font and two for JSON. The npm, Python, CLI and Rust packages are thin wrappers around the same code, compiled to native code or to WebAssembly, so a server, a notebook and a browser produce the same equation, byte for byte. No TeX distribution and no headless browser; outside JavaScript, not even Node: 17 µs per equation natively.</p>
+        <p>The core is plain Rust, with three small dependencies: one to read the font and two for JSON. The npm, Python, CLI and Rust packages are thin wrappers around the same code, compiled to native code or to WebAssembly, so a server, a notebook and a browser produce the same equation, byte for byte. No TeX distribution and no headless browser; outside JavaScript, not even Node: 17.9 µs per equation natively.</p>
       </div>
     </div>
 
