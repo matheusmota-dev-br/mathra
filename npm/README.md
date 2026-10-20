@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/banner.svg" alt="mathra" width="100%"></p>
+
 # @mathlabs/mathra
 
 Math LaTeX to accessible SVG, without a TeX install. Every SVG carries the phrase a screen reader says, in 16 languages, and draws with the STIX Two Math font embedded, so it looks the same everywhere. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**.
@@ -5,6 +7,26 @@ Math LaTeX to accessible SVG, without a TeX install. Every SVG carries the phras
 ```sh
 npm install @mathlabs/mathra
 ```
+
+## What it draws
+
+Every image below is an SVG written by mathra, on a white card so it reads well on dark pages.
+
+<table>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/quadratic.svg" alt="Quadratic formula"><br><sub>Quadratic formula</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/gaussian.svg" alt="Gaussian integral"><br><sub>Gaussian integral</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/matrix.svg" alt="m × n matrix with dots"><br><sub>Matrix with dots</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/piecewise.svg" alt="Piecewise definition"><br><sub>Piecewise definition</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/chemistry.svg" alt="Chemical equation (mhchem)"><br><sub>Chemistry (<code>\ce</code>)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/units.svg" alt="Quantity with units (siunitx)"><br><sub>Units (<code>\SI</code>)</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/maxwell.svg" alt="Maxwell's equations"><br><sub>Maxwell's equations</sub></td></tr>
+</table>
+
+And what a screen reader hears, from the SVG's `<title>`:
+
+| Equation | `locale` | Speech |
+|---|---|---|
+| `x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}` | `en` | x equals fraction, negative b plus or minus square root of b squared minus 4 a c, end root, over 2 a, end fraction |
+| `\frac{3}{4} + \sqrt{x}` | `fr` | trois quarts plus racine carrée de x |
+| `\frac{3}{4} + \sqrt{x}` | `ja` | 4 分の 3 プラス ルート x |
+| `\sin^2 \theta + \cos^2 \theta = 1` | `pt-BR` | seno ao quadrado de teta mais cosseno ao quadrado de teta é igual a 1 |
 
 ## Node
 

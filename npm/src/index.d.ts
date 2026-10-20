@@ -43,5 +43,5 @@ export function render(tex: string, options?: Options | Locale): Result;
 /** The supported languages, English first. */
 export function locales(): { code: string; name: string }[];
 
-/** The version of mathra inside this package. */
+/** The version of mathra's core inside this package (the npm package has its own version). */
 export const version: string;

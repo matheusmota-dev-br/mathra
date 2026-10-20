@@ -1,11 +1,11 @@
-# Publishes the npm package when a version tag (v1.2.3) is pushed, with npm trusted publishing:
+# Publishes the npm package when an npm version tag (npm-v1.2.3) is pushed, with npm trusted publishing:
 # no token, and npm attaches the provenance of this workflow run. Set it up once on npmjs.com, in the
 # settings of @mathlabs/mathra: Trusted Publisher → GitHub Actions, repository matheusmota-dev-br/mathra, workflow npm.yml.
 name: npm
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["npm-v*"]
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm/build.sh && npm/test/run.sh
-      - name: the tag matches the version in Cargo.toml
-        run: test "v$(node -p "require('./npm/pkg/package.json').version")" = "$GITHUB_REF_NAME"
+      - name: the tag matches the version in npm/package.json
+        run: test "npm-v$(node -p "require('./npm/pkg/package.json').version")" = "$GITHUB_REF_NAME"
       - run: npm publish --access public
         working-directory: npm/pkg

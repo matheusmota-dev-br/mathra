@@ -3,6 +3,7 @@
 # Needs the wasm32-unknown-unknown target and wasm-bindgen-cli at the version in Cargo.lock.
 set -e
 cd "$(dirname "$0")/.."
+# the npm package has its own version (npm/package.json); `version` in the API is the one of mathra's core
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 cargo build -p mathra-wasm --release --target wasm32-unknown-unknown
 wasm=target/wasm32-unknown-unknown/release/mathra_wasm.wasm
@@ -26,6 +27,6 @@ echo 'module.exports = { wrap };' >> "$out/node/wrap.cjs"
 cp npm/src/index.d.ts "$out/index.d.ts"
 cp npm/src/index.d.ts "$out/index.d.cts"
 cp npm/README.md LICENSE-MIT LICENSE-APACHE crates/core/fonts/OFL-STIXTwoMath.txt "$out/"
-sed "s/__VERSION__/$version/" npm/package.json > "$out/package.json"
+cp npm/package.json "$out/package.json"
 rm -rf "$tmp"
-echo "npm/pkg: mathra $version"
+echo "npm/pkg: $(node -p "require('./npm/package.json').name + '@' + require('./npm/package.json').version") with mathra $version"
