@@ -202,7 +202,10 @@ $ cargo clippy --all-targets
 $ cargo run -p mathra-cli -- '3,14' --locale pt-BR --explain
 $ npm/build.sh && npm/test/run.sh     # the npm package, packed and installed as users get it
 $ site/build.sh                       # then open site/index.html
+$ scripts/release.sh --dry-run        # what a release would publish
 ```
+
+**Releasing.** Each package has its own version: `Cargo.toml` (crates `mathra` and `mathra-cli`), `npm/package.json` and `crates/python/Cargo.toml`. Bump the ones to release in a pull request, merge it, then run `scripts/release.sh` on `main`: it tags every version not yet on its registry (`v*`, `npm-v*`, `py-v*`) and pushes the tags at once; each tag runs its workflow, which publishes with trusted publishing. A rerun of a half-done release skips what is already out.
 
 Every pull request runs the same checks (`.github/workflows/ci.yml`): fmt, clippy, the Rust, wasm, npm and Python tests.
 
