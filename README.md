@@ -68,7 +68,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 
 ## Locales
 
-`en` is the default. `--locale pt-BR` (or `locale="pt-BR"` in Python and JavaScript) switches to Brazilian conventions: `3,14` is one number with a decimal comma, `1.000` is one thousand, `\sin` is written `sen`, `]a, b[` is an open interval, and the spoken phrase is in Portuguese. Every rule that depends on the locale is numbered in `spec/rules.md`.
+16 languages: `en` (default), `pt-BR`, `es`, `fr`, `de`, `it`, `ru`, `zh`, `ja`, `ko`, `hi`, `ar`, `id`, `tr`, `nl` and `pl`, with `--locale` (or `locale="fr"` in Python and JavaScript). The locale changes how the equation is read, written and spoken: in pt-BR `3,14` is one number with a decimal comma, `1.000` is one thousand, `\sin` is written `sen` and `]a, b[` is an open interval; in fr `\frac{3}{4}` is spoken "trois quarts"; in zh `\frac{1}{2}` is "2 分之 1". Each language is a JSON file in `crates/core/src/locales/`, described in [`spec/locales.md`](spec/locales.md) with how to add one. English and pt-BR are reviewed; the other languages still need a native speaker's review of the speech. Every rule that depends on the locale is numbered in `spec/rules.md`.
 
 ## What the SVG carries
 
@@ -145,6 +145,20 @@ Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ,
 | Time per equation, p95 | 46.9 µs |
 
 Times vary by a few microseconds between runs. The 7 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and diagrams (`tikz-cd`, `xymatrix`, `\tikz`, `\chemfig`). Tolerant mode draws them as text with a warning.
+
+### Compared with KaTeX and MathJax
+
+`bench/compare.mjs` runs the three libraries on the same equations in Node (`cd bench && npm install && npm run compare`; Node 24, Apple M5, katex 0.16.22, mathjax-full 3.2.2). "Clean" means no error and no command drawn in red. The [playground](https://matheusmota-dev-br.github.io/mathra/#benchmark) runs the same comparison in your browser.
+
+| | mathra (wasm) | MathJax (SVG) | KaTeX (HTML) |
+|---|---|---|---|
+| Gallery, 18 equations: clean | 18 | 15 | 15 |
+| Gallery: time per equation, mean | 114 µs | 631 µs | 76 µs |
+| Corpus, 116 constructions: clean | 109 | 70 | 62 |
+| Output per equation, gzip | 2.32 KB | 2.43 KB | 0.95 KB + CSS and fonts |
+| Download to render in a browser, gzip | 926 KB | 660 KB | 77 KB + up to 254 KB of fonts |
+
+KaTeX is faster and lighter to ship, but its output is HTML that needs its stylesheet and fonts, not a standalone image. Against MathJax's SVG, the closest equivalent, mathra is about 5× faster with output of similar size. Most of mathra's download is the embedded font (628 KB gzip). The corpus was written while building mathra, so it favors it; the three gallery equations the others miss use `\SI`, `\sen` and `\divchave`.
 
 ## Layout
 
