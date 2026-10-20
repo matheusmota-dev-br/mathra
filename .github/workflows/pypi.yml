@@ -95,3 +95,6 @@ jobs:
           path: dist
       - run: ls -l dist
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # files already on PyPI are skipped, so rerunning the workflow never fails on them
+          skip-existing: true
