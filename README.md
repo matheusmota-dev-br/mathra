@@ -95,10 +95,10 @@ svg = mathra.tex_to_svg(r"\sin x = 0.5")              # <title>…sine of x equa
 tree = mathra.tex_to_tree("3,14", locale="pt-BR")      # JSON
 ```
 
-**JavaScript** (`npm install @mathra/mathra`; Node, bundlers and browsers, with TypeScript types, see [`npm/README.md`](npm/README.md))
+**JavaScript** (`npm install @math-labs/mathra`; Node, bundlers and browsers, with TypeScript types, see [`npm/README.md`](npm/README.md))
 
 ```js
-import { init, texToSvg, render } from "@mathra/mathra";
+import { init, texToSvg, render } from "@math-labs/mathra";
 await init();                                          // browsers and bundlers only; Node needs nothing
 const svg = texToSvg("3,14", { locale: "pt-BR" });
 const { speech, warnings } = render("x^2", { locale: "fr" });
