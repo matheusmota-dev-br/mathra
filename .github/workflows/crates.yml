@@ -1,0 +1,31 @@
+# Publishes the mathra and mathra-cli crates when a Rust version tag (v1.2.3) is pushed, with
+# crates.io trusted publishing: the job trades its GitHub identity for a short-lived token, so no
+# token is stored. Set it up once on crates.io, for each crate: Settings → Trusted Publishing,
+# repository matheusmota-dev-br/mathra, workflow crates.yml.
+name: crates
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: the tag matches the workspace version in Cargo.toml
+        run: test "v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" = "$GITHUB_REF_NAME"
+      - run: cargo test -p mathra -p mathra-cli
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      # the core first: cargo waits until it is available before publishing the CLI that depends on it
+      - run: cargo publish -p mathra -p mathra-cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
