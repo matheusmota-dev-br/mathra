@@ -6,11 +6,12 @@ A mathra SVG is an outline drawing that carries the speech, the source and the t
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1"
      viewBox="0 -645 1730 658" width="1.73em" height="0.658em"
      style="vertical-align: -0.013em"
-     role="img" aria-labelledby="mathra-0f561d1c-speech" lang="en" data-mathra-version="1.0.0">
+     role="img" aria-labelledby="mathra-0f561d1c-speech" lang="en" data-mathra-version="1.1.0">
   <title id="mathra-0f561d1c-speech">3.14</title>
   <metadata>
     <mathra:source type="latex">3.14</mathra:source>
     <mathra:tree>{"type":"row","children":[{"type":"number","value":"3.14"}]}</mathra:tree>
+    <mathra:braille code="nemeth">⠼⠒⠨⠂⠲</mathra:braille>
     <mathra:font>STIX Two Math</mathra:font>
   </metadata>
   <style>svg:root{color:#111}</style>
@@ -32,7 +33,7 @@ Coordinates in font units, with the baseline at y = 0. `width` and `height` in `
 
 ### S-SVG-3 · Recoverable source
 
-`<metadata>` keeps the original input, the tree of meaning as JSON and the font name. The namespace is `urn:mathra:1`.
+`<metadata>` keeps the original input, with its notation in `<mathra:source type="latex|mathml|asciimath">`, the tree of meaning as JSON and the font name. The namespace is `urn:mathra:1`.
 
 ### S-SVG-4 · Color
 
@@ -60,3 +61,7 @@ Ids (`…-speech`, `…-g19`) start with a prefix derived from the input, the lo
 ### S-SVG-8 · Always valid XML
 
 All text that comes from outside (source, speech, linear text, warnings, colors) is escaped for `& < > "`. Characters XML 1.0 cannot take even when escaped (control characters from U+0000 to U+001F except tab, LF and CR, plus U+FFFE/U+FFFF) become U+FFFD. Without this, a `\0` pasted into the input made the SVG unreadable for every browser.
+
+### S-SVG-9 · Braille
+
+`<metadata>` also keeps the equation in braille, as Unicode braille cells, with its code: `<mathra:braille code="cmu|nemeth">`. A braille display or an app can read it without converting the equation again. What each code covers is in `braille.md`.

@@ -36,3 +36,19 @@ test("locales and version", () => {
   assert.deepEqual(list[0], { code: "en", name: "English" });
   assert.match(version, /^\d+\.\d+\.\d+/);
 });
+
+test("MathML and AsciiMath input", () => {
+  assert.equal(render("sqrt(x)/2", { input: "asciimath" }).speech, render(String.raw`\frac{\sqrt{x}}{2}`).speech);
+  assert.equal(render("<math><msup><mi>x</mi><mn>2</mn></msup></math>", { input: "mathml" }).text, "x^2");
+  // MathML passed as LaTeX is recognized
+  assert.equal(render("<math><mi>y</mi></math>").text, "y");
+  assert.throws(() => texToSvg("x", { input: "word" }), /unknown input format/);
+});
+
+test("braille", () => {
+  const r = render(String.raw`\frac{3}{4}`, { locale: "pt-BR" });
+  assert.equal(r.braille, "⠼⠒⠙");
+  assert.equal(r.braille_code, "cmu");
+  assert.equal(render(String.raw`\frac{3}{4}`, { braille: "nemeth" }).braille, "⠹⠒⠌⠲⠼");
+  assert.throws(() => render("x", { braille: "ueb" }), /unknown braille code/);
+});

@@ -68,13 +68,32 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 |A| = C_(16, 2)
 ```
 
+## LaTeX, MathML and AsciiMath
+
+LaTeX is the default. MathML (what Word, Google Docs, MathType and MathJax export) and AsciiMath (`sum_(i=1)^n i^2`) are read into the same tree of meaning, so they come out with the same drawing and the same speech. MathML passed as LaTeX, starting with `<math`, is recognized on its own. What each notation covers is in [`spec/input.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/input.md), and the [reference page](https://matheusmota-dev-br.github.io/mathra/reference.html) shows every construction, in AsciiMath (the tables of asciimath.org), LaTeX (by topic, as Overleaf's Mathematics articles), the science packages and MathML, each drawn and in braille, live in the browser.
+
+```console
+$ mathra 'sum_(i=1)^n i^2 = (n(n+1)(2n+1))/6' --from asciimath -o sum.svg
+$ mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech      # square root of x
+```
+
+## Braille
+
+Every equation also comes out in braille, as Unicode braille cells: in the **CMU** (Código Matemático Unificado) for Portuguese and Spanish, and in **Nemeth** for the other languages, or in either one by choice. Both follow their official documents, and the tests check them against the documents' own examples; what is covered and what is still open is in [`spec/braille.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md). The braille also goes into the SVG's `<metadata>`.
+
+```console
+$ mathra '\frac{3}{4} + \sqrt{x}' --locale pt-BR --braille     # ⠼⠒⠙⠖⠫⠱⠭
+$ mathra 'x^2 + 1' --braille                                     # ⠭⠘⠆⠐⠬⠂ (Nemeth)
+$ mathra 'x^2 + 1' --braille --braille-code cmu                  # ⠭⠡⠼⠃⠖⠼⠁
+```
+
 ## Locales
 
 16 languages: `en` (default), `pt-BR`, `es`, `fr`, `de`, `it`, `ru`, `zh`, `ja`, `ko`, `hi`, `ar`, `id`, `tr`, `nl` and `pl`, with `--locale` (`locale="fr"` in Python, `{ locale: "fr" }` in JavaScript). The locale changes how the equation is read, written and spoken: in pt-BR `3,14` is one number with a decimal comma, `1.000` is one thousand, `\sin` is written `sen` and `]a, b[` is an open interval; in fr `\frac{3}{4}` is spoken "trois quarts"; in zh `\frac{1}{2}` is "2 分之 1". Each language is a JSON file in `crates/core/src/locales/`, described in [`spec/locales.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/locales.md) with how to add one. English and pt-BR are reviewed; the other languages still need a native speaker's review of the speech. Every rule that depends on the locale is numbered in `spec/rules.md`.
 
 ## What the SVG carries
 
-Besides the outlines, every SVG follows the contract in `spec/svg.md`: speech for screen readers, the source equation and the tree in `<metadata>`, color inherited from the page, reused glyphs, a text layer for selection and unique ids per equation. The same input always produces the same bytes.
+Besides the outlines, every SVG follows the contract in `spec/svg.md`: speech for screen readers, the source equation, the tree and the braille in `<metadata>`, color inherited from the page, reused glyphs, a text layer for selection and unique ids per equation. The same input always produces the same bytes.
 
 ## Install and use
 
@@ -95,6 +114,8 @@ import { init, texToSvg, render } from "@mathlabs/mathra";
 await init();                                                    // browsers and bundlers; Node needs nothing
 const svg = texToSvg("3,14", { locale: "pt-BR" });
 const { speech, warnings } = render(String.raw`\frac{3}{4}`, { locale: "fr" });   // "trois quarts"
+render("sqrt(x)/2", { input: "asciimath" });                     // also "mathml"
+render("x^2", { locale: "pt-BR" }).braille;                      // "⠭⠡⠼⠃" (CMU); { braille: "nemeth" } forces the code
 ```
 
 ### Python
@@ -106,6 +127,8 @@ svg = mathra.tex_to_svg(r"\sin x = 0.5")                 # <title>…sine of x e
 r = mathra.render(r"\frac{3}{4}", locale="fr")            # dict: svg, speech, text, tree, applied, warnings
 r["speech"]                                               # 'trois quarts'
 mathra.tex_to_svg(r"\vertA\vert", strict=True)            # ValueError, like TeX
+mathra.render("sqrt(x)/2", input="asciimath")             # also input="mathml"
+mathra.render("x^2", locale="pt-BR")["braille"]           # '⠭⠡⠼⠃' (CMU); braille="nemeth" forces the code
 ```
 
 Types included; more on [PyPI](https://pypi.org/project/mathra/).
@@ -117,6 +140,8 @@ $ mathra 'x \le 2.75; y \ge 1' -o inequality.svg
 $ mathra '3,14 + \sin x' --locale pt-BR
 $ mathra 'x = -1' --speech        # x equals negative 1
 $ echo 'a + b' | mathra --tree
+$ mathra 'a/b + sqrt(c)' --from asciimath
+$ mathra '\frac{3}{4}' --locale pt-BR --braille   # ⠼⠒⠙
 $ mathra --batch -o out/ < equations.txt
 ```
 
@@ -135,17 +160,19 @@ Layout follows the parameters of the embedded font's MATH table.
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
 - `\left … \middle … \right`, `\big` and family, delimiters assembled from parts
-- Matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `smallmatrix`), `cases`, `aligned`, `align`, `gathered`, `split`, `array` with `|`, `@{}`, `\hline`, `\cline`
-- Accents (`\hat`, `\vec`, `\bar`, `\dot`, `\widehat`, `\overrightarrow`…), `\overline`, `\underline`, `\overbrace`/`\underbrace` with labels, `\xrightarrow` and family, `\overset`, `\underset`, `\stackrel`
-- `\text` with `$…$` and old-style accents (`\'e`, `\c{c}`), alphabets (`\mathbb`, `\mathcal`, `\mathfrak`, `\mathbf`, `\boldsymbol`, `\mathsf`, `\mathtt`), old `\bf`/`\rm`/`\tt`
-- `\cancel`, `\boxed`, `\textcircled`, `\color`, `\phantom`, `\pmod`, `\operatorname`, spaces (`\,` `\quad` `\hspace`)
-- siunitx (`\SI`, `\qty`, `\si`, `\num`, `\ang`), basic `\ce`, HTML entities coming from editors
+- Matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `smallmatrix`), `cases`, `rcases`, `aligned`, `align`, `gathered`, `split`, `array` with `|`, `@{}`, `\hline`, `\cline`
+- Accents (`\hat`, `\vec`, `\bar`, `\dot`, `\widehat`, `\overrightarrow`, `\arc`…), `\underrightarrow` and family, `\overline`, `\underline`, `\overbrace`/`\underbrace` and `\overbracket`/`\underbracket` with labels, `\xrightarrow` and family, `\overset`, `\underset`, `\stackrel`
+- The amssymb symbols, negations included (`\nleq`, `\nsim`, `\nRightarrow`, `\lneqq`…), and integrals up to `\iiiint`, `\idotsint` and `\varoiint`
+- `\text` with `$…$` and old-style accents (`\'e`, `\c{c}`), `\textsc`, alphabets (`\mathbb`, `\mathcal`, `\mathfrak`, `\mathbf`, `\boldsymbol`, `\mathsf`, `\mathtt`), old `\bf`/`\rm`/`\tt`
+- `\cancel`, `\boxed`, `\textcircled`, `\color`, `\colorbox`, `\fcolorbox`, `\phantom`, `\pmod`, `\operatorname`, spaces (`\,` `\quad` `\hspace`)
+- siunitx (`\SI`, `\qty`, `\si`, `\num`, `\ang` with minutes and seconds, ranges, lists and products), HTML entities coming from editors
+- mhchem (`\ce`, `\pu`): formulas, charges, radicals, isotopes, hydrates, bonds, decimal and fractional coefficients, arrows with labels (`->[\Delta]`, `<=>[K_w]`), `\frac` with formulas
 - Substitution macros: `\newcommand`, `\renewcommand`, `\def`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment`
-- Packages: physics (`\dv`, `\pdv`), braket (`\ket`, `\braket`, `\Set`), xfrac, units, `\genfrac`, `\substack`, `\sideset`, `\smash`, `\mathclap`, `\multicolumn`, `\intertext`, `\hdotsfor`, `\raisebox`, `\scalebox`, `\rule`, `\verb`; old syntax `\cases`, `\matrix`, `\eqalign`
+- Packages: physics (derivatives, `\dd`, `\eval`, `\expval`, `\mel`, `\comm`, `\grad`, `\curl`, `\laplacian`, `\vb`, `\vu`, `\order`, `\Tr`, `\qty`), braket (`\ket`, `\braket`, `\Set`), tensor (`\tensor`, `\indices`), mathtools (`\prescript`, `rcases`, `\overbracket`), xfrac, units, `\genfrac`, `\substack`, `\sideset`, `\smash`, `\mathclap`, `\multicolumn`, `\intertext`, `\hdotsfor`, `\raisebox`, `\scalebox`, `\rule`, `\verb`; old syntax `\cases`, `\matrix`, `\eqalign`
 - amscd commutative diagrams (`\begin{CD}`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ, `tikz-cd`, `xymatrix`, `\chemfig` and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output, full `\ce`.
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ, `tikz-cd`, `xymatrix`, `\chemfig` and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
 
 ## Benchmark
 

@@ -66,15 +66,15 @@ Without a bundler, from a CDN:
 |---|---|
 | `init(input?)` | Loads the wasm. Needed once in browsers and bundlers; does nothing in Node. `input` overrides where the wasm comes from (a URL, a `Response`, bytes or a `WebAssembly.Module`). |
 | `texToSvg(tex, options?)` | The SVG as a string. |
-| `render(tex, options?)` | `{ svg, speech, text, tree, applied, warnings }`. |
+| `render(tex, options?)` | `{ svg, speech, text, braille, braille_code, tree, applied, warnings }`. |
 | `locales()` | `[{ code: "en", name: "English" }, …]`. |
 | `version` | The version of mathra's core inside the package (the npm package has its own version). |
 
-Options: `locale` (`"en"` by default, `"pt-BR"`, `"es"`, `"fr"`, `"de"`, `"it"`, `"ru"`, `"zh"`, `"ja"`, `"ko"`, `"hi"`, `"ar"`, `"id"`, `"tr"`, `"nl"`, `"pl"`), `display` (`true` by default; `false` for inline style) and `strict` (`false` by default: broken LaTeX is drawn with warnings instead of throwing). A plain string as the second argument is read as the locale.
+Options: `locale` (`"en"` by default, `"pt-BR"`, `"es"`, `"fr"`, `"de"`, `"it"`, `"ru"`, `"zh"`, `"ja"`, `"ko"`, `"hi"`, `"ar"`, `"id"`, `"tr"`, `"nl"`, `"pl"`), `display` (`true` by default; `false` for inline style) `strict` (`false` by default: broken LaTeX is drawn with warnings instead of throwing) and `input` (`"latex"` by default, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own) and `braille` (`"cmu"` or `"nemeth"`; by default the locale's: CMU in pt-BR and es, Nemeth elsewhere). A plain string as the second argument is read as the locale.
 
 ## What the SVG carries
 
-Speech in `<title>` linked with `aria-labelledby`, the source LaTeX and the tree of meaning in `<metadata>`, color from the page (`currentColor`), size in `em`, a selectable text layer and ids unique to each equation. The same input always gives the same bytes.
+Speech in `<title>` linked with `aria-labelledby`, the source equation and the tree of meaning in `<metadata>`, color from the page (`currentColor`), size in `em`, a selectable text layer and ids unique to each equation. The same input always gives the same bytes.
 
 ## Also for Python, Rust and the terminal
 

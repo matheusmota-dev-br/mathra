@@ -1,30 +1,32 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-fn convert(tex: &str, locale: &str, display: bool, strict: bool) -> PyResult<mathra::Output> {
+fn convert(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>) -> PyResult<mathra::Output> {
     let locale = locale.parse().map_err(PyValueError::new_err)?;
-    mathra::convert(tex, &mathra::Options { locale, display, strict }).map_err(|e| PyValueError::new_err(e.to_string()))
+    let input = input.parse().map_err(PyValueError::new_err)?;
+    let braille = braille.map(str::parse).transpose().map_err(PyValueError::new_err)?;
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille }).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// Converts math LaTeX to SVG.
+/// Converts an equation (LaTeX, MathML or AsciiMath, by `input`) to SVG.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false))]
-fn tex_to_svg(tex: &str, locale: &str, display: bool, strict: bool) -> PyResult<String> {
-    convert(tex, locale, display, strict).map(|r| r.svg)
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None))]
+fn tex_to_svg(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>) -> PyResult<String> {
+    convert(tex, locale, display, strict, input, braille).map(|r| r.svg)
 }
 
 /// Tree of meaning as JSON.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false))]
-fn tex_to_tree(tex: &str, locale: &str, display: bool, strict: bool) -> PyResult<String> {
-    convert(tex, locale, display, strict).map(|r| r.tree.to_json())
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None))]
+fn tex_to_tree(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>) -> PyResult<String> {
+    convert(tex, locale, display, strict, input, braille).map(|r| r.tree.to_json())
 }
 
 /// Every output as JSON; `mathra.render` turns it into a dict.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false))]
-fn render(tex: &str, locale: &str, display: bool, strict: bool) -> PyResult<String> {
-    convert(tex, locale, display, strict).map(|r| r.to_json())
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None))]
+fn render(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>) -> PyResult<String> {
+    convert(tex, locale, display, strict, input, braille).map(|r| r.to_json())
 }
 
 /// The supported languages as (code, name) pairs, English first.

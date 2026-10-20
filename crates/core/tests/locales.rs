@@ -114,3 +114,67 @@ fn numbers_and_function_names_in_each_language() {
         assert!(t.contains(expected), "{locale} {tex}: «{t}» lacks «{expected}»");
     }
 }
+
+/// The constructions added for chemistry, physics, siunitx and amssymb, in every language: no unfilled
+/// template, no warning, and the words of ranges, lists and boxes come from the language.
+#[test]
+fn every_language_converts_the_science_constructions() {
+    let constructions = [
+        r"a \nleq b \ngtr c \nsim d \nRightarrow e",
+        r"\ce{A ->[\Delta][$-H_2O$] B <=>[K_w] C}",
+        r"\ce{CuSO4.5H2O + HC#CH + ^{14}_{6}C + 1/2 O2}",
+        r"\pu{123 kJ mol^-1}",
+        r"\expval{A}{\psi} + \mel{n}{H}{m} + \comm{A}{B} + \qty(\frac{a}{b})",
+        r"\grad f + \curl \vb{B} + \laplacian \phi + \vu{x} + \order{n^2}",
+        r"\Tr\rho + \int f \dd x + \eval{x^2}_0^1 + \fdv{F}{\phi}",
+        r"\SIrange{1}{10}{\kilo\gram} \quad \numlist{1;2;3} \quad \ang{12;30;15} \quad \SI{1}{\angstrom}",
+        r"\tensor{T}{^\mu_\nu} = \prescript{14}{6}{\mathrm{C}}",
+        r"\begin{rcases} a \\ b \end{rcases} \overbracket{x+y}^{n} \underrightarrow{AB}",
+        r"\colorbox{yellow}{x} \fcolorbox{red}{yellow}{y} \textsc{Smith} \boxed{z}",
+    ];
+    for locale in Locale::ALL {
+        for tex in constructions {
+            let r = convert_in(tex, locale);
+            assert!(r.warnings.is_empty(), "{locale} {tex}: {:?}", r.warnings);
+            assert!(!r.speech.contains('{'), "{locale} {tex}: unfilled template in «{}»", r.speech);
+        }
+        let english = |tex: &str| convert_in(tex, Locale::En).speech;
+        if locale != Locale::En {
+            for tex in [r"\boxed{z}", r"\numrange{1}{2}", r"\numlist{1;2}"] {
+                assert_ne!(speech(tex, locale), english(tex), "{locale} {tex}: still in English");
+            }
+        }
+    }
+}
+
+#[test]
+fn list_word_falls_back_to_a_comma_where_the_font_lacks_the_script() {
+    for (locale, expected) in [
+        (Locale::Ru, "1, 2 и 3"),
+        (Locale::Tr, "1, 2 ve 3"),
+        (Locale::Zh, "1, 2, 3"),
+        (Locale::Ja, "1, 2, 3"),
+        (Locale::Ko, "1, 2, 3"),
+        (Locale::Hi, "1, 2, 3"),
+        (Locale::Ar, "1, 2, 3"),
+    ] {
+        assert_eq!(text(r"\numlist{1;2;3}", locale), expected, "{locale}");
+    }
+}
+
+#[test]
+fn every_language_reads_mathml_and_asciimath() {
+    use mathra::{convert, Input, Options};
+    for locale in Locale::ALL {
+        for (source, input) in [
+            ("<math><mfrac><mn>1</mn><mn>2</mn></mfrac><mo>+</mo><msqrt><mi>x</mi></msqrt></math>", Input::MathMl),
+            ("1/2 + sqrt(x) + sum_(i=1)^n i + [[a,b],[c,d]]", Input::AsciiMath),
+        ] {
+            let r = convert(source, &Options { locale, input, ..Options::default() }).unwrap_or_else(|e| panic!("{locale} {source}: {e}"));
+            assert!(r.warnings.is_empty(), "{locale} {source}: {:?}", r.warnings);
+            // the same words as the LaTeX for the shared beginning
+            let shared = convert_in(r"\frac{1}{2} + \sqrt{x}", locale).speech;
+            assert!(r.speech.starts_with(&shared), "{locale} {source}: «{}» does not start with «{shared}»", r.speech);
+        }
+    }
+}

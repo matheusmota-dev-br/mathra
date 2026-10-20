@@ -8,6 +8,10 @@ export interface Options {
   display?: boolean;
   /** Refuse invalid LaTeX, like TeX does, instead of recovering with warnings. Default false. */
   strict?: boolean;
+  /** The notation of the equation: "latex" (default), "mathml" or "asciimath". MathML passed as LaTeX (starting with `<math`) is recognized on its own. */
+  input?: "latex" | "mathml" | "asciimath";
+  /** The braille code of `Result.braille`: "cmu" or "nemeth". Default: the locale's (CMU in pt-BR and es, Nemeth elsewhere). */
+  braille?: "cmu" | "nemeth";
 }
 
 /** A numbered rule from spec/rules.md or spec/tolerance.md, and what it did to this equation. */
@@ -23,6 +27,10 @@ export interface Result {
   speech: string;
   /** Linear text, close to UnicodeMath. */
   text: string;
+  /** The equation in braille, as Unicode braille cells. */
+  braille: string;
+  /** The braille code used: "cmu" or "nemeth". */
+  braille_code: "cmu" | "nemeth";
   /** The tree of meaning. */
   tree: unknown;
   /** Rules that changed something in this equation, in the order they acted. */
@@ -34,10 +42,10 @@ export interface Result {
 /** Loads the WebAssembly module: await it once before converting in browsers and bundlers. In Node it does nothing. */
 export function init(input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;
 
-/** Converts math LaTeX to SVG. Throws on input it cannot read (or on any invalid input with `strict`). */
+/** Converts an equation (LaTeX unless `options.input` says otherwise) to SVG. Throws on input it cannot read (or on any invalid input with `strict`). */
 export function texToSvg(tex: string, options?: Options | Locale): string;
 
-/** Converts math LaTeX and returns every output at once. */
+/** Converts an equation and returns every output at once. */
 export function render(tex: string, options?: Options | Locale): Result;
 
 /** The supported languages, English first. */

@@ -412,8 +412,11 @@ fn siunitx_units() {
     // \squared with no unit before it: there is nothing to raise
     has(&tree(r"\si{\squared\per\cubed}"), &["Quantity"]);
     has(&tree(r"\SI{-5}{\meter}"), &["value: None", "'−'"]);
-    assert!(always_error(r"\si{\foo}").contains("unsupported unit"));
-    assert!(always_error(r"\SI{abc}{\meter}").contains("is not a number"));
+    // an unknown unit is written by its name, a value that is not a number as written
+    assert!(strict_error(r"\si{\foo}").contains("unsupported unit"));
+    has(&recovers(r"\si{\foo}", "E-REC-1"), &["\"foo\""]);
+    assert!(strict_error(r"\SI{abc}{\meter}").contains("is not a number"));
+    has(&recovers(r"\SI{abc}{\meter}", "E-REC-9"), &["\"m\""]);
     has(&tree(r"\unit[3]{m}"), &["\"3\"", "\"m\""]);
 }
 
@@ -462,11 +465,12 @@ fn siunitx_numbers() {
     has(&tree(r"\num{+3}"), &["'+'"]);
     has(&tree(r"\num{1,5e-3}"), &["\"1.5\"", "'−'"]);
     has(&tree(r"\num{2E+4}"), &["\"4\""]);
-    assert!(always_error(r"\num{1.2.3}").contains("is not a number"));
-    assert!(always_error(r"\num{3e}").contains("is not a number"));
-    assert!(always_error(r"\num{3e2x}").contains("is not a number"));
+    // not a number: strict mode refuses, tolerant mode draws what was written (E-REC-9)
+    for tex in [r"\num{1.2.3}", r"\num{3e}", r"\num{3e2x}", r"\ang{x}"] {
+        assert!(strict_error(tex).contains("is not a number"), "{tex}");
+        recovers(tex, "E-REC-9");
+    }
     has(&tree(r"\ang{30}"), &["'°'"]);
-    assert!(always_error(r"\ang{x}").contains("is not a number"));
 }
 
 // ---------- arithmetic and other commands ----------
@@ -544,6 +548,29 @@ fn modular_arithmetic_and_misc() {
 }
 
 // ---------- colors and delimiters ----------
+
+#[test]
+fn colored_boxes_paint_the_background_not_the_text() {
+    let t = tree(r"\colorbox{yellow}{x}");
+    has(&t, &["Framed", "shape: Fill", "background: Some(\"yellow\")", "border: None"]);
+    assert!(!t.contains("Colored"), "{t}");
+    has(&tree(r"\fcolorbox{red}{yellow}{x}"), &["shape: Rectangle", "background: Some(\"yellow\")", "border: Some(\"red\")"]);
+    has(&tree(r"\fcolorbox[HTML]{FF0000}{yellow}{x}"), &["border: Some(\"#FF0000\")"]);
+    // an invalid color in tolerant mode: the box stays, without that color
+    has(&recovers(r"\fcolorbox{re;d}{yellow}{x}", "E-REC-9"), &["border: None", "background: Some(\"yellow\")"]);
+}
+
+#[test]
+fn square_brackets_and_arrows_under_and_over() {
+    has(&tree(r"\overbracket{abc}"), &["Brace", "above: true", "bracket: true"]);
+    has(&tree(r"\underbracket{abc}_{n}"), &["above: false", "label: Some(Identifier { name: \"n\"", "bracket: true"]);
+    // mathtools' optional thickness and height are read and ignored
+    has(&tree(r"\overbracket[1pt][2pt]{abc}"), &["bracket: true"]);
+    for (name, arrow) in [("underrightarrow", '→'), ("underleftarrow", '←'), ("underleftrightarrow", '↔')] {
+        has(&tree(&format!(r"\{name}{{AB}}")), &[&format!("accent: '{arrow}', stretchy: true, below: true")]);
+    }
+    has(&tree(r"\arc{AB}"), &["accent: '⏜', stretchy: true, below: false"]);
+}
 
 #[test]
 fn color_models() {
@@ -639,6 +666,16 @@ fn array_column_specs() {
 }
 
 #[test]
+fn rcases_puts_the_brace_on_the_right() {
+    for env in ["rcases", "drcases"] {
+        has(&tree(&format!(r"\begin{{{env}}} a & x > 0 \\ b & x \le 0 \end{{{env}}}")), &["shape: RCases"]);
+    }
+    let r = convert(r"\begin{rcases} a \\ b \end{rcases} \Rightarrow c", &Options::default()).unwrap();
+    assert_eq!(r.text, "a; b} ⇒ c");
+    assert!(r.speech.starts_with("cases: case 1: a; case 2: b"), "{}", r.speech);
+}
+
+#[test]
 fn commutative_diagram() {
     let t = tree(r"\begin{CD} A @>{f_1}>> B \\ @VgVV @AAhA \\ C @<<k< D \end{CD}");
     has(&t, &["Diagram", "'→'", "'↓'", "'↑'", "'←'"]);
@@ -650,6 +687,18 @@ fn commutative_diagram() {
 }
 
 // ---------- text ----------
+
+#[test]
+fn small_capitals() {
+    has(&tree(r"\textsc{Smith}"), &["Text(\"\\u{e002}Smith\\u{e003}\")"]);
+    // inside \text, \textsc closes at its brace and \scshape at the end of the group
+    has(&tree(r"\text{a \textsc{bc} d}"), &["\"a \\u{e002}bc\\u{e003} d\""]);
+    has(&tree(r"\text{a {\scshape bc} d}"), &["\"a \\u{e002}bc\\u{e003} d\""]);
+    // the markers are not spoken nor written in the linear text
+    let r = convert(r"\textsc{Smith} + \text{\textsc{Lee}}", &Options::default()).unwrap();
+    assert_eq!(r.speech, "Smith plus Lee");
+    assert_eq!(r.text, "Smith + Lee");
+}
 
 #[test]
 fn math_inside_text() {
@@ -733,10 +782,12 @@ fn chemical_formulas() {
     has(&tree(r"\ce{NaCl(s) = A ^ v}"), &["\"(s)\"", "'↑'", "'↓'"]);
     has(&tree(r"\ce{[Cu(NH3)4]}"), &["'['", "'('", "class: Close"]);
     has(&tree(r"\ce{CuSO4.5H2O}"), &["'·'"]);
-    has(&tree(r"\ce{A*B H-Cl}"), &["'·'", "'−'"]);
+    // the bond is text: not a minus, not read as "negative"
+    has(&tree(r"\ce{A*B H-Cl}"), &["'·'", "Text(\"−\")"]);
     has(&tree(r"\ce{^{2+}}"), &["\"2+\""]);
     has(&tree(r"\pu{3 mol}"), &["\"3\""]);
-    assert!(always_error(r"\ce{H☃}").contains("unsupported character in \\ce"));
+    has(&recovers(r"\ce{H☃}", "E-REC-9"), &["'☃'"]);
+    assert!(strict_error(r"\ce{H☃}").contains("unsupported character in \\ce"));
 }
 
 // ---------- macros ----------
@@ -831,6 +882,210 @@ fn doubled_backslashes() {
     assert_eq!(undo_doubled_backslashes(r"a \\ \frac{1}{2}"), None);
     assert_eq!(undo_doubled_backslashes("a + b"), None);
     assert_eq!(undo_doubled_backslashes(r"a \\ b"), None);
+}
+
+/// Negations starting with \n used to be read as a JSON \n followed by the relation: \nleq came out as ≤,
+/// the opposite of what was written.
+#[test]
+fn amssymb_negations_are_not_json_line_breaks() {
+    for (name, symbol) in [
+        ("nless", '≮'),
+        ("ngtr", '≯'),
+        ("nleq", '≰'),
+        ("ngeq", '≱'),
+        ("nleqslant", '≰'),
+        ("ngeqslant", '≱'),
+        ("nleqq", '≰'),
+        ("ngeqq", '≱'),
+        ("nsim", '≁'),
+        ("ncong", '≇'),
+        ("nprec", '⊀'),
+        ("nsucc", '⊁'),
+        ("npreceq", '⋠'),
+        ("nsucceq", '⋡'),
+        ("nvdash", '⊬'),
+        ("nvDash", '⊭'),
+        ("nVdash", '⊮'),
+        ("nVDash", '⊯'),
+        ("ntriangleleft", '⋪'),
+        ("ntriangleright", '⋫'),
+        ("ntrianglelefteq", '⋬'),
+        ("ntrianglerighteq", '⋭'),
+        ("nsupseteq", '⊉'),
+        ("nsubseteqq", '⊈'),
+        ("nsupseteqq", '⊉'),
+        ("nsubset", '⊄'),
+        ("nsupset", '⊅'),
+        ("nni", '∌'),
+        ("nequiv", '≢'),
+        ("napprox", '≉'),
+        ("nsimeq", '≄'),
+        ("nasymp", '≭'),
+        ("nshortmid", '∤'),
+        ("nshortparallel", '∦'),
+        ("nleftarrow", '↚'),
+        ("nrightarrow", '↛'),
+        ("nleftrightarrow", '↮'),
+        ("nLeftarrow", '⇍'),
+        ("nRightarrow", '⇏'),
+        ("nLeftrightarrow", '⇎'),
+        ("lneq", '⪇'),
+        ("gneq", '⪈'),
+        ("lneqq", '≨'),
+        ("gneqq", '≩'),
+        ("lnsim", '⋦'),
+        ("gnsim", '⋧'),
+        ("lnapprox", '⪉'),
+        ("gnapprox", '⪊'),
+        ("precneqq", '⪵'),
+        ("succneqq", '⪶'),
+        ("precnsim", '⋨'),
+        ("succnsim", '⋩'),
+        ("precnapprox", '⪹'),
+        ("succnapprox", '⪺'),
+    ] {
+        let t = tree(&format!(r"a \{name} b"));
+        has(&t, &[&format!("Operator {{ symbol: '{symbol}', class: Rel }}")]);
+    }
+    // the speech no longer spells the letters of the relation
+    let speech = convert(r"a \nleq b", &Options::default()).unwrap().speech;
+    assert_eq!(speech, "a ≰ b");
+}
+
+#[test]
+fn unknown_negation_of_a_known_relation_reads_as_not() {
+    // \nlesssim does not exist, but \lesssim does: the author meant its negation, not a line break
+    let t = recovers(r"a \nlesssim b", "E-REC-1");
+    has(&t, &["Canceled { base: Operator { symbol: '≲'"]);
+    let (_, warnings) = tolerant(r"a \nlesssim b");
+    assert!(warnings.iter().any(|w| w.contains(r"read as \not\lesssim")), "{warnings:?}");
+    // a \n before something that is not a relation is still a JSON line break
+    has(&recovers(r"x\nb) y", "E-REC-2"), &["\"b\""]);
+    has(&recovers(r"\nfoo", "E-REC-2"), &["\"f\""]);
+}
+
+#[test]
+fn amssymb_and_stmaryrd_symbols() {
+    for (name, symbol, class) in [
+        ("dashv", '⊣', "Rel"),
+        ("Join", '⨝', "Rel"),
+        ("lessapprox", '⪅', "Rel"),
+        ("gtrapprox", '⪆', "Rel"),
+        ("lesseqgtr", '⋚', "Rel"),
+        ("gtreqless", '⋛', "Rel"),
+        ("gtrless", '≷', "Rel"),
+        ("leqq", '≦', "Rel"),
+        ("geqq", '≧', "Rel"),
+        ("lll", '⋘', "Rel"),
+        ("ggg", '⋙', "Rel"),
+        ("divides", '∣', "Rel"),
+        ("vartriangleleft", '⊲', "Rel"),
+        ("trianglerighteq", '⊵', "Rel"),
+        ("preccurlyeq", '≼', "Rel"),
+        ("succsim", '≿', "Rel"),
+        ("curlyeqprec", '⋞', "Rel"),
+        ("eqslantless", '⪕', "Rel"),
+        ("lessdot", '⋖', "Rel"),
+        ("Vvdash", '⊪', "Rel"),
+        ("VDash", '⊫', "Rel"),
+        ("Subset", '⋐', "Rel"),
+        ("eqcirc", '≖', "Rel"),
+        ("bumpeq", '≏', "Rel"),
+        ("approxeq", '≊', "Rel"),
+        ("backsim", '∽', "Rel"),
+        ("eqsim", '≂', "Rel"),
+        ("fallingdotseq", '≒', "Rel"),
+        ("doteqdot", '≑', "Rel"),
+        ("between", '≬', "Rel"),
+        ("pitchfork", '⋔', "Rel"),
+        ("varsubsetneq", '⊊', "Rel"),
+        ("supsetneq", '⊋', "Rel"),
+        ("varsupsetneq", '⊋', "Rel"),
+        ("subsetneqq", '⫋', "Rel"),
+        ("supseteqq", '⫆', "Rel"),
+        ("upharpoonright", '↾', "Rel"),
+        ("upharpoonleft", '↿', "Rel"),
+        ("downharpoonright", '⇂', "Rel"),
+        ("downharpoonleft", '⇃', "Rel"),
+        ("rightharpoondown", '⇁', "Rel"),
+        ("leftharpoondown", '↽', "Rel"),
+        ("leftrightarrows", '⇆', "Rel"),
+        ("Lsh", '↰', "Rel"),
+        ("looparrowright", '↬', "Rel"),
+        ("rightarrowtail", '↣', "Rel"),
+        ("upuparrows", '⇈', "Rel"),
+        ("Rrightarrow", '⇛', "Rel"),
+        ("leftrightsquigarrow", '↭', "Rel"),
+        ("Updownarrow", '⇕', "Rel"),
+        ("oslash", '⊘', "Bin"),
+        ("ltimes", '⋉', "Bin"),
+        ("rtimes", '⋊', "Bin"),
+        ("leftthreetimes", '⋋', "Bin"),
+        ("barwedge", '⊼', "Bin"),
+        ("veebar", '⊻', "Bin"),
+        ("curlywedge", '⋏', "Bin"),
+        ("Cap", '⋒', "Bin"),
+        ("Cup", '⋓', "Bin"),
+        ("dotplus", '∔', "Bin"),
+        ("divideontimes", '⋇', "Bin"),
+        ("lhd", '⊲', "Bin"),
+        ("unrhd", '⊵', "Bin"),
+        ("sphericalangle", '∢', "Ord"),
+        ("Diamond", '◇', "Ord"),
+        ("surd", '√', "Ord"),
+        ("hslash", 'ℏ', "Ord"),
+        ("triangledown", '▽', "Ord"),
+        ("backprime", '‵', "Ord"),
+        ("Finv", 'Ⅎ', "Ord"),
+        ("circledS", 'Ⓢ', "Ord"),
+        ("standardstate", '⦵', "Ord"),
+        ("hdots", '…', "Inner"),
+    ] {
+        has(&tree(&format!(r"a \{name} b")), &[&format!("Operator {{ symbol: '{symbol}', class: {class} }}")]);
+    }
+}
+
+#[test]
+fn every_new_symbol_is_in_the_font() {
+    // strict mode turns a missing glyph into an error instead of a box
+    let names = "nleq ngeq nless ngtr nsim ncong nprec nsucc npreceq nsucceq nvdash nvDash nVdash nVDash ntriangleleft ntriangleright \
+                 ntrianglelefteq ntrianglerighteq nsupseteq nsubset nsupset nni nequiv napprox nsimeq nasymp nleftarrow nrightarrow \
+                 nleftrightarrow nLeftarrow nRightarrow nLeftrightarrow lneq gneq lneqq gneqq lnsim gnsim lnapprox gnapprox precneqq \
+                 succneqq precnsim succnsim precnapprox succnapprox dashv Join lessapprox gtrapprox lesseqgtr gtreqless gtrless leqq \
+                 geqq lll ggg divides vartriangleleft vartriangleright trianglelefteq trianglerighteq preccurlyeq succcurlyeq precsim \
+                 succsim precapprox succapprox curlyeqprec curlyeqsucc eqslantless eqslantgtr lessdot gtrdot Vvdash VDash Subset Supset \
+                 eqcirc circeq bumpeq Bumpeq approxeq backsim backsimeq eqsim risingdotseq fallingdotseq doteqdot between pitchfork \
+                 smallsmile smallfrown supsetneq varsubsetneq subsetneqq supsetneqq subseteqq supseteqq leftrightsquigarrow \
+                 leftrightarrows Lsh Rsh looparrowleft looparrowright rightarrowtail leftarrowtail upuparrows downdownarrows Lleftarrow \
+                 Rrightarrow Updownarrow upharpoonright upharpoonleft downharpoonright downharpoonleft rightharpoondown leftharpoondown \
+                 oslash ltimes rtimes leftthreetimes rightthreetimes barwedge veebar curlywedge curlyvee Cap Cup dotplus divideontimes \
+                 centerdot lhd rhd unlhd unrhd doublebarwedge sphericalangle Diamond surd hslash triangledown diagup diagdown backprime \
+                 Finv Bbbk circledS standardstate hdots digamma Digamma varkappa iiiint varoiint intclockwise varointclockwise \
+                 ointctrclockwise fint sqint idotsint i j";
+    for name in names.split_whitespace() {
+        let tex = format!(r"a \{name} b");
+        let r = convert(&tex, &Options { strict: true, ..Options::default() });
+        assert!(r.is_ok(), "{tex}: {:?}", r.err());
+    }
+}
+
+#[test]
+fn greek_variants_dotless_letters_and_arg_max() {
+    has(&tree(r"\digamma + \Digamma + \varkappa"), &["\"ϝ\"", "\"Ϝ\"", "\"ϰ\""]);
+    has(&tree(r"\i + \j"), &["\"ı\"", "\"ȷ\""]);
+    has(&tree(r"\argmax_x f + \argmin_y g"), &["Function { name: \"arg max\", limits: true }", "Function { name: \"arg min\", limits: true }"]);
+}
+
+#[test]
+fn more_integrals_keep_their_limits_on_the_side() {
+    for (name, symbol) in [("iiiint", '⨌'), ("varoiint", '∯'), ("intclockwise", '∱'), ("varointclockwise", '∲'), ("ointctrclockwise", '∳'), ("fint", '⨏'), ("sqint", '⨖')]
+    {
+        has(&tree(&format!(r"\{name}_V f")), &[&format!("LargeOperator {{ symbol: '{symbol}'")]);
+        let speech = convert(&format!(r"\{name}_V f"), &Options::default()).unwrap().speech;
+        assert!(speech.starts_with("integral over V"), "{name}: {speech}");
+    }
+    // \idotsint is ∫⋯∫, and the subscript goes on the last integral
+    has(&tree(r"\idotsint_V f"), &["LargeOperator { symbol: '∫'", "'⋯'", "sub: Some(Identifier { name: \"V\""]);
 }
 
 #[test]

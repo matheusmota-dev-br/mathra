@@ -8,3 +8,6 @@ rm -rf site/pkg
 wasm-bindgen --target no-modules --no-typescript --out-dir site/pkg target/wasm32-unknown-unknown/release/mathra_wasm.wasm
 # file:// pages cannot fetch the .wasm, but they can run a classic script: the same bytes as base64
 printf 'var MATHRA_WASM_BASE64 = "%s";\n' "$(base64 < site/pkg/mathra_wasm_bg.wasm | tr -d '\n')" > site/pkg/mathra_wasm_bytes.js
+# the reference page's tables (corpus/reference.json, checked by crates/core/tests/reference.rs) as a script,
+# so the page also works opened from disk
+printf 'var MATHRA_REFERENCE = %s;\n' "$(cat corpus/reference.json)" > site/pkg/reference_data.js

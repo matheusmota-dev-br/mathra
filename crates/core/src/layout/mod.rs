@@ -141,19 +141,32 @@ pub(crate) fn glyph_id(id: ttf_parser::GlyphId, s: f32) -> MathBox {
     }
 }
 
+/// Size of the capitals that stand for lowercase letters in `\textsc`.
+const SMALL_CAPS_SCALE: f32 = 0.76;
+
 /// Upright text (function names, `\text`, units).
 fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
-    use crate::input::latex::{BOLD_END, BOLD_START};
+    use crate::input::latex::{BOLD_END, BOLD_START, SMALL_CAPS_END, SMALL_CAPS_START};
     let mut math_box = MathBox::empty();
     let mut bold = 0;
+    let mut small_caps = 0;
     for c in t.chars() {
-        if c == BOLD_START {
-            bold += 1;
+        match c {
+            BOLD_START => bold += 1,
+            BOLD_END => bold -= 1,
+            SMALL_CAPS_START => small_caps += 1,
+            SMALL_CAPS_END => small_caps -= 1,
+            _ => {}
+        }
+        if matches!(c, BOLD_START | BOLD_END | SMALL_CAPS_START | SMALL_CAPS_END) {
             continue;
         }
-        if c == BOLD_END {
-            bold -= 1;
-            continue;
+        // small capitals: a lowercase letter is its capital at the height of the x
+        if small_caps > 0 && c.is_lowercase() {
+            if let Some(id) = c.to_uppercase().next().and_then(|u| font().glyph(u)) {
+                math_box.append(&glyph_id(id, e.scale() * SMALL_CAPS_SCALE));
+                continue;
+            }
         }
         // bold through the math block letters; accented ones stay regular
         let c = if bold > 0 { alphabet::character(c, Variant::Bold) } else { c };
@@ -264,9 +277,9 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             Ok(math_box)
         }
         Node::VerticalArrow { symbol, left, right } => compose_vertical_arrow(*symbol, left.as_deref(), right.as_deref(), e, ctx),
-        Node::Accent { base, accent, stretchy } => compose_accent(base, *accent, *stretchy, e, ctx),
+        Node::Accent { base, accent, stretchy, below } => compose_accent(base, *accent, *stretchy, *below, e, ctx),
         Node::Bar { base, above } => compose_bar(base, *above, e, ctx),
-        Node::Brace { base, above, label } => compose_brace(base, *above, label.as_deref(), e, ctx),
+        Node::Brace { base, above, label, bracket } => compose_brace(base, *above, label.as_deref(), *bracket, e, ctx),
         Node::Text { parts } => {
             let mut math_box = MathBox::empty();
             for p in parts {
@@ -280,7 +293,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         }
         Node::Space { em: amount } => Ok(MathBox::space(em(e, *amount))),
         Node::Canceled { base, shape: kind } => compose_canceled(base, *kind, e, ctx),
-        Node::Framed { base, shape } => compose_frame(base, *shape, e, ctx),
+        Node::Framed { base, shape, background, border } => compose_frame(base, *shape, background.as_deref(), border.as_deref(), e, ctx),
         Node::Colored { color, base } => {
             let mut math_box = compose(base, e, ctx)?;
             math_box.colorize(color);
@@ -586,13 +599,18 @@ fn uses_limits(base: &Node, e: Style) -> bool {
     let display = e.level == Level::Display;
     match base {
         Node::LargeOperator { symbol, limits } => {
-            let by_default = !matches!(symbol, '∫' | '∬' | '∭' | '∮' | '∯' | '∰');
+            let by_default = !is_integral(*symbol);
             limits.unwrap_or(by_default && display)
         }
         Node::Function { limits, .. } => *limits && display,
         Node::ForcedClass { base, class: Class::Op } => uses_limits(base, e) || display,
         _ => false,
     }
+}
+
+/// Integrals take their limits on the side, even in display style.
+pub(crate) fn is_integral(c: char) -> bool {
+    matches!(c, '∫' | '∬' | '∭' | '⨌' | '∮' | '∯' | '∰' | '∱' | '∲' | '∳' | '⨏' | '⨖')
 }
 
 fn compose_scripts(base: &Node, sup: Option<&Node>, sub: Option<&Node>, e: Style, ctx: &mut Context) -> R<MathBox> {
@@ -749,7 +767,10 @@ fn combining(c: char) -> bool {
     matches!(c as u32, 0x0300..=0x036F | 0x20D0..=0x20FF)
 }
 
-fn compose_accent(base: &Node, accent: char, stretchy: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
+fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
+    if below {
+        return compose_under_accent(base, accent, e, ctx);
+    }
     let b = compose(base, e.cramp(), ctx)?;
     let base_point = if b.single_glyph { b.accent_point.unwrap_or(b.width / 2.0) } else { b.width / 2.0 };
     let a = if stretchy { stretch::horizontal(accent, b.width, e)? } else { glyph(accent, e)? };
@@ -787,6 +808,20 @@ fn compose_accent(base: &Node, accent: char, stretchy: bool, e: Style, ctx: &mut
     Ok(math_box)
 }
 
+/// Stretchy accent under the base (`\underrightarrow`, `\underleftarrow`), as far below as `\underline`.
+fn compose_under_accent(base: &Node, accent: char, e: Style, ctx: &mut Context) -> R<MathBox> {
+    let b = compose(base, e, ctx)?;
+    let a = stretch::horizontal(accent, b.width, e)?;
+    let width = b.width.max(a.width);
+    let gap = k(e, |c| c.underbar_vertical_gap());
+    let mut math_box = MathBox::space(width);
+    math_box.place(&b, (width - b.width) / 2.0, 0.0);
+    math_box.place(&a, (width - a.width) / 2.0, -(b.depth + gap + a.height));
+    math_box.depth += k(e, |c| c.underbar_extra_descender());
+    math_box.italic = b.italic;
+    Ok(math_box)
+}
+
 fn compose_bar(base: &Node, above: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, if above { e.cramp() } else { e }, ctx)?;
     let mut math_box = b.clone();
@@ -805,9 +840,15 @@ fn compose_bar(base: &Node, above: bool, e: Style, ctx: &mut Context) -> R<MathB
     Ok(math_box)
 }
 
-fn compose_brace(base: &Node, above: bool, label: Option<&Node>, e: Style, ctx: &mut Context) -> R<MathBox> {
+fn compose_brace(base: &Node, above: bool, label: Option<&Node>, bracket: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, e, ctx)?;
-    let brace = stretch::horizontal(if above { '⏞' } else { '⏟' }, b.width, e)?;
+    let symbol = match (above, bracket) {
+        (true, false) => '⏞',
+        (false, false) => '⏟',
+        (true, true) => '⎴',
+        (false, true) => '⎵',
+    };
+    let brace = stretch::horizontal(symbol, b.width, e)?;
     let r = label.map(|n| compose(n, e.sup(), ctx)).transpose()?;
     let width = b.width.max(brace.width).max(r.as_ref().map_or(0.0, |r| r.width));
     let gap = k(e, |c| c.overbar_vertical_gap());
@@ -899,21 +940,28 @@ fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R
     Ok(math_box)
 }
 
-fn compose_frame(base: &Node, shape: Frame, e: Style, ctx: &mut Context) -> R<MathBox> {
+fn compose_frame(base: &Node, shape: Frame, background: Option<&str>, border: Option<&str>, e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, e, ctx)?;
     let t = em(e, 0.04);
     match shape {
-        Frame::Rectangle => {
+        Frame::Rectangle | Frame::Fill => {
             let p = em(e, 0.3);
             let width = b.width + 2.0 * (p + t);
             let top = b.height + p + t;
             let bottom = b.depth + p + t;
             let mut math_box = MathBox::space(width);
+            // the background goes first, so the content is drawn over it
+            if let Some(color) = background {
+                math_box.items.push(Item::Rule { x: 0.0, y: -bottom, width, height: top + bottom, color: Some(color.to_string()) });
+            }
             math_box.place(&b, p + t, 0.0);
-            math_box.place(&MathBox::bar(width, t, top - t), 0.0, 0.0);
-            math_box.place(&MathBox::bar(width, t, -bottom), 0.0, 0.0);
-            math_box.items.push(Item::Rule { x: 0.0, y: -bottom, width: t, height: top + bottom, color: None });
-            math_box.items.push(Item::Rule { x: width - t, y: -bottom, width: t, height: top + bottom, color: None });
+            if shape == Frame::Rectangle {
+                let color = border.map(str::to_string);
+                math_box.items.push(Item::Rule { x: 0.0, y: top - t, width, height: t, color: color.clone() });
+                math_box.items.push(Item::Rule { x: 0.0, y: -bottom, width, height: t, color: color.clone() });
+                math_box.items.push(Item::Rule { x: 0.0, y: -bottom, width: t, height: top + bottom, color: color.clone() });
+                math_box.items.push(Item::Rule { x: width - t, y: -bottom, width: t, height: top + bottom, color });
+            }
             math_box.height = top;
             math_box.depth = bottom;
             Ok(math_box)

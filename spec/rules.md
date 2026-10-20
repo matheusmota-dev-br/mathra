@@ -50,6 +50,16 @@ In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without
 
 `\SI{9,8}{\meter\per\second\squared}` and `\qty{…}{…}` write the number, a thin space and the unit in upright letters. Negative exponents (`\per`) become a slash: `m/s²`, and more than one unit in the denominator gets parentheses: `J/(mol·K)`. `\num{…}` groups with thin spaces from five digits on; `\ang{30}` writes `30°`.
 
+### L-UNI-2 · Ranges, lists and products
+
+`\SIrange`/`\qtyrange`, `\numrange` and `\angrange` join the two values with an en dash, read as "to" ("a" in pt-BR): `1 kg – 10 kg`. `\SIlist`/`\qtylist`, `\numlist` and `\anglist` separate the values with commas and close with the language's "and" (`1, 2 e 3` in pt-BR); where the embedded font cannot write that word (zh, ja, ko, hi, ar), the last separator is a comma too. `\SIproduct`/`\qtyproduct` and `\numproduct` join with ×. As in siunitx's defaults, the unit is repeated on every value. Options in brackets (`\SI[mode=text]{…}{…}`) are read and ignored.
+
+## Chemistry
+
+### L-CHE-1 · mhchem
+
+`\ce{…}` reads chemical formulas: element symbols upright, digits after them as subscripts, charges as superscripts (`Ag+`, `SO4^2-`, `[H+]`), radicals (`^{.}` → •), oxidation states (`^{II}`), states (`(aq)`, `(s)`, `(l)`, `(g)`), isotopes on an empty base (`^{14}_{6}C`) and bonds (`-`, `=`, `#`, `\bond{…}`), which are drawn as lines and are not read as minus, equals or congruence. Coefficients may be integers, decimals (`0.5`), fractions (`1/2`, drawn small) or math (`$x$`, or a lone lowercase letter); after the dot of a hydrate (`CuSO4.5H2O`, also `*`) a number is a coefficient again, not a subscript. The arrows are `->`, `<-`, `<->` (resonance), `<-->`, `<=>`, `<=>>` and `<<=>`; `[above][below]` right after an arrow are labels, read as `\ce` themselves, and the arrow stretches over them. `\frac{…}{…}` inside `\ce` keeps formulas in numerator and denominator, and any other command (`\Delta`) is read as math. `\pu{123 kJ mol^-1}` writes a quantity with mhchem's unit syntax.
+
 ## Input coming from other systems
 
 ### L-ENT-1 · HTML entities
@@ -59,6 +69,10 @@ In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without
 ### L-ENT-2 · Outer delimiters
 
 `$…$`, `$$…$$`, `\(…\)` and `\[…\]` around the whole equation are removed.
+
+### L-ENT-4 · MathML pasted as LaTeX
+
+An input that starts with a `<math>` element (after an optional XML prolog or comments) is read as MathML, even in LaTeX mode: LaTeX never starts that way, and editors put MathML on the clipboard. The other notations are in `input.md`.
 
 ### L-ENT-3 · Text size commands
 
@@ -76,7 +90,7 @@ Inside `\text{…}` (and every text argument), TeX's quote ligatures become typo
 
 `\ifx`, `\expandafter`, `\catcode` and `\def` with delimited parameters are deliberately not supported (see `boundary.md`).
 
-Package commands defined through other commands go through the same mechanism: `\dv`, `\pdv` (physics), `\ket`, `\bra`, `\braket`, `\Set` (braket), `\abs`, `\norm`, `\sfrac`, `\nicefrac`, `\unitfrac`.
+Package commands defined through other commands go through the same mechanism: from physics, `\dv`, `\pdv`, `\fdv`, `\dd`, `\eval`, `\expval`, `\mel`, `\braket{a}{b}`, `\ketbra`, `\comm`, `\acomm`, `\pb`, `\grad`, `\divergence`, `\curl`, `\laplacian`, `\vb`, `\vu`, `\va`, `\cross`, `\vdot`, `\order`, `\Tr`, `\tr`, `\rank`, `\erf`, `\Res`, `\qty`, `\pqty`, `\bqty`, `\vqty`, `\Bqty`; `\ket`, `\bra`, `\braket`, `\Set` (braket); `\tensor`, `\indices` (tensor); `\prescript` (mathtools); `\abs`, `\norm`, `\sfrac`, `\nicefrac`, `\unitfrac`. `\qty` is physics' brackets unless two braced groups follow (`\qty{3}{m}`, siunitx's quantity). `\div` stays ÷: physics' divergence is `\divergence`.
 
 ## Column arithmetic (mathra extensions)
 

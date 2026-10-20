@@ -255,3 +255,32 @@ fn greek_letters_by_locale() {
         assert_eq!(speech(tex, Locale::En), en, "{tex}");
     }
 }
+
+#[test]
+fn framed_boxes_ranges_and_lists_are_spoken_in_each_language() {
+    for (loc, boxed, range, list) in [
+        (Locale::En, "boxed x", "1 m to 2 m", "and"),
+        (Locale::PtBr, "x em uma caixa", "1 m a 2 m", "e"),
+        (Locale::Es, "x en un recuadro", "1 m a 2 m", "y"),
+        (Locale::Fr, "x encadré", "1 m à 2 m", "et"),
+        (Locale::De, "x eingerahmt", "1 m bis 2 m", "und"),
+    ] {
+        assert_eq!(speech(r"\boxed{x}", loc), boxed, "{loc}");
+        assert_eq!(speech(r"\fbox{x}", loc), boxed, "{loc}");
+        assert_eq!(speech(r"\SIrange{1}{2}{\meter}", loc), range, "{loc}");
+        assert!(speech(r"\numlist{1;2;3}", loc).ends_with(&format!("2 {list} 3")), "{loc}: {}", speech(r"\numlist{1;2;3}", loc));
+    }
+    // a colored background is emphasis, like a color: only the content is read
+    assert_eq!(speech(r"\colorbox{yellow}{x}", Locale::En), "x");
+    assert_eq!(speech(r"\fcolorbox{red}{yellow}{x}", Locale::En), "boxed x");
+    // the circle keeps its own phrase
+    assert_eq!(speech(r"\textcircled{1}", Locale::En), "circled 1");
+}
+
+#[test]
+fn physics_nabla_angles_and_integrals() {
+    assert_eq!(speech(r"\grad f", Locale::PtBr), speech(r"\nabla f", Locale::PtBr));
+    assert_eq!(speech(r"\ang{1;2;3}", Locale::En), "1 degrees 2 prime 3 double prime");
+    assert_eq!(speech(r"\iiiint f", Locale::En), "integral f");
+    assert_eq!(text(r"\overbracket{a}^{n}", Locale::En), "a [n]");
+}

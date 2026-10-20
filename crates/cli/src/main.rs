@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 use std::{env, fs, io};
 
-use mathra::{convert, Locale, Options};
+use mathra::{convert, BrailleCode, Input, Locale, Options};
 
 const HELP: &str = "\
 mathra — equations to SVG, no TeX install
@@ -14,12 +14,17 @@ OPTIONS
   -o, --output <file>     write the SVG to a file instead of printing it
   -l, --locale <code>     en (default), pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar,
                           id, tr, nl or pl; a region is accepted (es-MX, zh-CN)
+  -f, --from <format>     latex (default), mathml or asciimath; MathML pasted as
+                          LaTeX (starting with <math) is recognized on its own
       --inline            inline style, as in $…$; the default is display style
       --strict            refuse invalid LaTeX, like TeX (the default recovers and warns)
       --explain           show the tree, the speech and the rules applied
       --tree              print only the tree of meaning as JSON
       --speech            print only the screen reader phrase
       --text              print only the linear text
+      --braille           print only the braille (Unicode cells)
+      --braille-code <c>  cmu or nemeth; the default follows the locale
+                          (CMU in pt-BR and es, Nemeth elsewhere)
       --batch             read one equation per input line; with --output <folder>,
                           write 1.svg, 2.svg…; print ok, warning<TAB>… or error<TAB>… per line
   -V, --version           show the version
@@ -30,6 +35,9 @@ EXAMPLES
   mathra '3,14' --locale pt-BR --explain
   mathra '\\frac{3}{4}' --locale fr --speech
   mathra '\\sin^2 x' --speech
+  mathra 'sum_(i=1)^n i^2' --from asciimath
+  mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech
+  mathra '\\frac{3}{4}' --locale pt-BR --braille
 ";
 
 enum Mode {
@@ -39,6 +47,7 @@ enum Mode {
     Tree,
     Speech,
     Text,
+    Braille,
 }
 
 struct Args {
@@ -47,11 +56,13 @@ struct Args {
     locale: Locale,
     display: bool,
     strict: bool,
+    input: Input,
+    braille: Option<BrailleCode>,
     mode: Mode,
 }
 
 fn read_args() -> Result<Option<Args>, String> {
-    let mut args = Args { tex: None, output: None, locale: Locale::default(), display: true, strict: false, mode: Mode::Svg };
+    let mut args = Args { tex: None, output: None, locale: Locale::default(), display: true, strict: false, input: Input::Latex, braille: None, mode: Mode::Svg };
     let mut it = env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -65,12 +76,15 @@ fn read_args() -> Result<Option<Args>, String> {
             }
             "-o" | "--output" => args.output = Some(it.next().ok_or("missing file after --output")?),
             "-l" | "--locale" => args.locale = it.next().ok_or("missing code after --locale")?.parse()?,
+            "-f" | "--from" => args.input = it.next().ok_or("missing format after --from")?.parse()?,
             "--explain" => args.mode = Mode::Explain,
             "--inline" => args.display = false,
             "--strict" => args.strict = true,
             "--tree" => args.mode = Mode::Tree,
             "--speech" => args.mode = Mode::Speech,
             "--text" => args.mode = Mode::Text,
+            "--braille" => args.mode = Mode::Braille,
+            "--braille-code" => args.braille = Some(it.next().ok_or("missing code after --braille-code")?.parse()?),
             "--batch" => args.mode = Mode::Batch,
             option if option.starts_with("--") => return Err(format!("unknown option: {option} (see mathra --help)")),
             _ if args.tex.is_none() => args.tex = Some(a),
@@ -105,7 +119,7 @@ fn main() -> ExitCode {
         },
     };
 
-    let result = match convert(&tex, &Options { locale: args.locale, display: args.display, strict: args.strict }) {
+    let result = match convert(&tex, &Options { locale: args.locale, display: args.display, strict: args.strict, input: args.input, braille: args.braille }) {
         Ok(r) => {
             if !matches!(args.mode, Mode::Explain) {
                 for a in &r.warnings {
@@ -124,9 +138,18 @@ fn main() -> ExitCode {
         Mode::Svg | Mode::Batch => result.svg,
         Mode::Tree => result.tree.to_json(),
         Mode::Speech => result.speech,
+        Mode::Braille => result.braille,
         Mode::Text => result.text,
         Mode::Explain => {
-            let mut s = format!("input    {tex}\nlocale   {}\ntext     {}\nspeech   {}\ntree     {}\n", args.locale, result.text, result.speech, result.tree.to_json());
+            let mut s = format!(
+                "input    {tex}\nlocale   {}\ntext     {}\nspeech   {}\nbraille  {} ({})\ntree     {}\n",
+                args.locale,
+                result.text,
+                result.speech,
+                result.braille,
+                result.braille_code,
+                result.tree.to_json()
+            );
             if result.applied.is_empty() {
                 s.push_str("rules    no rule changed the result\n");
             } else {
@@ -160,7 +183,7 @@ fn main() -> ExitCode {
 
 fn batch(args: &Args) -> ExitCode {
     use std::io::{BufRead, Write};
-    let options = Options { locale: args.locale, display: args.display, strict: args.strict };
+    let options = Options { locale: args.locale, display: args.display, strict: args.strict, input: args.input, braille: args.braille };
     let mut output = io::BufWriter::new(io::stdout().lock());
     for (i, line) in io::stdin().lock().split(b'\n').enumerate() {
         let Ok(bytes) = line else { break };

@@ -138,13 +138,16 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         Node::Table { shape: kind, rows, .. } => {
             let cell = |c: &Node| linear(c, loc);
             match kind {
-                TableKind::Aligned | TableKind::Centered | TableKind::Cases | TableKind::Array | TableKind::Substack | TableKind::Diagram => {
+                TableKind::Aligned | TableKind::Centered | TableKind::Cases | TableKind::RCases | TableKind::Array | TableKind::Substack | TableKind::Diagram => {
                     let join_rows = if *kind == TableKind::Aligned { " " } else { ", " };
                     let l: Vec<String> = rows.iter().map(|l| l.iter().map(cell).collect::<Vec<_>>().join(join_rows)).collect();
                     if *kind == TableKind::Cases {
                         s.push('{');
                     }
                     s.push_str(&l.join("; "));
+                    if *kind == TableKind::RCases {
+                        s.push('}');
+                    }
                 }
                 _ => {
                     let l: Vec<String> = rows.iter().map(|l| format!("[{}]", l.iter().map(cell).collect::<Vec<_>>().join(", "))).collect();
@@ -182,7 +185,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         Node::Text { parts } => {
             for p in parts {
                 match p {
-                    TextPart::Text(t) => s.push_str(&t.replace(['\u{E000}', '\u{E001}'], "")),
+                    TextPart::Text(t) => s.push_str(&t.replace(['\u{E000}', '\u{E001}', '\u{E002}', '\u{E003}'], "")),
                     TextPart::Math(m) => write_node(m, loc, s),
                 }
             }
@@ -194,7 +197,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         }
         Node::Phantom { .. } => {}
         Node::Canceled { base, .. } | Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } => write_node(base, loc, s),
-        Node::Framed { base, shape } => {
+        Node::Framed { base, shape, .. } => {
             if *shape == Frame::Circle {
                 s.push('(');
                 write_node(base, loc, s);

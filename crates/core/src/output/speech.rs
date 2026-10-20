@@ -165,7 +165,7 @@ impl Speaker {
             Node::Text { parts } => {
                 for p in parts {
                     match p {
-                        TextPart::Text(t) => self.say(t.replace(['\u{E000}', '\u{E001}'], "").trim().to_string()),
+                        TextPart::Text(t) => self.say(t.replace(['\u{E000}', '\u{E001}', '\u{E002}', '\u{E003}'], "").trim().to_string()),
                         TextPart::Math(m) => self.node(m),
                     }
                 }
@@ -175,11 +175,13 @@ impl Speaker {
                 let b = self.spoken(base);
                 self.say(self.t("canceled", &[&b]));
             }
-            Node::Framed { base, shape } => {
+            Node::Framed { base, shape, .. } => {
                 let b = self.spoken(base);
                 match shape {
                     Frame::Circle => self.say(self.t("circled", &[&b])),
-                    Frame::Rectangle => self.say(b),
+                    Frame::Rectangle => self.say(self.t("boxed", &[&b])),
+                    // a background is emphasis, like color: it is not read
+                    Frame::Fill => self.say(b),
                 }
             }
             Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } => self.node(base),
@@ -330,7 +332,7 @@ impl Speaker {
                 format!("{}: {}", self.t("matrix", &[&rows.len().to_string(), &ncol.to_string()]), body("row"))
             }
             VMatrix => format!("{}: {}", self.t("determinant", &[]), body("row")),
-            Cases => format!("{}: {}", self.t("cases", &[]), body("case")),
+            Cases | RCases => format!("{}: {}", self.t("cases", &[]), body("case")),
             Array | Substack => spoken_rows.join("; "),
             Diagram => format!("{}: {}", self.t("diagram", &[]), body("row")),
             Aligned | Centered => spoken_rows.join("; "),
@@ -400,6 +402,8 @@ fn divide(a: &str, b: &str) -> (String, String) {
 fn large_operator(c: char, loc: Locale) -> String {
     let key = match c {
         '∑' | '∏' | '∫' | '∬' | '∭' | '∮' | '⋃' | '⋂' => format!("big.{c}"),
+        // the other integrals are read as an integral
+        c if crate::layout::is_integral(c) => "big.∫".into(),
         _ => "big.other".into(),
     };
     loc.phrase(&key).to_string()
@@ -444,6 +448,9 @@ fn operator(symbol: char, class: Class, loc: Locale) -> String {
         '⟺' => "op.⇔".to_string(),
         '∣' => "op.|".to_string(),
         '⋯' => "op.…".to_string(),
+        '″' => "double_prime".to_string(),
+        // physics' bold nabla is read as the nabla
+        '𝛁' => "op.∇".to_string(),
         other => format!("op.{other}"),
     };
     loc.optional(&key).map_or_else(|| symbol.to_string(), str::to_string)
