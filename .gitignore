@@ -7,4 +7,4 @@ __pycache__/
 /crates/wasm/pkg
 *.profraw
 /site/pkg
-**/.DS_Store.DS_Store
+**/.DS_Store
