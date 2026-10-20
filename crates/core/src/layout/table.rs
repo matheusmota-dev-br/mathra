@@ -48,7 +48,7 @@ pub fn compose(
     let alignment = |j: usize| -> char {
         match kind {
             Array => columns.get(j).copied().unwrap_or('c'),
-            Cases => 'l',
+            Cases | RCases => 'l',
             Aligned => {
                 if j.is_multiple_of(2) {
                     'r'
@@ -114,7 +114,7 @@ pub fn compose(
     // space between columns, per boundary (0 = before the first, ncol = after the last)
     let half_sep = match kind {
         Array => em(e, 0.5),
-        Cases => em(e, 0.5),
+        Cases | RCases => em(e, 0.5),
         Aligned => 0.0,
         SmallMatrix => em(e, 0.2),
         Substack => 0.0,
@@ -308,10 +308,19 @@ pub fn compose(
         VMatrix => ('|', Some('|')),
         VVMatrix => ('‖', Some('‖')),
         Cases => ('{', None),
+        RCases => ('}', None),
         _ => return Ok(body),
     };
     let half = (body.height - axis).max(body.depth + axis);
     let target = (2.0 * half * 0.901).max(2.0 * half - em(e, 0.5));
+    if kind == RCases {
+        // the mirror of cases: content, a little space, the brace on the right
+        let mut math_box = MathBox::space(em(e, 0.12));
+        math_box.append(&body);
+        math_box.append(&MathBox::space(em(e, 0.17)));
+        math_box.append(&stretch::delimiter(open, target, e)?);
+        return Ok(math_box);
+    }
     let mut math_box = stretch::delimiter(open, target, e)?;
     if kind == Cases {
         math_box.append(&MathBox::space(em(e, 0.17)));

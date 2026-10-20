@@ -10,9 +10,12 @@ pub const L_ESP_1: &str = "L-ESP-1";
 pub const L_ESP_2: &str = "L-ESP-2";
 pub const L_INT_1: &str = "L-INT-1";
 pub const L_UNI_1: &str = "L-UNI-1";
+pub const L_UNI_2: &str = "L-UNI-2";
+pub const L_CHE_1: &str = "L-CHE-1";
 pub const L_ENT_1: &str = "L-ENT-1";
 pub const L_ENT_2: &str = "L-ENT-2";
 pub const L_ENT_3: &str = "L-ENT-3";
+pub const L_ENT_4: &str = "L-ENT-4";
 pub const L_MAC_1: &str = "L-MAC-1";
 pub const L_TXT_1: &str = "L-TXT-1";
 
@@ -26,6 +29,9 @@ pub const E_REC_6: &str = "E-REC-6";
 pub const E_REC_7: &str = "E-REC-7";
 pub const E_REC_8: &str = "E-REC-8";
 pub const E_REC_9: &str = "E-REC-9";
+pub const E_REC_10: &str = "E-REC-10";
+// Output in braille (spec/braille.md)
+pub const S_BRL_1: &str = "S-BRL-1";
 pub const L_CONTA_1: &str = "L-CONTA-1";
 pub const L_CONTA_2: &str = "L-CONTA-2";
 

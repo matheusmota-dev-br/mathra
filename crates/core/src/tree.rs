@@ -102,23 +102,27 @@ pub enum Node {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         intertexts: Vec<usize>,
     },
-    /// Accent over the base: hat, bar, vector, tilde, dot.
+    /// Accent over the base: hat, bar, vector, tilde, dot. `below`: under the base (`\underrightarrow`).
     Accent {
         base: Box<Node>,
         accent: char,
         stretchy: bool,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        below: bool,
     },
     /// `\overline`, `\underline`.
     Bar {
         base: Box<Node>,
         above: bool,
     },
-    /// `\overbrace`, `\underbrace`, with an optional label.
+    /// `\overbrace`, `\underbrace`, with an optional label. `bracket`: square (`\overbracket`).
     Brace {
         base: Box<Node>,
         above: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         label: Option<Box<Node>>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        bracket: bool,
     },
     /// Running text inside the equation, with math snippets (`\text{if $x>0$}`).
     Text {
@@ -136,6 +140,12 @@ pub enum Node {
         base: Box<Node>,
         #[serde(skip_serializing_if = "Frame::is_default")]
         shape: Frame,
+        /// `\colorbox`, `\fcolorbox`: filled behind the content.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        background: Option<String>,
+        /// `\fcolorbox`: color of the frame line.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        border: Option<String>,
     },
     /// Arrow that stretches to fit its text: `\xrightarrow[below]{above}`.
     Arrow {
@@ -311,6 +321,8 @@ pub enum Frame {
     #[default]
     Rectangle,
     Circle,
+    /// No line, only the padding (and the background, if any): `\colorbox`.
+    Fill,
 }
 
 impl Frame {
@@ -330,6 +342,8 @@ pub enum TableKind {
     VVMatrix,
     SmallMatrix,
     Cases,
+    /// mathtools `rcases`: the brace on the right.
+    RCases,
     Aligned,
     Centered,
     Array,

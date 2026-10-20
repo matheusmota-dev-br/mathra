@@ -107,3 +107,152 @@ fn boundary_tex_programming_and_diagrams_stay_out() {
         assert!(error(tex).contains(reason), "{tex}");
     }
 }
+
+fn en(tex: &str) -> mathra::Output {
+    let r = convert(tex, &Options { strict: true, ..Default::default() }).unwrap_or_else(|e| panic!("{tex}: {e}"));
+    let tolerant = convert(tex, &Options::default()).unwrap();
+    assert!(tolerant.warnings.is_empty(), "{tex}: {:?}", tolerant.warnings);
+    r
+}
+
+#[test]
+fn physics_brackets_of_quantum_mechanics() {
+    assert_eq!(en(r"\expval{A}").text, "⟨A⟩");
+    assert_eq!(en(r"\expval{A}{\psi}").text, "⟨ψ | A | ψ⟩");
+    assert_eq!(en(r"\ev{H}").text, "⟨H⟩");
+    assert_eq!(en(r"\mel{n}{H}{m}").text, "⟨n | H | m⟩");
+    assert_eq!(en(r"\braket{a}{b}").text, "⟨a | b⟩");
+    assert_eq!(en(r"\innerproduct{a}{b}").text, "⟨a | b⟩");
+    assert_eq!(en(r"\ketbra{a}{b}").text, "|a⟩⟨b|");
+    assert_eq!(en(r"\dyad{a}").text, "|a⟩⟨a|");
+    assert_eq!(en(r"\comm{A}{B}").text, "[A, B]");
+    assert_eq!(en(r"\acomm{A}{B}").text, "{A, B}");
+    assert_eq!(en(r"\pb{f}{g}").text, "{f, g}");
+    // the brackets are \left…\right: they grow with the content
+    assert!(matches!(en(r"\comm{\frac{a}{b}}{B}").tree.children()[0], Node::Delimited { open: Some('['), close: Some(']'), .. }));
+}
+
+#[test]
+fn physics_vector_calculus() {
+    assert_eq!(en(r"\grad f").text, "𝛁f");
+    assert_eq!(en(r"\grad f").speech, "nabla f");
+    assert_eq!(en(r"\divergence \vb{E}").text, "𝛁 · 𝐄");
+    assert_eq!(en(r"\curl \vb{B}").text, "𝛁 × 𝐁");
+    assert_eq!(en(r"\laplacian \phi").text, "∇^2ϕ");
+    assert_eq!(en(r"\vb{x}").text, "𝐱");
+    assert_eq!(en(r"\vb*{r}").text, "𝒓");
+    assert_eq!(en(r"\vu{x}").speech, "x hat");
+    assert_eq!(en(r"\vu*{r}").speech, "r hat");
+    assert_eq!(en(r"\va{F}").speech, "vector F");
+    assert_eq!(en(r"\vb{a} \cross \vb{b} + \vb{a} \vdot \vb{b}").text, "𝐚 × 𝐛 + 𝐚 · 𝐛");
+    // \div keeps the school's ÷: physics' divergence is \divergence
+    assert_eq!(en(r"6 \div 3").text, "6 ÷ 3");
+}
+
+#[test]
+fn physics_derivatives_differentials_and_evaluation() {
+    assert_eq!(en(r"\fdv{F}{\phi}").text, "(δF)/(δϕ)");
+    assert_eq!(en(r"\fdv{\phi}").text, "δ/(δϕ)");
+    assert_eq!(en(r"\int f \dd x").speech, "integral f d x");
+    assert_eq!(en(r"\dd[3]{x}").text, "d^3x");
+    assert_eq!(en(r"\dd{x}").text, "dx");
+    let r = en(r"\eval{x^2}_0^1");
+    let Node::Scripts { base, .. } = &r.tree.children()[0] else { panic!("{:?}", r.tree) };
+    assert!(matches!(**base, Node::Delimited { open: None, close: Some('|'), .. }), "{base:?}");
+    assert!(matches!(en(r"\eval(x^2)|_0^1").tree.children()[0], Node::Scripts { .. }));
+}
+
+#[test]
+fn physics_operators_and_order() {
+    assert_eq!(en(r"\Tr\rho").text, "Tr ρ");
+    assert_eq!(en(r"\tr A").text, "tr A");
+    assert_eq!(en(r"\rank M").text, "rank M");
+    assert_eq!(en(r"\erf x").text, "erf x");
+    assert_eq!(en(r"\Res f").text, "Res f");
+    assert!(matches!(en(r"\Tr\rho").tree.children()[0], Node::Function { .. }));
+    assert_eq!(en(r"\order{n^2}").text, "𝒪(n^2)");
+    assert_eq!(en(r"\order(n)").text, "𝒪(n)");
+}
+
+/// physics' \qty sizes brackets; siunitx's \qty{value}{unit} is a quantity. Two braced groups decide.
+#[test]
+fn qty_of_physics_and_of_siunitx() {
+    assert_eq!(en(r"\qty(\frac{a}{b})").text, "(a/b)");
+    assert_eq!(en(r"\qty[x]").text, "[x]");
+    assert_eq!(en(r"\qty|x|").text, "|x|");
+    assert_eq!(en(r"\qty{x}").text, "{x}");
+    assert!(matches!(en(r"\qty(x)").tree.children()[0], Node::Delimited { open: Some('('), .. }));
+    assert!(matches!(en(r"\qty{3}{m}").tree.children()[0], Node::Quantity { .. }));
+    assert!(matches!(en(r"\qty {3} {m}").tree.children()[0], Node::Quantity { .. }));
+    assert_eq!(en(r"\pqty{x} \bqty{y} \vqty{z} \Bqty{w}").text, "(x)[y]|z|{w}");
+}
+
+#[test]
+fn siunitx_ranges_lists_and_products() {
+    let r = en(r"\SIrange{1}{10}{\kilo\gram}");
+    assert_eq!(r.text, "1 kg – 10 kg");
+    assert_eq!(r.speech, "1 kg to 10 kg");
+    assert_eq!(en(r"\qtyrange{1}{10}{m}").text, "1 m – 10 m");
+    assert_eq!(en(r"\numrange{1}{10}").text, "1 – 10");
+    assert_eq!(en(r"\numlist{1;2;3}").text, "1, 2 and 3");
+    assert_eq!(en(r"\numlist{1;2}").text, "1 and 2");
+    assert_eq!(en(r"\SIlist{1;2;3}{\metre}").text, "1 m, 2 m and 3 m");
+    assert_eq!(en(r"\qtylist{1;2}{m}").text, "1 m and 2 m");
+    assert_eq!(en(r"\numproduct{2 x 3}").text, "2 × 3");
+    assert_eq!(en(r"\qtyproduct{2 x 3}{m}").text, "2 m × 3 m");
+    assert_eq!(en(r"\angrange{10}{20}").text, "10° – 20°");
+    // the list word and the range word follow the locale
+    assert_eq!(pt(r"\numlist{1;2;3}").text, "1, 2 e 3");
+    assert_eq!(pt(r"\SIrange{1,5}{2,5}{\meter}").speech, "1,5 m a 2,5 m");
+}
+
+#[test]
+fn siunitx_angles_units_prefixes_and_options() {
+    assert_eq!(en(r"\ang{12;30;15}").text, "12°30′15″");
+    assert_eq!(en(r"\ang{;;15}").text, "15″");
+    assert_eq!(en(r"\ang{1;2;}").text, "1°2′");
+    assert_eq!(en(r"\SI{1}{\angstrom}").text, "1 Å");
+    for (unit, symbol) in [
+        ("radian", "rad"),
+        ("steradian", "sr"),
+        ("becquerel", "Bq"),
+        ("gray", "Gy"),
+        ("sievert", "Sv"),
+        ("lumen", "lm"),
+        ("lux", "lx"),
+        ("katal", "kat"),
+        ("dalton", "Da"),
+        ("astronomicalunit", "au"),
+        ("bel", "B"),
+        ("neper", "Np"),
+        ("barn", "b"),
+        ("knot", "kn"),
+        ("byte", "B"),
+        ("torr", "Torr"),
+    ] {
+        assert_eq!(en(&format!(r"\si{{\{unit}}}")).text, symbol, "{unit}");
+    }
+    for (prefix, symbol) in [("yotta", "Y"), ("zetta", "Z"), ("exa", "E"), ("peta", "P"), ("atto", "a"), ("zepto", "z"), ("yocto", "y")] {
+        assert_eq!(en(&format!(r"\si{{\{prefix}\meter}}")).text, format!("{symbol}m"), "{prefix}");
+    }
+    // siunitx options in brackets come before the arguments and are ignored
+    assert_eq!(en(r"\SI[mode=text]{3}{\meter}").text, "3 m");
+    assert_eq!(en(r"\num[group-digits=false]{12345}").text, "12345");
+    assert_eq!(en(r"\si[per-mode=symbol]{\meter\per\second}").text, "m/s");
+}
+
+#[test]
+fn tensor_indices_and_prescripts() {
+    // each change of side starts a new empty base, so the indices stagger
+    let r = en(r"\tensor{T}{^\mu_\nu^\rho}");
+    assert_eq!(r.text, "T^μ_ν^ρ");
+    let Node::Scripts { base, sup: Some(_), sub: None } = &r.tree.children()[0] else { panic!("{:?}", r.tree) };
+    assert_eq!(base.clone().simplify(), Node::Identifier { name: "T".into(), variant: mathra::tree::Variant::Italic });
+    assert!(matches!(&r.tree.children()[1], Node::Scripts { base, sub: Some(_), sup: None } if **base == Node::row(vec![])));
+    // indices on the same side stay together
+    assert_eq!(en(r"\tensor{R}{^a^b_c}").text, "R^(ab)_c");
+    assert_eq!(en(r"\tensor[^a_b]{T}{_c}").text, "^a_bT_c");
+    assert_eq!(en(r"g\indices{_\mu_\nu}").text, "g_(μν)");
+    assert_eq!(en(r"\prescript{14}{6}{\mathrm{C}}").text, "_6^14C");
+    assert_eq!(en(r"\prescript{14}{6}{\mathrm{C}}").tree, en(r"{}^{14}_{6}{\mathrm{C}}").tree);
+}

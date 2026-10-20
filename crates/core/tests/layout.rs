@@ -426,9 +426,9 @@ fn simple_stretchy_and_combining_accents() {
         assert!(c.height > math_box("x").height, "{tex}: the accent goes above");
     }
     // an accent without an accent attachment in the font: center of the drawing
-    let node = Node::Accent { base: Box::new(ident("x")), accent: '→', stretchy: false };
+    let node = Node::Accent { base: Box::new(ident("x")), accent: '→', stretchy: false, below: false };
     consistent(&compose_node(&node, Style::display(), true).unwrap(), "arrow as an accent");
-    let node = Node::Accent { base: Box::new(ident("x")), accent: '\u{0302}', stretchy: false };
+    let node = Node::Accent { base: Box::new(ident("x")), accent: '\u{0302}', stretchy: false, below: false };
     consistent(&compose_node(&node, Style::display(), true).unwrap(), "combinante");
 }
 
@@ -529,6 +529,63 @@ fn cancels_and_frames() {
     assert_eq!(bars(&boxed), 4);
     let circ = math_box(r"\textcircled{1}");
     assert!(circ.items.iter().any(|i| matches!(i, Item::Ellipse { .. })));
+}
+
+#[test]
+fn colored_boxes_and_colored_frames() {
+    let x = math_box("x");
+    // \colorbox: a filled rectangle behind the text, which keeps the page color
+    let c = math_box(r"\colorbox{yellow}{x}");
+    assert!(c.width > x.width && c.height > x.height);
+    let Item::Rule { width, height, color: Some(color), .. } = &c.items[0] else { panic!("{:?}", c.items) };
+    assert_eq!(color, "yellow");
+    assert!(*width >= c.width - 0.01 && *height >= total(&c) - 0.01, "the background covers the whole box");
+    assert!(c.items.iter().any(|i| matches!(i, Item::Glyph { color: None, .. })), "the text is not painted");
+    assert_eq!(bars(&c), 1, "no frame lines");
+    // \fcolorbox: the same background, and four lines in the frame color
+    let f = math_box(r"\fcolorbox{red}{yellow}{x}");
+    assert!(matches!(&f.items[0], Item::Rule { color: Some(c), .. } if c == "yellow"));
+    let red = f.items.iter().filter(|i| matches!(i, Item::Rule { color: Some(c), .. } if c == "red")).count();
+    assert_eq!(red, 4);
+    assert!(svg(r"\fcolorbox{red}{yellow}{x}").contains(r#"fill="yellow""#));
+}
+
+#[test]
+fn rcases_brace_is_after_the_content() {
+    let r = math_box(r"\begin{rcases} a \\ b \end{rcases}");
+    let l = math_box(r"\begin{cases} a \\ b \end{cases}");
+    assert!((r.width - l.width).abs() < l.width * 0.2, "same parts, mirrored");
+    // the brace is the rightmost glyph
+    let x_of = |c: &MathBox| -> Vec<f32> { c.items.iter().filter_map(|i| if let Item::Glyph { x, .. } = i { Some(*x) } else { None }).collect() };
+    let rx = x_of(&r);
+    let lx = x_of(&l);
+    assert_eq!(rx.iter().cloned().fold(f32::MIN, f32::max), *rx.last().unwrap());
+    assert_eq!(lx.iter().cloned().fold(f32::MAX, f32::min), lx[0]);
+}
+
+#[test]
+fn bracket_above_and_arrow_below() {
+    let base = math_box("abc");
+    let over = math_box(r"\overbracket{abc}");
+    let under = math_box(r"\underbracket{abc}");
+    assert!(over.height > base.height && over.depth == base.depth);
+    assert!(under.depth > base.depth && under.height == base.height);
+    // a bracket is drawn with another glyph than the brace
+    assert_ne!(svg(r"\overbracket{abc}"), svg(r"\overbrace{abc}"));
+    let ab = math_box("AB");
+    let arrow = math_box(r"\underrightarrow{AB}");
+    assert!(arrow.depth > ab.depth && (arrow.height - ab.height).abs() < 0.01, "the arrow goes below");
+    assert!(arrow.width >= ab.width);
+    consistent(&math_box(r"\underleftarrow{\text{a long base}}"), "long arrow below");
+}
+
+#[test]
+fn small_capitals_are_capitals_at_x_height() {
+    let big = math_box(r"\text{S}");
+    let small = math_box(r"\textsc{s}");
+    let lower = math_box(r"\text{s}");
+    assert!(small.height < big.height && small.height > lower.height * 0.9, "{} {} {}", small.height, big.height, lower.height);
+    assert_ne!(svg(r"\textsc{s}"), svg(r"\text{s}"));
 }
 
 #[test]

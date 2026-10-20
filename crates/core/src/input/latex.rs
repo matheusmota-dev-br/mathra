@@ -57,6 +57,9 @@ const MAX_COLUMNS: usize = 1000;
 /// Bold markers inside the text of `\text{…}` (Unicode private use area).
 pub const BOLD_START: char = '\u{E000}';
 pub const BOLD_END: char = '\u{E001}';
+/// Small capitals markers (`\textsc{…}`).
+pub const SMALL_CAPS_START: char = '\u{E002}';
+pub const SMALL_CAPS_END: char = '\u{E003}';
 
 /// L-ENT-1 and L-ENT-2: HTML entities and outer delimiters that arrive with the equation.
 fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
@@ -560,8 +563,8 @@ impl Reader<'_> {
                 if self.current() == Some(mark) {
                     self.pos += 1;
                     let label = self.argument()?;
-                    if let Node::Brace { base, above, .. } = previous {
-                        items.push(Node::Brace { base, above, label: Some(Box::new(label)) });
+                    if let Node::Brace { base, above, bracket, .. } = previous {
+                        items.push(Node::Brace { base, above, label: Some(Box::new(label)), bracket });
                     }
                     return Ok(());
                 }
@@ -884,11 +887,23 @@ impl Reader<'_> {
             "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textit" | "textbf" | "textsf" | "texttt" | "emph" | "textmd" | "textsl" | "fbox" | "framebox" => {
                 let text = self.text()?;
                 if matches!(name, "fbox" | "framebox") {
-                    Node::Framed { base: Box::new(text), shape: Frame::Rectangle }
+                    Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None }
                 } else {
                     text
                 }
             }
+            "textsc" => match self.text()? {
+                Node::Text { parts } => Node::Text {
+                    parts: parts
+                        .into_iter()
+                        .map(|p| match p {
+                            TextPart::Text(t) => TextPart::Text(format!("{SMALL_CAPS_START}{t}{SMALL_CAPS_END}")),
+                            math => math,
+                        })
+                        .collect(),
+                },
+                other => other,
+            },
             "mathrm" | "mathup" | "mathit" | "mathbf" | "mathsf" | "mathtt" | "mathbb" | "mathcal" | "mathscr" | "mathfrak" | "boldsymbol" | "bm" | "pmb" | "mathbfit"
             | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
                 let variant = match name {
@@ -935,7 +950,21 @@ impl Reader<'_> {
         let node: Node = match name {
             // accents, bars, braces
             "overline" | "underline" => Node::Bar { base: Box::new(self.argument()?), above: name == "overline" },
-            "overbrace" | "underbrace" => Node::Brace { base: Box::new(self.argument()?), above: name == "overbrace", label: None },
+            "overbrace" | "underbrace" => Node::Brace { base: Box::new(self.argument()?), above: name == "overbrace", label: None, bracket: false },
+            "overbracket" | "underbracket" => {
+                // mathtools: [rule thickness][bracket height], which the font's bracket already has
+                self.raw_optional();
+                self.raw_optional();
+                Node::Brace { base: Box::new(self.argument()?), above: name == "overbracket", label: None, bracket: true }
+            }
+            "underrightarrow" | "underleftarrow" | "underleftrightarrow" => {
+                let accent = match name {
+                    "underrightarrow" => '→',
+                    "underleftarrow" => '←',
+                    _ => '↔',
+                };
+                Node::Accent { base: Box::new(self.argument()?), accent, stretchy: true, below: true }
+            }
             "overset" | "stackrel" => {
                 let above = self.argument()?;
                 let base = self.base_with_class()?;
@@ -983,16 +1012,26 @@ impl Reader<'_> {
                 let base = self.argument()?;
                 Node::Scripts { base: Box::new(Node::Canceled { base: Box::new(base), shape: Cancel::Bar }), sup: Some(Box::new(value)), sub: None }
             }
-            "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle },
-            "textcircled" | "circled" | "circledcirc" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle },
+            "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle, background: None, border: None },
+            "textcircled" | "circled" | "circledcirc" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None },
             "phantom" | "hphantom" | "vphantom" => Node::Phantom { base: Box::new(self.argument()?), width: name != "vphantom", height: name != "hphantom" },
-            "textcolor" | "colorbox" => {
+            "textcolor" => {
                 let color = self.color()?;
-                let base = if name == "colorbox" { self.text()? } else { self.argument()? };
+                let base = self.argument()?;
                 match color {
                     Some(color) => Node::Colored { color, base: Box::new(base) },
                     None => base,
                 }
+            }
+            // the color is the background, not the content's: the text keeps the page color
+            "colorbox" => {
+                let background = self.color()?;
+                Node::Framed { base: Box::new(self.text()?), shape: Frame::Fill, background, border: None }
+            }
+            "fcolorbox" => {
+                let border = self.color()?;
+                let background = self.color()?;
+                Node::Framed { base: Box::new(self.text()?), shape: Frame::Rectangle, background, border }
             }
             // \centernot (centernot package) is drawn like \not
             "not" | "centernot" => {
@@ -1041,29 +1080,88 @@ impl Reader<'_> {
     fn unit_command(&mut self, name: &str, col: usize, start: usize, star: bool, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
         let _ = (col, start, star);
         let node: Node = match name {
-            // units, chemistry, arithmetic
+            // units, chemistry, arithmetic. siunitx options ([…]) come before the arguments and are ignored
             "SI" | "qty" => {
+                self.raw_optional();
                 let value = self.raw_text()?;
                 let unit = self.raw_text()?;
                 self.quantity(Some(value), &unit, col)?
             }
             "si" | "unit" => {
+                self.raw_optional();
                 let unit = self.raw_text()?;
                 self.quantity(None, &unit, col)?
             }
             "num" => {
+                self.raw_optional();
                 let value = self.raw_text()?;
                 self.raw_optional();
-                siunitx_number(&value, true).ok_or(Error::Syntax { column: col, message: format!("\\num{{{value}}} is not a number") })?
+                self.number_value(&value, col)?
             }
             "ang" => {
+                self.raw_optional();
                 let value = self.raw_text()?;
-                let n = siunitx_number(&value, false).ok_or(Error::Syntax { column: col, message: format!("\\ang{{{value}}} is not a number") })?;
-                Node::row(vec![n, Node::Operator { symbol: '°', class: Class::Ord }])
+                self.angle(&value, col)?
             }
-            "ce" | "pu" => {
+            // L-UNI-2: ranges, lists and products repeat the unit on every value, as siunitx does by default
+            "SIrange" | "qtyrange" | "numrange" | "angrange" => {
+                self.raw_optional();
+                let a = self.raw_text()?;
+                let b = self.raw_text()?;
+                let unit = if matches!(name, "SIrange" | "qtyrange") { Some(self.raw_text()?) } else { None };
+                let a = self.listed_value(name, &a, unit.as_deref(), col)?;
+                let b = self.listed_value(name, &b, unit.as_deref(), col)?;
+                self.registry.note(rules::L_UNI_2, format!("\\{name}: range written with an en dash"));
+                Node::row(vec![a, Node::Operator { symbol: '–', class: Class::Rel }, b])
+            }
+            "SIlist" | "qtylist" | "numlist" | "anglist" => {
+                self.raw_optional();
+                let values = self.raw_text()?;
+                let unit = if matches!(name, "SIlist" | "qtylist") { Some(self.raw_text()?) } else { None };
+                let values: Vec<&str> = values.split(';').map(str::trim).filter(|v| !v.is_empty()).collect();
+                // the last separator is the language's "and", when the embedded font can write it (it has
+                // no CJK, Devanagari or Arabic letters); otherwise a comma, like the others
+                let and = Some(self.locale.phrase("list_and")).filter(|w| w.chars().all(|c| crate::font::font().glyph(c).is_some()));
+                let mut children = Vec::new();
+                for (i, v) in values.iter().enumerate() {
+                    match and {
+                        Some(and) if i > 0 && i + 1 == values.len() => children.push(Node::Text { parts: vec![TextPart::Text(format!(" {and} "))] }),
+                        _ if i > 0 => children.push(Node::Operator { symbol: ',', class: Class::Punct }),
+                        _ => {}
+                    }
+                    children.push(self.listed_value(name, v, unit.as_deref(), col)?);
+                }
+                self.registry.note(rules::L_UNI_2, format!("\\{name}: list closed with '{}'", and.unwrap_or(",")));
+                Node::row(children)
+            }
+            "SIproduct" | "qtyproduct" | "numproduct" => {
+                self.raw_optional();
+                let values = self.raw_text()?;
+                let unit = if name == "numproduct" { None } else { Some(self.raw_text()?) };
+                let mut children = Vec::new();
+                for (i, v) in values.split('x').map(str::trim).enumerate() {
+                    if i > 0 {
+                        children.push(Node::Operator { symbol: '×', class: Class::Bin });
+                    }
+                    children.push(self.listed_value(name, v, unit.as_deref(), col)?);
+                }
+                Node::row(children)
+            }
+            "ce" => {
                 let raw = self.raw_text()?;
                 self.chemistry(&raw, col)?
+            }
+            "pu" => {
+                // mhchem's physical units: a number, then the unit with ^ exponents and . or * between units
+                let raw = self.raw_text()?;
+                let raw = raw.trim();
+                let (value, unit) = match raw.split_once(char::is_whitespace) {
+                    Some((v, u)) if siunitx_number(v, false).is_some() => (Some(v.to_string()), u.trim().to_string()),
+                    _ if siunitx_number(raw, false).is_some() => (Some(raw.to_string()), String::new()),
+                    _ => (None, raw.to_string()),
+                };
+                let unit_node = self.sub_reader(&mhchem_unit(&unit), Variant::Upright)?;
+                self.quantity_node(value, unit_node, col)?
             }
             "divchave" => {
                 let dividend = self.raw_text()?.trim().to_string();
@@ -1296,7 +1394,7 @@ impl Reader<'_> {
                     Node::row(children)
                 }
             }
-            "imath" | "jmath" => Node::Identifier { name: if name == "imath" { "ı" } else { "ȷ" }.into(), variant: self.variant },
+            "imath" | "jmath" | "i" | "j" => Node::Identifier { name: if matches!(name, "imath" | "i") { "ı" } else { "ȷ" }.into(), variant: self.variant },
             "lt" => Node::Operator { symbol: '<', class: Class::Rel },
             "gt" => Node::Operator { symbol: '>', class: Class::Rel },
             _ => return Ok(None),
@@ -1318,7 +1416,7 @@ impl Reader<'_> {
             let variant = if symbols::greek_upright(other) && self.variant == Variant::Italic { Variant::Upright } else { self.variant };
             Node::Identifier { name: letter.to_string(), variant }
         } else if let Some((accent, stretchy)) = symbols::accent(other) {
-            Node::Accent { base: Box::new(self.argument()?), accent, stretchy }
+            Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: false }
         } else if let Some(Symbol { symbol, class }) = symbols::command(other) {
             Node::Operator { symbol, class }
         } else {
@@ -1438,6 +1536,7 @@ impl Reader<'_> {
             "Vmatrix" => TableKind::VVMatrix,
             "smallmatrix" => TableKind::SmallMatrix,
             "cases" | "dcases" | "numcases" => TableKind::Cases,
+            "rcases" | "drcases" => TableKind::RCases,
             "aligned" | "align" | "alignat" | "alignedat" | "split" | "eqnarray" | "flalign" | "flalignat" => TableKind::Aligned,
             "gathered" | "gather" | "multline" => TableKind::Centered,
             "array" | "tabular" => TableKind::Array,
@@ -1746,9 +1845,10 @@ impl Reader<'_> {
         let mut parts = Vec::new();
         let mut current = String::new();
         let mut i = 0;
-        // bold: \textbf{…} closes at the group's brace; \bf and \bfseries last until the end of the current group
+        // bold and small capitals: \textbf{…} closes at the group's brace; \bf and \bfseries last until the
+        // end of the current group. Each entry is the group level and the marker that closes it.
         let mut level = 0usize;
-        let mut bold_until: Vec<usize> = Vec::new();
+        let mut open_until: Vec<(usize, char)> = Vec::new();
         while i < c.len() {
             match c[i] {
                 '$' => {
@@ -1775,9 +1875,9 @@ impl Reader<'_> {
                     i += 1;
                 }
                 '}' => {
-                    if bold_until.last() == Some(&level) {
-                        bold_until.pop();
-                        current.push(BOLD_END);
+                    while let Some(&(_, end)) = open_until.last().filter(|(at, _)| *at == level) {
+                        open_until.pop();
+                        current.push(end);
                     }
                     level = level.saturating_sub(1);
                     i += 1;
@@ -1844,11 +1944,19 @@ impl Reader<'_> {
                     match name.as_str() {
                         "textbf" | "mathbf" => {
                             current.push(BOLD_START);
-                            bold_until.push(level + 1);
+                            open_until.push((level + 1, BOLD_END));
                         }
                         "bf" | "bfseries" => {
                             current.push(BOLD_START);
-                            bold_until.push(level);
+                            open_until.push((level, BOLD_END));
+                        }
+                        "textsc" => {
+                            current.push(SMALL_CAPS_START);
+                            open_until.push((level + 1, SMALL_CAPS_END));
+                        }
+                        "sc" | "scshape" => {
+                            current.push(SMALL_CAPS_START);
+                            open_until.push((level, SMALL_CAPS_END));
                         }
                         "textit" | "emph" | "textrm" | "textsf" | "texttt" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "tt" | "em" | "small"
                         | "scriptsize" | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" => {}
@@ -1900,13 +2008,47 @@ impl Reader<'_> {
                 }
             }
         }
-        for _ in bold_until {
-            current.push(BOLD_END);
+        for (_, end) in open_until.into_iter().rev() {
+            current.push(end);
         }
         if !current.is_empty() {
             parts.push(TextPart::Text(current));
         }
         Ok(Node::Text { parts })
+    }
+
+    /// A siunitx number; in tolerant mode, something else is drawn as math, with a warning.
+    fn number_value(&mut self, value: &str, col: usize) -> R<Node> {
+        if let Some(n) = siunitx_number(value, true) {
+            return Ok(n);
+        }
+        self.tolerate(rules::E_REC_9, col, format!("{value} is not a number"), "drawn as written")?;
+        self.sub_reader(value, Variant::Italic)
+    }
+
+    /// `\ang{30}` → 30°; `\ang{12;30;15}` → 12°30′15″ (degrees, minutes and seconds; any of them may be empty).
+    fn angle(&mut self, value: &str, col: usize) -> R<Node> {
+        let mut children = Vec::new();
+        for (part, mark) in value.split(';').zip(['°', '′', '″']) {
+            if part.trim().is_empty() {
+                continue;
+            }
+            children.push(self.number_value(part, col)?);
+            children.push(Node::Operator { symbol: mark, class: Class::Ord });
+        }
+        if value.split(';').count() > 3 {
+            self.tolerate(rules::E_REC_9, col, format!("\\ang{{{value}}}: more than degrees, minutes and seconds"), "the rest ignored")?;
+        }
+        Ok(Node::row(children))
+    }
+
+    /// One value of a range, list or product: a number, an angle or a quantity, by the command.
+    fn listed_value(&mut self, command: &str, value: &str, unit: Option<&str>, col: usize) -> R<Node> {
+        match unit {
+            Some(u) => self.quantity(Some(value.to_string()), u, col),
+            None if command.starts_with("ang") => self.angle(value, col),
+            None => self.number_value(value, col),
+        }
     }
 
     /// L-UNI-1: `\SI{9,8}{\meter\per\second\squared}` → 9,8 m/s² in pt-BR.
@@ -1941,8 +2083,12 @@ impl Reader<'_> {
                             prefix.insert_str(0, p);
                             continue;
                         }
-                        let Some(symbol) = symbols::unit(name) else {
-                            return self.error(col, format!("unsupported unit: \\{name}"));
+                        let symbol = match symbols::unit(name) {
+                            Some(symbol) => symbol.to_string(),
+                            None => {
+                                self.tolerate(rules::E_REC_1, col, format!("unsupported unit: \\{name}"), "written by its name")?;
+                                name.to_string()
+                            }
                         };
                         let exponent = if prefix.contains('²') {
                             2
@@ -2003,8 +2149,13 @@ impl Reader<'_> {
         } else {
             self.sub_reader(unit, Variant::Upright)?
         };
+        self.quantity_node(value, unit_node, col)
+    }
+
+    /// Value, thin space and unit, as one quantity.
+    fn quantity_node(&mut self, value: Option<String>, unit_node: Node, col: usize) -> R<Node> {
         let value = match value {
-            Some(v) => Some(siunitx_number(&v, true).ok_or(Error::Syntax { column: col, message: format!("value {v} is not a number") })?),
+            Some(v) => Some(self.number_value(&v, col)?),
             None => None,
         };
         let text_value = value.as_ref().map(|v| match v {
@@ -2020,20 +2171,54 @@ impl Reader<'_> {
         Ok(Node::Quantity { value: text_value.filter(|v| !v.is_empty()), unit: Box::new(Node::row(children)) })
     }
 
-    /// mhchem subset: formulas with automatic subscripts, charges, coefficients and arrows.
+    /// L-CHE-1: mhchem subset. Formulas with automatic subscripts, charges, isotopes, hydrates, bonds and
+    /// coefficients (integer, decimal, fraction or `$…$`), arrows with labels, `\frac` and math commands.
     fn chemistry(&mut self, raw: &str, col: usize) -> R<Node> {
+        let c: Vec<char> = raw.chars().collect();
         let mut children: Vec<Node> = Vec::new();
-        for (n, token) in raw.split_whitespace().enumerate() {
-            if n > 0 {
-                children.push(Node::Space { em: 0.0 });
+        let mut i = 0;
+        loop {
+            while c.get(i).is_some_and(|x| x.is_whitespace()) {
+                i += 1;
             }
-            match token {
-                "->" | "→" => children.push(Node::Operator { symbol: '→', class: Class::Rel }),
-                "<-" => children.push(Node::Operator { symbol: '←', class: Class::Rel }),
-                "<=>" | "<->" | "⇌" => children.push(Node::Operator { symbol: '⇌', class: Class::Rel }),
+            if i >= c.len() {
+                break;
+            }
+            if let Some(previous) = children.last() {
+                // a variable coefficient written apart ($x$ H2O, n H2O) gets the small space a number gets
+                let coefficient = matches!(previous.clone().simplify(), Node::Identifier { .. });
+                children.push(Node::Space { em: if coefficient { 2.0 / 18.0 } else { 0.0 } });
+            }
+            if let Some((symbol, len)) = chemical_arrow(&c[i..]) {
+                i += len;
+                let above = bracketed(&c, &mut i);
+                let below = if above.is_some() { bracketed(&c, &mut i) } else { None };
+                if above.is_none() {
+                    children.push(Node::Operator { symbol, class: Class::Rel });
+                    continue;
+                }
+                let label = |t: Option<String>, this: &mut Self| -> R<Option<Box<Node>>> {
+                    match t.filter(|t| !t.trim().is_empty()) {
+                        Some(t) => Ok(Some(Box::new(this.chemistry(&t, col)?.simplify()))),
+                        None => Ok(None),
+                    }
+                };
+                let above = label(above, self)?;
+                let below = label(below, self)?;
+                self.registry.note(rules::L_CHE_1, "arrow with a label drawn stretched over it");
+                children.push(Node::Arrow { symbol, above, below });
+                continue;
+            }
+            let token = chemical_token(&c, &mut i);
+            match token.as_str() {
                 "+" => children.push(Node::Operator { symbol: '+', class: Class::Bin }),
                 "=" => children.push(Node::Operator { symbol: '=', class: Class::Rel }),
                 "^" | "v" => children.push(Node::Operator { symbol: if token == "^" { '↑' } else { '↓' }, class: Class::Ord }),
+                "→" | "⇌" | "←" => children.push(Node::Operator { symbol: token.chars().next().unwrap_or('→'), class: Class::Rel }),
+                // a variable as coefficient (x, n): italic, like in math
+                t if t.len() == 1 && t.chars().all(|x| x.is_ascii_lowercase()) => children.push(Node::Identifier { name: t.to_string(), variant: Variant::Italic }),
+                // a word (heat, light, catalyst): upright text
+                t if t.len() > 1 && t.chars().all(|x| x.is_alphabetic() && x.is_lowercase()) => children.push(Node::Text { parts: vec![TextPart::Text(t.to_string())] }),
                 formula => children.push(self.chemical_formula(formula, col)?),
             }
         }
@@ -2044,20 +2229,28 @@ impl Reader<'_> {
         let c: Vec<char> = f.chars().collect();
         let mut children: Vec<Node> = Vec::new();
         let mut i = 0;
-        // stoichiometric coefficient
-        let mut coef = String::new();
-        while i < c.len() && c[i].is_ascii_digit() {
-            coef.push(c[i]);
-            i += 1;
-        }
-        if !coef.is_empty() {
-            children.push(Node::Number { value: coef, group: false, thousands: None });
-            children.push(Node::Space { em: 2.0 / 18.0 });
-        }
         let upright = |t: String| Node::Text { parts: vec![TextPart::Text(t)] };
+        // a coefficient may come at the start and after the dot of a hydrate (CuSO4.5H2O)
+        let mut coefficient_allowed = true;
         while i < c.len() {
             let ch = c[i];
-            if ch.is_ascii_uppercase() {
+            if coefficient_allowed && ch.is_ascii_digit() {
+                coefficient_allowed = false;
+                let coefficient = chemical_coefficient(&c, &mut i);
+                children.push(coefficient);
+                children.push(Node::Space { em: 2.0 / 18.0 });
+                continue;
+            }
+            coefficient_allowed = false;
+            if ch == '$' {
+                let end = c[i + 1..].iter().position(|&x| x == '$').map_or(c.len(), |p| p + i + 1);
+                let snippet: String = c[i + 1..end].iter().collect();
+                children.push(self.sub_reader(&snippet, Variant::Italic)?);
+                i = (end + 1).min(c.len());
+            } else if ch == '\\' {
+                let node = self.chemical_command(&c, &mut i, col)?;
+                children.push(node);
+            } else if ch.is_ascii_uppercase() {
                 let mut el = ch.to_string();
                 i += 1;
                 while i < c.len() && c[i].is_ascii_lowercase() {
@@ -2071,62 +2264,355 @@ impl Reader<'_> {
                     d.push(c[i]);
                     i += 1;
                 }
-                let base = children.pop().unwrap_or(Node::row(vec![]));
-                children.push(Node::Scripts { base: Box::new(base), sup: None, sub: Some(Box::new(Node::Number { value: d, group: false, thousands: None })) });
-            } else if ch == '^' {
+                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None }));
+            } else if ch == '^' || ch == '_' {
                 i += 1;
-                let mut payload = String::new();
-                if c.get(i) == Some(&'{') {
-                    i += 1;
-                    while i < c.len() && c[i] != '}' {
-                        payload.push(c[i]);
-                        i += 1;
-                    }
-                    i += 1;
+                let payload = if c.get(i) == Some(&'{') {
+                    braced(&c, &mut i)
                 } else {
-                    while i < c.len() && (c[i].is_ascii_digit() || c[i] == '+' || c[i] == '-') {
-                        payload.push(c[i]);
+                    let mut p = String::new();
+                    while i < c.len() && (c[i].is_ascii_alphanumeric() || (ch == '^' && matches!(c[i], '+' | '-' | '.'))) {
+                        p.push(c[i]);
                         i += 1;
+                        if ch == '_' && !p.chars().all(|x| x.is_ascii_digit()) {
+                            break;
+                        }
                     }
+                    p
+                };
+                let node = if ch == '^' { charge(&payload) } else { self.chemical_subscript(&payload)? };
+                if ch == '^' {
+                    attach_script(&mut children, Some(node), None);
+                } else {
+                    attach_script(&mut children, None, Some(node));
                 }
-                append_payload(&mut children, &payload);
-            } else if (ch == '+' || ch == '-') && i == c.len() - 1 && !children.is_empty() {
-                append_payload(&mut children, &ch.to_string());
+            } else if matches!(ch, '+' | '-') && !children.is_empty() && (i + 1 == c.len() || matches!(c[i + 1], ']' | ')')) {
+                // a charge at the end of the formula or before a closing bracket: Ag+, [H+], [A-]
+                attach_script(&mut children, Some(charge(&ch.to_string())), None);
                 i += 1;
-            } else if let Some(state) = ["(aq)", "(s)", "(l)", "(g)"].into_iter().find(|e| c[i..].iter().take(e.len()).copied().eq(e.chars())) {
+            } else if let Some(state) = ["(aq)", "(s)", "(l)", "(g)", "(sol)", "(cr)"].into_iter().find(|e| c[i..].iter().take(e.len()).copied().eq(e.chars())) {
                 children.push(upright(state.to_string()));
-                i += state.len();
+                i += state.chars().count();
+            } else if matches!(ch, '.' | '*' | '·') && i > 0 {
+                // hydrate or adduct: the dot is centered and a coefficient may follow
+                children.push(Node::Operator { symbol: '·', class: Class::Ord });
+                coefficient_allowed = true;
+                i += 1;
+            } else if ch.is_alphabetic() && ch.is_lowercase() {
+                // e- (electron), loose lowercase letters: upright, like the elements
+                let mut t = String::new();
+                while i < c.len() && c[i].is_alphabetic() && c[i].is_lowercase() {
+                    t.push(c[i]);
+                    i += 1;
+                }
+                children.push(upright(t));
             } else {
                 let class = match ch {
                     '(' | '[' => Class::Open,
                     ')' | ']' => Class::Close,
                     _ => Class::Ord,
                 };
-                let symbol = match ch {
-                    '-' => '−',
-                    '.' | '*' => '·',
-                    other => other,
-                };
-                if ch.is_alphabetic() || ch.is_ascii_punctuation() || ch == '·' {
+                // bonds: - single, = double, # triple
+                if let Some(line) = match ch {
+                    '-' => Some('−'),
+                    '=' => Some('='),
+                    '#' => Some('≡'),
+                    _ => None,
+                } {
+                    children.push(bond(line));
+                    i += 1;
+                    continue;
+                }
+                let symbol = ch;
+                if ch.is_alphabetic() || ch.is_ascii_punctuation() {
                     children.push(Node::Operator { symbol, class });
                 } else {
-                    return self.error(col, format!("unsupported character in \\ce: '{ch}'"));
+                    self.tolerate(rules::E_REC_9, col, format!("unsupported character in \\ce: '{ch}'"), "drawn as is")?;
+                    children.push(Node::Operator { symbol, class });
                 }
                 i += 1;
             }
         }
         Ok(Node::row(children))
     }
+
+    /// Subscript in a formula: a number, a state (`_{(aq)}`) as text, anything else as math (`NO_x`).
+    fn chemical_subscript(&mut self, payload: &str) -> R<Node> {
+        if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
+            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None });
+        }
+        if payload.starts_with('(') {
+            return Ok(Node::Text { parts: vec![TextPart::Text(payload.to_string())] });
+        }
+        self.sub_reader(payload, Variant::Italic)
+    }
+
+    /// A command inside `\ce`: `\bond{…}`, `\frac{…}{…}` with formulas inside, or any math command with
+    /// the braced arguments that follow it (`\Delta`, `\mu`, `\text{…}`).
+    fn chemical_command(&mut self, c: &[char], i: &mut usize, col: usize) -> R<Node> {
+        let start = *i;
+        *i += 1;
+        let mut name = String::new();
+        while *i < c.len() && c[*i].is_ascii_alphabetic() {
+            name.push(c[*i]);
+            *i += 1;
+        }
+        if name.is_empty() && *i < c.len() {
+            name.push(c[*i]);
+            *i += 1;
+        }
+        let mut arguments = Vec::new();
+        while c.get(*i) == Some(&'{') {
+            arguments.push(braced(c, i));
+        }
+        match (name.as_str(), arguments.as_slice()) {
+            ("bond", [b, ..]) => {
+                let symbol = match b.trim() {
+                    "-" | "1" => '−',
+                    "=" | "2" => '=',
+                    "#" | "3" => '≡',
+                    "~" => '∼',
+                    "..." => '⋯',
+                    "->" => '→',
+                    "<-" => '←',
+                    other => {
+                        self.tolerate(rules::E_REC_9, col, format!("unknown bond: \\bond{{{other}}}"), "drawn as a single bond")?;
+                        '−'
+                    }
+                };
+                Ok(bond(symbol))
+            }
+            ("frac", [a, b, ..]) => {
+                let num = self.chemistry(a, col)?.simplify();
+                let den = self.chemistry(b, col)?.simplify();
+                Ok(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true })
+            }
+            _ => {
+                let raw: String = c[start..*i].iter().collect();
+                self.sub_reader(&raw, Variant::Italic)
+            }
+        }
+    }
 }
 
-fn append_payload(children: &mut Vec<Node>, payload: &str) {
-    let text = payload.replace('-', "−");
-    let sup = Node::Text { parts: vec![TextPart::Text(text)] };
+/// A chemical bond: drawn as its line, but it is not a minus, an equals or a congruence.
+fn bond(symbol: char) -> Node {
+    Node::Text { parts: vec![TextPart::Text(symbol.to_string())] }
+}
+
+/// mhchem arrows, the longest first: (drawn symbol, length in the input).
+fn chemical_arrow(c: &[char]) -> Option<(char, usize)> {
+    const ARROWS: [(&str, char); 7] = [("<=>>", '⥂'), ("<<=>", '⥄'), ("<-->", '⇄'), ("<=>", '⇌'), ("<->", '↔'), ("->", '→'), ("<-", '←')];
+    ARROWS.iter().find(|(a, _)| c.iter().take(a.len()).copied().eq(a.chars())).map(|(a, s)| (*s, a.len()))
+}
+
+/// `[…]` right after an arrow (its label), honoring braces and `$…$`.
+fn bracketed(c: &[char], i: &mut usize) -> Option<String> {
+    if c.get(*i) != Some(&'[') {
+        return None;
+    }
+    let mut level = 0;
+    let mut math = false;
+    let mut s = String::new();
+    let mut k = *i + 1;
+    while k < c.len() {
+        match c[k] {
+            '$' => math = !math,
+            '{' => level += 1,
+            '}' => level -= 1,
+            ']' if level == 0 && !math => {
+                *i = k + 1;
+                return Some(s);
+            }
+            _ => {}
+        }
+        s.push(c[k]);
+        k += 1;
+    }
+    None
+}
+
+/// Content of `{…}` starting at `c[*i] == '{'`, without the outer braces.
+fn braced(c: &[char], i: &mut usize) -> String {
+    let mut level = 0;
+    let mut s = String::new();
+    while *i < c.len() {
+        let ch = c[*i];
+        *i += 1;
+        match ch {
+            '{' => {
+                level += 1;
+                if level == 1 {
+                    continue;
+                }
+            }
+            '}' => {
+                level -= 1;
+                if level == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        s.push(ch);
+    }
+    s
+}
+
+/// A token of `\ce`: up to a space outside braces and `$…$`.
+fn chemical_token(c: &[char], i: &mut usize) -> String {
+    let mut level = 0;
+    let mut math = false;
+    let mut s = String::new();
+    while *i < c.len() {
+        let ch = c[*i];
+        if ch.is_whitespace() && level == 0 && !math {
+            break;
+        }
+        match ch {
+            '$' => math = !math,
+            '{' => level += 1,
+            '}' => level -= 1,
+            _ => {}
+        }
+        s.push(ch);
+        *i += 1;
+    }
+    s
+}
+
+/// Stoichiometric coefficient: 2, 0.5, 1/2 (as a small fraction).
+fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
+    let digits = |i: &mut usize| -> String {
+        let mut d = String::new();
+        while *i < c.len() && c[*i].is_ascii_digit() {
+            d.push(c[*i]);
+            *i += 1;
+        }
+        d
+    };
+    let mut value = digits(i);
+    if c.get(*i) == Some(&'.') && c.get(*i + 1).is_some_and(char::is_ascii_digit) {
+        *i += 1;
+        value.push('.');
+        value.push_str(&digits(i));
+    } else if c.get(*i) == Some(&'/') && c.get(*i + 1).is_some_and(char::is_ascii_digit) {
+        *i += 1;
+        let den = digits(i);
+        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
+        return Node::Fraction { num: number(value), den: number(den), style: FractionStyle::Row, rule: true };
+    }
+    Node::Number { value, group: false, thousands: None }
+}
+
+/// Charge or oxidation state: `2-` → 2−, `.-` → •− (radical), `II` → II.
+fn charge(payload: &str) -> Node {
+    if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
+        return Node::Number { value: payload.to_string(), group: false, thousands: None };
+    }
+    let text: String = payload
+        .chars()
+        .map(|x| match x {
+            '-' => '−',
+            '.' | '*' => '•',
+            other => other,
+        })
+        .collect();
+    Node::Text { parts: vec![TextPart::Text(text)] }
+}
+
+/// Attaches a superscript and/or subscript to the last node of the formula; at the start of the formula
+/// (an isotope's `^{14}_{6}C`) they go on an empty base.
+fn attach_script(children: &mut Vec<Node>, sup: Option<Node>, sub: Option<Node>) {
+    // after a coefficient (3^{1}_{0}n) the scripts start a new base, not the space
+    if matches!(children.last(), Some(Node::Space { .. })) {
+        children.push(Node::row(vec![]));
+    }
     let last_item = children.pop().unwrap_or(Node::row(vec![]));
     children.push(match last_item {
-        Node::Scripts { base, sub, sup: None } => Node::Scripts { base, sub, sup: Some(Box::new(sup)) },
-        other => Node::Scripts { base: Box::new(other), sup: Some(Box::new(sup)), sub: None },
+        Node::Scripts { base, sup: None, sub: s } if sup.is_some() => Node::Scripts { base, sup: sup.map(Box::new), sub: s.or(sub.map(Box::new)) },
+        Node::Scripts { base, sup: s, sub: None } if sub.is_some() => Node::Scripts { base, sup: s, sub: sub.map(Box::new) },
+        other => Node::Scripts { base: Box::new(other), sup: sup.map(Box::new), sub: sub.map(Box::new) },
     });
+}
+
+/// tensor package indices: `^\mu_\nu^\rho` → `^{\mu}{}_{\nu}{}^{\rho}`, each change of side on a new empty
+/// base so the indices stagger. Before the base (`pre`), the empty base comes first.
+fn staggered_indices(raw: &str, pre: bool) -> String {
+    let c: Vec<char> = raw.chars().collect();
+    let mut groups: Vec<(char, String)> = Vec::new();
+    let mut i = 0;
+    while i < c.len() {
+        let side = c[i];
+        i += 1;
+        if !matches!(side, '^' | '_') {
+            continue;
+        }
+        while c.get(i) == Some(&' ') {
+            i += 1;
+        }
+        let index = match c.get(i) {
+            Some('{') => braced(&c, &mut i),
+            Some('\\') => {
+                let mut s = String::from('\\');
+                i += 1;
+                while i < c.len() && c[i].is_ascii_alphabetic() {
+                    s.push(c[i]);
+                    i += 1;
+                }
+                if s.len() == 1 && i < c.len() {
+                    s.push(c[i]);
+                    i += 1;
+                }
+                s
+            }
+            Some(x) => {
+                i += 1;
+                x.to_string()
+            }
+            None => String::new(),
+        };
+        match groups.last_mut() {
+            Some((last, content)) if *last == side => {
+                content.push(' ');
+                content.push_str(&index);
+            }
+            _ => groups.push((side, index)),
+        }
+    }
+    let scripts: Vec<String> = groups.iter().map(|(side, content)| format!("{side}{{{content}}}")).collect();
+    let joined = scripts.join("{}");
+    if pre {
+        format!("{{}}{joined}")
+    } else {
+        joined
+    }
+}
+
+/// mhchem's `\pu` unit to math: `J mol^-1` → `J\,mol^{-1}`, `.` and `*` between units → `\cdot`.
+fn mhchem_unit(unit: &str) -> String {
+    let c: Vec<char> = unit.chars().collect();
+    let mut s = String::new();
+    let mut i = 0;
+    while i < c.len() {
+        match c[i] {
+            '^' => {
+                let mut exponent = String::new();
+                i += 1;
+                while i < c.len() && (c[i].is_ascii_digit() || (c[i] == '-' && exponent.is_empty())) {
+                    exponent.push(c[i]);
+                    i += 1;
+                }
+                s.push_str(&format!("^{{{exponent}}}"));
+                continue;
+            }
+            '.' | '*' => s.push_str("\\cdot "),
+            ' ' => s.push_str("\\,"),
+            other => s.push(other),
+        }
+        i += 1;
+    }
+    s
 }
 
 fn set_limits(node: &mut Node, wanted: Option<bool>) {
@@ -2474,10 +2960,90 @@ impl Reader<'_> {
         Ok(self.c[start..].iter().collect())
     }
 
-    /// Package commands defined through other commands (physics, braket, xfrac, units).
+    /// A braced argument, if one comes next (after spaces).
+    fn optional_braced(&mut self) -> R<Option<String>> {
+        let saved = self.pos;
+        self.skip_spaces();
+        if self.current() == Some('{') {
+            return Ok(Some(self.raw_text()?));
+        }
+        self.pos = saved;
+        Ok(None)
+    }
+
+    /// Content between `open` and its matching `close` (the opening one is the current character).
+    fn raw_delimited(&mut self, open: char, close: char) -> String {
+        self.pos += 1;
+        let mut level = 0;
+        let mut s = String::new();
+        while let Some(c) = self.current() {
+            self.pos += 1;
+            if c == close && level == 0 {
+                return s;
+            }
+            if c == open && open != close {
+                level += 1;
+            } else if c == close {
+                level -= 1;
+            }
+            s.push(c);
+        }
+        s
+    }
+
+    /// Is the `\\qty` here physics' (brackets) and not siunitx's (`{value}{unit}`)?
+    fn physics_qty_follows(&mut self) -> bool {
+        let saved = self.pos;
+        self.skip_spaces();
+        let physics = match self.current() {
+            Some('(' | '[' | '|' | '<') => true,
+            Some('{') => {
+                let _ = self.raw_text();
+                self.skip_spaces();
+                self.current() != Some('{')
+            }
+            _ => false,
+        };
+        self.pos = saved;
+        physics
+    }
+
+    /// physics' automatic brackets: `(…)`, `[…]`, `|…|`, `{…}` or `<…>` sized by `\left…\right`.
+    fn physics_brackets(&mut self) -> R<Option<String>> {
+        self.skip_spaces();
+        let (open, close, left, right) = match self.current() {
+            Some('(') => ('(', ')', "(", ")"),
+            Some('[') => ('[', ']', "[", "]"),
+            Some('|') => ('|', '|', "|", "|"),
+            Some('<') => ('<', '>', "\\langle", "\\rangle"),
+            Some('{') => {
+                let x = self.raw_text()?;
+                return Ok(Some(format!("\\left\\{{ {x} \\right\\}}")));
+            }
+            _ => return Ok(None),
+        };
+        let x = self.raw_delimited(open, close);
+        Ok(Some(format!("\\left{left} {x} \\right{right}")))
+    }
+
+    /// Package commands defined through other commands (physics, braket, xfrac, units, tensor, mathtools).
     fn package_expansion(&mut self, name: &str, col: usize) -> R<Option<String>> {
         let d = |p: bool| if p { "\\partial" } else { "\\mathrm{d}" };
+        let star = |this: &mut Self| {
+            let s = this.current() == Some('*');
+            if s {
+                this.pos += 1;
+            }
+            s
+        };
         Ok(Some(match name {
+            "fdv" | "functionalderivative" => {
+                let f = self.raw_text()?;
+                match self.optional_braced()? {
+                    Some(x) => format!("\\frac{{\\delta {f}}}{{\\delta {x}}}"),
+                    None => format!("\\frac{{\\delta}}{{\\delta {f}}}"),
+                }
+            }
             "dv" | "odv" | "pdv" | "derivative" | "partialderivative" | "pd" => {
                 let partial = name.starts_with('p');
                 let order = self.raw_optional();
@@ -2501,9 +3067,117 @@ impl Reader<'_> {
             }
             "ket" => format!("\\left| {} \\right\\rangle", self.raw_text()?),
             "bra" => format!("\\left\\langle {} \\right|", self.raw_text()?),
-            "braket" | "Braket" => {
+            "braket" | "Braket" | "innerproduct" | "ip" => {
                 let x = self.raw_text()?;
-                format!("\\left\\langle {} \\right\\rangle", x.replacen('|', " \\middle| ", 2))
+                match self.optional_braced()? {
+                    // physics: \braket{a}{b}
+                    Some(y) => format!("\\left\\langle {x} \\middle| {y} \\right\\rangle"),
+                    // braket: \braket{a|b}
+                    None => format!("\\left\\langle {} \\right\\rangle", x.replacen('|', " \\middle| ", 2)),
+                }
+            }
+            "ketbra" | "outerproduct" | "dyad" => {
+                let a = self.raw_text()?;
+                let b = self.optional_braced()?.unwrap_or_else(|| a.clone());
+                format!("\\left| {a} \\right\\rangle\\!\\left\\langle {b} \\right|")
+            }
+            "expval" | "ev" | "expectationvalue" => {
+                let a = self.raw_text()?;
+                match self.optional_braced()? {
+                    Some(psi) => format!("\\left\\langle {psi} \\middle| {a} \\middle| {psi} \\right\\rangle"),
+                    None => format!("\\left\\langle {a} \\right\\rangle"),
+                }
+            }
+            "mel" | "matrixel" | "matrixelement" => {
+                let a = self.raw_text()?;
+                let op = self.raw_text()?;
+                let b = self.raw_text()?;
+                format!("\\left\\langle {a} \\middle| {op} \\middle| {b} \\right\\rangle")
+            }
+            "comm" | "commutator" | "acomm" | "anticommutator" | "pb" | "poissonbracket" => {
+                let a = self.raw_text()?;
+                let b = self.raw_text()?;
+                if matches!(name, "comm" | "commutator") {
+                    format!("\\left[ {a}, {b} \\right]")
+                } else {
+                    format!("\\left\\{{ {a}, {b} \\right\\}}")
+                }
+            }
+            // physics' vector calculus: the nabla in bold (U+1D6C1), like the package
+            "grad" | "gradient" => "\\unicode{1D6C1} ".into(),
+            "divergence" => "\\unicode{1D6C1} \\cdot ".into(),
+            "curl" | "rot" => "\\unicode{1D6C1} \\times ".into(),
+            "laplacian" => "\\nabla^{2} ".into(),
+            "cross" | "crossproduct" => "\\times ".into(),
+            "vdot" | "dotproduct" => "\\cdot ".into(),
+            "vb" | "vectorbold" => {
+                let bold = if star(self) { "\\boldsymbol" } else { "\\mathbf" };
+                format!("{bold}{{{}}}", self.raw_text()?)
+            }
+            "vu" | "vectorunit" => {
+                let bold = if star(self) { "\\boldsymbol" } else { "\\mathbf" };
+                format!("\\hat{{{bold}{{{}}}}}", self.raw_text()?)
+            }
+            "va" | "vectorarrow" => {
+                star(self);
+                format!("\\vec{{{}}}", self.raw_text()?)
+            }
+            "order" => match self.physics_brackets()? {
+                Some(inner) if inner.starts_with("\\left\\{") => format!("\\mathcal{{O}}{}", inner.replacen("\\left\\{", "\\left(", 1).replacen("\\right\\}", "\\right)", 1)),
+                Some(inner) => format!("\\mathcal{{O}}{inner}"),
+                None => "\\mathcal{O}".into(),
+            },
+            "Tr" | "tr" | "rank" | "Res" | "erf" | "Rank" | "trace" => {
+                let shown = if name == "trace" { "tr" } else { name };
+                format!("\\operatorname{{{shown}}}")
+            }
+            "dd" | "differential" => {
+                let order = self.raw_optional();
+                let power = order.map(|n| format!("^{{{n}}}")).unwrap_or_default();
+                let x = self.optional_braced()?.unwrap_or_default();
+                format!("\\mathop{{}}\\!\\mathrm{{d}}{power}{x} ")
+            }
+            "eval" | "evaluated" => {
+                self.skip_spaces();
+                match self.current() {
+                    Some(o @ ('(' | '[')) => {
+                        let close = if o == '(' { ')' } else { ']' };
+                        let x = self.raw_delimited(o, close);
+                        self.skip_spaces();
+                        if self.current() == Some('|') {
+                            self.pos += 1;
+                        }
+                        format!("\\left{o} {x} \\right|")
+                    }
+                    _ => format!("\\left. {} \\right|", self.raw_text()?),
+                }
+            }
+            // physics' \qty(…), \qty[…], \qty|…|, \qty{x}; siunitx's \qty{3}{m} (two groups) goes to the units
+            "qty" | "quantity" if name == "quantity" || self.physics_qty_follows() => self.physics_brackets()?.unwrap_or_default(),
+            "pqty" | "bqty" | "vqty" | "Bqty" => {
+                let x = self.raw_text()?;
+                match name {
+                    "pqty" => format!("\\left( {x} \\right)"),
+                    "bqty" => format!("\\left[ {x} \\right]"),
+                    "vqty" => format!("\\left| {x} \\right|"),
+                    _ => format!("\\left\\{{ {x} \\right\\}}"),
+                }
+            }
+            "idotsint" => "\\int\\!\\cdots\\!\\int ".into(),
+            // mathtools: \prescript{sup}{sub}{base}
+            "prescript" => {
+                let sup = self.raw_text()?;
+                let sub = self.raw_text()?;
+                let base = self.raw_text()?;
+                format!("{{}}^{{{sup}}}_{{{sub}}}{{{base}}}")
+            }
+            // tensor package: \tensor[pre]{T}{^\mu_\nu}, \indices{^\mu_\nu}
+            "tensor" | "indices" => {
+                star(self);
+                let pre = self.raw_optional();
+                let base = if name == "tensor" { self.raw_text()? } else { String::new() };
+                let indices = self.raw_text()?;
+                format!("{}{{{base}}}{}", pre.map(|p| staggered_indices(&p, true)).unwrap_or_default(), staggered_indices(&indices, false))
             }
             "Set" | "set" => {
                 let x = self.raw_text()?;
@@ -2545,6 +3219,13 @@ impl Reader<'_> {
     fn unknown_command(&mut self, name: &str, start: usize, col: usize, items: &mut Vec<Node>) -> R<Option<Stop>> {
         if self.strict {
             return self.error(col, format!("unsupported command: \\{name}"));
+        }
+        // \nfoo where \foo is a relation: an amssymb-style negation mathra lacks, not a JSON \n. Reading it as a
+        // line break would draw \foo itself, the opposite of what was written
+        if let Some(remainder) = name.strip_prefix('n').filter(|r| symbols::command(r).is_some_and(|s| s.class == Class::Rel)) {
+            self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\not\\{remainder}"))?;
+            self.inject(start, &format!("\\not\\{remainder} "), col)?;
+            return Ok(None);
         }
         if let Some(remainder) = name.strip_prefix('n').or_else(|| name.strip_prefix('r')).or_else(|| name.strip_prefix('t').filter(|_| name.len() <= 2)) {
             self.tolerate(rules::E_REC_2, col, format!("\\{name}"), "JSON '\\n' read as a line break")?;
