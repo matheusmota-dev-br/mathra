@@ -23,6 +23,10 @@ enum Kind {
     /// Opening and closing grouping signs.
     Open,
     Close,
+    /// A sign of shape (∠, ◊): a space follows it (§17, Ex. 6-18).
+    Shape,
+    /// Since and therefore: spaced from what they apply to (§23.18).
+    Spaced,
     Other,
 }
 
@@ -40,6 +44,8 @@ struct Writer {
     /// The level of what was written last: "" is the baseline, otherwise its level indicator (§14).
     level: String,
     missing: Vec<char>,
+    /// Where the first line of the last system or matrix ends: what follows it goes there (§19.6).
+    first_row_end: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -204,11 +210,25 @@ impl Writer {
             Node::Table { shape, rows, .. } => self.table(*shape, rows, ctx),
             Node::Accent { base, accent, below, .. } => self.accent(base, *accent, *below, ctx),
             Node::Bar { base, above } => self.accent(base, '\u{0304}', !above, ctx),
-            Node::Brace { base, label, .. } => {
-                self.node(base, ctx);
+            Node::Brace { base, above, label, bracket } => {
+                // a horizontal brace or bracket is a modifier (Ex. 19-17 to 19-20); one pointing to a
+                // label must be drawn (§19.2), which braille text cannot do
                 if label.is_some() {
-                    self.missing(ctx, '⏞');
+                    self.node(base, ctx);
+                    self.missing(ctx, if *above { '⏞' } else { '⏟' });
+                    return;
                 }
+                let mark = match (*above, *bracket) {
+                    (true, false) => "46 12356",
+                    (false, false) => "46 23456",
+                    (true, true) => "4 12356",
+                    (false, true) => "4 23456",
+                };
+                self.put(ctx, "⠐", Kind::Indicator);
+                self.node(base, ctx);
+                self.put(ctx, if *above { "⠣" } else { "⠩" }, Kind::Other);
+                self.put_dots(ctx, mark, Kind::Other);
+                self.put(ctx, "⠻", Kind::Other);
             }
             Node::Text { parts } => {
                 for p in parts {
@@ -220,8 +240,42 @@ impl Writer {
             }
             Node::Arrow { symbol, above, below } => self.labeled_arrow(*symbol, above.as_deref(), below.as_deref(), ctx),
             Node::Stacked { base, above, below } => self.modified(base, below.as_deref(), above.as_deref(), ctx),
+            // cancellation indicators around the canceled expression (§12)
+            Node::Canceled { base, .. } => {
+                self.put(ctx, "⠪", Kind::Other);
+                self.node(base, ctx);
+                self.put(ctx, "⠻", Kind::Other);
+            }
+            // a unit is an abbreviation, spaced from its number (§10, §23.1)
+            Node::Quantity { value: Some(_), unit } => {
+                let start = self.items.len();
+                match unit.as_ref() {
+                    Node::Row { children } => {
+                        for c in children {
+                            match c {
+                                Node::Space { .. } => self.space_to(&ctx.level),
+                                other => self.node(other, ctx),
+                            }
+                        }
+                    }
+                    other => self.node(other, ctx),
+                }
+                // a unit is an abbreviation: no English-letter indicator (§6.3.1 c)
+                for item in &mut self.items[start..] {
+                    if let Item::Cells(_, kind @ Kind::Letter) = item {
+                        *kind = Kind::Other;
+                    }
+                }
+            }
+            // a space as wide as a word space in print is a blank cell
+            Node::Space { em } if *em > 0.3 => self.space_to(&ctx.level),
+            // a boxed expression: the rectangle with the expression as its interior modifier (§15.10, Rule 17)
+            Node::Framed { base, shape: Frame::Rectangle, .. } => {
+                self.put_dots(ctx, "1246 1235 456 1246", Kind::Other);
+                self.node(base, ctx);
+                self.put(ctx, "⠻", Kind::Other);
+            }
             Node::Framed { base, .. }
-            | Node::Canceled { base, .. }
             | Node::Colored { base, .. }
             | Node::ForcedClass { base, .. }
             | Node::Style { base, .. }
@@ -275,6 +329,14 @@ impl Writer {
                 }
             }
             self.node(child, ctx);
+            // what follows a system or a matrix is placed on its top line (§19.6)
+            if let Some(at) = self.first_row_end.take() {
+                let start = self.items.len();
+                self.row(&children[i + 1..], ctx);
+                let tail: Vec<Item> = self.items.drain(start..).collect();
+                self.items.splice(at..at, tail);
+                return;
+            }
             // a function name is followed by a space (§18), unless punctuation or a closing sign follows
             if is_function(child) && children.get(i + 1).is_some_and(|n| !matches!(n, Node::Operator { class: Class::Punct | Class::Close, .. })) {
                 self.space(&ctx.level, true);
@@ -286,21 +348,22 @@ impl Writer {
     fn identifier(&mut self, name: &str, variant: Variant, ctx: &Ctx) {
         let mut chars = name.chars();
         let (Some(c), None) = (chars.next(), chars.next()) else {
-            // a word: its letters, uncontracted
-            self.text(name, ctx);
+            if matches!(variant, Variant::Italic | Variant::Upright) {
+                // a word: its letters, uncontracted
+                self.text(name, ctx);
+            } else {
+                // letters in a typeform: each takes its indicators (§7)
+                let letters: String = name.chars().filter_map(|c| self.letter_cells(c).map(|l| format!("{}{l}", typeform(c, variant)))).collect();
+                self.put(ctx, &letters, Kind::Other);
+            }
             return;
         };
         let Some(base) = self.letter_cells(c) else {
-            self.missing(ctx, c);
+            // a letterlike symbol written as a letter (ℵ, ℏ in MathML's <mi>)
+            self.symbol(c, ctx);
             return;
         };
-        // §7: a typeform indicator, then the alphabetic indicator
-        let prefix = match variant {
-            Variant::Bold | Variant::BoldItalic => "⠸⠰",
-            Variant::DoubleStruck => "⠠⠸⠰",
-            Variant::Calligraphic => "⠈⠰",
-            _ => "",
-        };
+        let prefix = typeform(c, variant);
         let kind = if prefix.is_empty() && c.is_ascii_alphabetic() && !ctx.list && !ctx.table { Kind::Letter } else { Kind::Other };
         self.put(ctx, &format!("{prefix}{base}"), kind);
     }
@@ -357,6 +420,11 @@ impl Writer {
     }
 
     fn symbol(&mut self, c: char, ctx: &Ctx) {
+        // the degree sign is written at superscript level, even when print does not raise it (§23.10)
+        if c == '°' {
+            self.put_dots(&ctx.at(format!("{}{SUPERSCRIPT}", ctx.level)), "46 16", Kind::Other);
+            return;
+        }
         if let Some(l) = greek(c).and_then(|_| self.letter_cells(c)) {
             self.put(ctx, &l, Kind::Other);
             return;
@@ -366,11 +434,12 @@ impl Writer {
             return;
         };
         match kind {
-            // comparison signs are spaced (§21.13)
+            // comparison signs are spaced (§21.13); the space before one returns to the baseline, the
+            // space after it keeps the level in effect (§14.8.7, f(x)|ₓ₌₄ = ⠳⠰⠭⠀⠰⠨⠅⠀⠼⠲)
             Kind::Comparison => {
                 self.space_to("");
                 self.put_dots(ctx, dots, kind);
-                self.space_to("");
+                self.space_to(&ctx.level);
             }
             // the mathematical comma: ⠪ at script level (§14), and a space after it on the baseline
             Kind::Punctuation if c == ',' => {
@@ -380,6 +449,15 @@ impl Writer {
                 } else {
                     self.put_dots(ctx, "246", Kind::Other);
                 }
+            }
+            Kind::Shape => {
+                self.put_dots(ctx, dots, kind);
+                self.space_to(&ctx.level);
+            }
+            Kind::Spaced => {
+                self.space_to(&ctx.level);
+                self.put_dots(ctx, dots, kind);
+                self.space_to(&ctx.level);
             }
             // other punctuation returns to the baseline (§14.8)
             Kind::Punctuation => {
@@ -401,10 +479,14 @@ impl Writer {
             '∬' => "2346 2346",
             '∭' => "2346 2346 2346",
             '∮' => "2346 4 1246 14 12456",
-            other => {
-                self.missing(ctx, other);
-                return;
-            }
+            // ⋃ ⋂ ⋀ ⋁: the signs of union, intersection, logical product and sum
+            other => match sign(other) {
+                Some((dots, _)) => dots,
+                None => {
+                    self.missing(ctx, other);
+                    return;
+                }
+            },
         };
         self.put_dots(ctx, dots, Kind::Other);
     }
@@ -444,7 +526,8 @@ impl Writer {
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>, ctx: &Ctx) {
         // Σ, ∏, lim, max…: limits under and over, as a modified expression (§15)
         let limits = match base {
-            Node::LargeOperator { symbol, .. } => !matches!(symbol, '∫' | '∬' | '∭' | '∮'),
+            // integrals take their bounds as scripts (Ex. 23-16), unless print stacks them (Ex. 23-17)
+            Node::LargeOperator { symbol, limits } => !matches!(symbol, '∫' | '∬' | '∭' | '∮') || *limits == Some(true),
             Node::Function { limits, .. } => *limits && sub.is_some(),
             _ => false,
         };
@@ -460,7 +543,10 @@ impl Writer {
         }
         if let Some(s) = sub {
             let numeric = matches!(s, Node::Number { value, .. } if !value.contains('.'));
-            let on_letter = matches!(base, Node::Identifier { name, .. } if name.chars().count() == 1) || matches!(base, Node::Function { .. });
+            // a letter, also an upright one (H in H₂O), or an abbreviated function name
+            let on_letter = matches!(base, Node::Identifier { name, .. } if name.chars().count() == 1)
+                || matches!(base, Node::Function { .. })
+                || matches!(base, Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(t)] if !t.is_empty() && t.chars().all(|c| c.is_ascii_alphabetic())));
             if numeric && on_letter && ctx.level.is_empty() {
                 // x₁: a numeric subscript of first order needs no indicator (§14.6)
                 if let Node::Number { value, .. } = s {
@@ -484,8 +570,22 @@ impl Writer {
 
     /// Five steps (§15): ⠐, the expression, ⠩ under / ⠣ over (the under part first), the modifier, ⠻.
     fn modified(&mut self, base: &Node, under: Option<&Node>, over: Option<&Node>, ctx: &Ctx) {
-        self.put(ctx, "⠐", Kind::Indicator);
-        self.node(base, ctx);
+        // a modified comparison sign is spaced as a whole, not inside the modification
+        let comparison = match base {
+            // a modified arrow takes its uncontracted form (§22.1)
+            Node::Operator { symbol: '→', .. } => Some("1246 25 25 135"),
+            Node::Operator { symbol, .. } => sign(*symbol).filter(|(_, k)| *k == Kind::Comparison).map(|(d, _)| d),
+            _ => None,
+        };
+        if comparison.is_some() {
+            self.space_to("");
+        }
+        // the indicator of a modified comparison sign belongs to it: no English-letter indicator next to it
+        self.put(ctx, "⠐", if comparison.is_some() { Kind::Comparison } else { Kind::Indicator });
+        match comparison {
+            Some(dots) => self.put_dots(ctx, dots, Kind::Comparison),
+            None => self.node(base, ctx),
+        }
         if let Some(u) = under {
             self.put(ctx, "⠩", Kind::Other);
             self.node(u, ctx);
@@ -495,6 +595,9 @@ impl Writer {
             self.node(o, ctx);
         }
         self.put(ctx, "⠻", Kind::Other);
+        if comparison.is_some() {
+            self.space_to(&ctx.level);
+        }
     }
 
     fn accent(&mut self, base: &Node, accent: char, below: bool, ctx: &Ctx) {
@@ -503,6 +606,11 @@ impl Writer {
             '\u{0302}' => "456 126",
             '\u{20D7}' | '→' => "1246 135",
             '\u{0307}' => "16",
+            // two dots over: the dot twice, as in the compound ⩷ (Rule 21 table)
+            '\u{0308}' => "16 16",
+            // arcs concave downward and upward (Ex. 15-53 to 15-56)
+            '⏜' => "1246 1",
+            '⏝' => "1246 3",
             '\u{0303}' => "4 156",
             other => {
                 self.node(base, ctx);
@@ -512,9 +620,10 @@ impl Writer {
         };
         // x̄: a bar over a single letter or digit is contracted (§15.3)
         let single = matches!(base, Node::Identifier { name, .. } if name.chars().count() == 1) || matches!(base, Node::Number { value, .. } if value.len() == 1);
-        if accent == '\u{0304}' && !below && single {
+        if accent == '\u{0304}' && single {
+            // x̄ = ⠭⠱ (§15.2.1); a bar under a single letter or digit: ⠭⠩⠱ (§15.2.3)
             self.node(base, ctx);
-            self.put_dots(ctx, "156", Kind::Other);
+            self.put_dots(ctx, if below { "146 156" } else { "156" }, Kind::Other);
             return;
         }
         self.put(ctx, "⠐", Kind::Indicator);
@@ -536,13 +645,17 @@ impl Writer {
             '↔' => "1246 246 25 25 135",
             '⇒' => "1246 2356 2356 135",
             '⇔' => "1246 246 2356 2356 135",
-            other => {
-                self.missing(ctx, other);
-                return;
-            }
+            // the arrows compounded vertically (⇌) have no contracted form: their own sign
+            other => match sign(other) {
+                Some((dots, Kind::Comparison)) => dots,
+                _ => {
+                    self.missing(ctx, other);
+                    return;
+                }
+            },
         };
         self.space_to("");
-        self.put(ctx, "⠐", Kind::Indicator);
+        self.put(ctx, "⠐", Kind::Comparison);
         self.put_dots(ctx, dots, Kind::Comparison);
         if let Some(b) = below {
             self.put(ctx, "⠩", Kind::Other);
@@ -563,12 +676,21 @@ impl Writer {
             c.iter().any(|c| matches!(c, Node::Operator { symbol: ',', .. })) && !c.iter().any(|c| matches!(c, Node::Operator { class: Class::Rel, .. }))
         });
         let inner = Ctx { list: ctx.list || list, ..ctx.clone() };
+        // a table between \left and \right: the delimiters become enlarged grouping on every row (§19.6)
+        if let ([Node::Table { rows, .. }], Some(o), Some(c)) = (parts, open, close) {
+            if let (Some(o), Some(c)) = (enlarged(o), enlarged(c)) {
+                self.table_rows(rows, o, c, ctx);
+                return;
+            }
+        }
         if let Some(o) = open {
             self.symbol(o, ctx);
         }
         for (i, p) in parts.iter().enumerate() {
             if i > 0 {
-                self.symbol(middles.get(i - 1).copied().unwrap_or('|'), &inner);
+                // \middle| between \left\{ and \right\}: the bar means "such that", a comparison (§21.7)
+                let m = middles.get(i - 1).copied().unwrap_or('|');
+                self.symbol(if m == '|' { '∣' } else { m }, &inner);
             }
             self.node(p, &inner);
         }
@@ -590,13 +712,32 @@ impl Writer {
             TableKind::RCases => ("", "46 6 23456"),
             _ => ("", ""),
         };
+        self.table_rows(rows, open, close, ctx);
+    }
+
+    fn table_rows(&mut self, rows: &[Vec<Node>], open: &str, close: &str, ctx: &Ctx) {
         let inner = Ctx { table: true, list: false, ..ctx.clone() };
-        if !self.items.is_empty() {
-            self.items.push(Item::Newline);
-        }
+        // the first row continues the current line; the others start below it, aligned with it (Ex. 19-30)
+        let indent: usize = self
+            .items
+            .iter()
+            .rev()
+            .take_while(|i| !matches!(i, Item::Newline))
+            .map(|i| match i {
+                Item::Cells(c, _) => c.chars().count(),
+                _ => 1,
+            })
+            .sum();
+        let mut first_end = None;
         for (r, row) in rows.iter().enumerate() {
+            if r == 1 {
+                first_end = Some(self.items.len());
+            }
             if r > 0 {
                 self.items.push(Item::Newline);
+                if indent > 0 {
+                    self.items.push(Item::Cells("⠀".repeat(indent), Kind::Indicator));
+                }
             }
             self.level = ctx.level.clone();
             if !open.is_empty() {
@@ -612,9 +753,24 @@ impl Writer {
                 self.put_dots(ctx, close, Kind::Other);
             }
         }
-        self.items.push(Item::Newline);
         self.level = ctx.level.clone();
+        self.first_row_end = first_end;
     }
+}
+
+/// The enlarged form of a grouping sign (§19.6): dot 6 after its prefix.
+fn enlarged(c: char) -> Option<&'static str> {
+    Some(match c {
+        '(' => "6 12356",
+        ')' => "6 23456",
+        '[' => "4 6 12356",
+        ']' => "4 6 23456",
+        '{' => "46 6 12356",
+        '}' => "46 6 23456",
+        '|' => "6 1256",
+        '‖' => "6 1256 6 1256",
+        _ => return None,
+    })
 }
 
 fn digit(d: char) -> &'static str {
@@ -636,6 +792,7 @@ fn digit(d: char) -> &'static str {
 fn greek(c: char) -> Option<(&'static str, bool, bool)> {
     let lower = c.to_lowercase().next()?;
     let capital = c != lower;
+    // capitals have no alternative forms: Φ lowercases to φ, which is the alternative phi
     let (dots, alternative) = match lower {
         'α' => ("1", false),
         'β' => ("12", false),
@@ -666,7 +823,26 @@ fn greek(c: char) -> Option<(&'static str, bool, bool)> {
         'ω' => ("2456", false),
         _ => return None,
     };
-    Some((dots, capital, alternative))
+    Some((dots, capital, alternative && !capital))
+}
+
+/// Typeform and alphabetic indicators before a letter (§7, §6.2): bold ⠸, double-struck ⠠⠸, script ⠈ and
+/// sans-serif ⠠⠨ are followed by the English-letter indicator ⠰, or by the Greek one, which the letter's
+/// own cells already carry; German (Fraktur) letters take the German-letter indicator ⠸ (Ex. 6-2).
+fn typeform(c: char, variant: Variant) -> &'static str {
+    let greek = !c.is_ascii_alphabetic();
+    match (variant, greek) {
+        (Variant::Bold | Variant::BoldItalic, false) => "⠸⠰",
+        (Variant::Bold | Variant::BoldItalic, true) => "⠸",
+        (Variant::DoubleStruck, false) => "⠠⠸⠰",
+        (Variant::DoubleStruck, true) => "⠠⠸",
+        (Variant::Calligraphic, false) => "⠈⠰",
+        (Variant::Calligraphic, true) => "⠈",
+        (Variant::SansSerif, false) => "⠠⠨⠰",
+        (Variant::SansSerif, true) => "⠠⠨",
+        (Variant::Fraktur, false) => "⠸",
+        _ => "",
+    }
 }
 
 /// Signs that are one symbol: operations (§20, §23), comparisons (§21, §22), grouping (§19) and
@@ -683,8 +859,77 @@ fn sign(c: char) -> Option<(&'static str, Kind)> {
         '∓' => ("36 346", Other),
         '!' => ("12346", Other),
         '%' => ("4 356", Other),
-        '∪' => ("46 346", Other),
-        '∩' => ("46 146", Other),
+        '∪' | '⋃' => ("46 346", Other),
+        '∩' | '⋂' => ("46 146", Other),
+        // Signs and Symbols of Operation (Rule 20 table)
+        '∗' => ("4 3456", Other),
+        '⋆' => ("1246 234", Other),
+        '∖' | '\\' => ("456 16", Other),
+        // the short dash of ranges (Rule 8 table), spaced like an operation next to a dash (§20.1.1)
+        '–' => ("36 36", Spaced),
+        '∘' => ("46 16", Other),
+        '∧' | '⋀' => ("4 146", Other),
+        '∨' | '⋁' => ("4 346", Other),
+        '⊙' => ("1246 14 456 1246 16 12456", Other),
+        '⊕' => ("1246 14 456 1246 346 12456", Other),
+        '⊖' => ("1246 14 456 1246 36 12456", Other),
+        '†' => ("456 12456", Other),
+        '‡' => ("456 456 12456", Other),
+        // Signs and Symbols of Comparison (Rule 21 tables)
+        '≺' => ("46 5 13", Comparison),
+        '≻' => ("46 46 2", Comparison),
+        '⊃' => ("456 46 2", Comparison),
+        '⊇' => ("456 46 2 156", Comparison),
+        '∋' => ("4 26", Comparison),
+        '∥' => ("1246 123", Comparison),
+        '∦' => ("34 1246 123", Comparison),
+        '⊥' => ("1246 1234", Comparison),
+        '∣' => ("1256", Comparison),
+        '⪯' | '≼' => ("46 5 13 156", Comparison),
+        '⪰' | '≽' => ("46 46 2 156", Comparison),
+        '⇐' | '⟸' => ("1246 246 2356 2356", Comparison),
+        '⊗' => ("1246 14 456 1246 4 16 12456", Other),
+        'ℏ' => ("4 125", Other),
+        // more negations, by the rule of §21.1: / before the sign
+        '≇' => ("34 4 156 46 13", Comparison),
+        '≄' => ("34 4 156 156", Comparison),
+        '⇏' => ("34 1246 2356 2356 135", Comparison),
+        '⇍' => ("34 1246 246 2356 2356", Comparison),
+        '⇎' => ("34 1246 246 2356 2356 135", Comparison),
+        '↚' => ("34 1246 246 25 25", Comparison),
+        '↮' => ("34 1246 246 25 25 135", Comparison),
+        '⊅' => ("34 456 46 2", Comparison),
+        '⊉' => ("34 456 46 2 156", Comparison),
+        '∌' => ("34 4 26", Comparison),
+        '⊀' => ("34 46 5 13", Comparison),
+        '⊁' => ("34 46 46 2", Comparison),
+        '∤' => ("34 1256", Comparison),
+        '≪' => ("5 13 4 5 13 12456", Comparison),
+        '≫' => ("46 2 4 46 2 12456", Comparison),
+        '≅' => ("4 156 46 13", Comparison),
+        '≃' => ("4 156 156", Comparison),
+        '≦' => ("5 13 46 13", Comparison),
+        '≧' => ("46 2 46 13", Comparison),
+        '↑' => ("1246 126 25 25 135", Comparison),
+        '↓' => ("1246 146 25 25 135", Comparison),
+        '↕' => ("1246 126 246 25 25 135", Comparison),
+        // arrows compounded vertically: right over left (equilibrium), long over short, short over long
+        '⇌' => ("1246 25 25 135 1246 246 25 25", Comparison),
+        '⥂' => ("1246 25 25 25 135 1246 246 25", Comparison),
+        '⥄' => ("1246 25 135 1246 246 25 25 25", Comparison),
+        // Since and therefore (§23.18), Hebrew aleph (§6.1), signs of shape (Rule 17)
+        '∵' => ("4 34", Spaced),
+        'ℵ' => ("6 6 1", Other),
+        '∠' => ("1246 246", Shape),
+        '◊' | '⋄' => ("1246 145", Shape),
+        '□' | '◻' => ("1246 256", Shape),
+        '△' => ("1246 2345", Shape),
+        '⌢' => ("1246 1", Shape),
+        // half brackets: lower for floor, upper for ceiling (§19.4)
+        '⌊' => ("4 56 12356", Open),
+        '⌋' => ("4 56 23456", Close),
+        '⌈' => ("4 45 12356", Open),
+        '⌉' => ("4 45 23456", Close),
         '/' => ("456 34", Other),
         '=' => ("46 13", Comparison),
         '≠' => ("34 46 13", Comparison),
@@ -700,9 +945,13 @@ fn sign(c: char) -> Option<(&'static str, Kind)> {
         '∉' => ("34 4 15", Comparison),
         '⊂' => ("456 5 13", Comparison),
         '⊆' => ("456 5 13 156", Comparison),
-        '→' | '⟶' => ("1246 135", Comparison),
-        '←' | '⟵' => ("1246 246 25 25", Comparison),
-        '↔' | '⟷' => ("1246 246 25 25 135", Comparison),
+        '→' => ("1246 135", Comparison),
+        '←' => ("1246 246 25 25", Comparison),
+        '↔' => ("1246 246 25 25 135", Comparison),
+        // long arrows: three shaft cells (§22.5.3)
+        '⟶' => ("1246 25 25 25 135", Comparison),
+        '⟵' => ("1246 246 25 25 25", Comparison),
+        '⟷' => ("1246 246 25 25 25 135", Comparison),
         '⇒' | '⟹' => ("1246 2356 2356 135", Comparison),
         '⇔' | '⟺' => ("1246 246 2356 2356 135", Comparison),
         // negation: / before the comparison sign (§21.1)
@@ -720,7 +969,7 @@ fn sign(c: char) -> Option<(&'static str, Kind)> {
         '∞' => ("6 123456", Other),
         '∂' => ("4 145", Other),
         '∇' | '𝛁' => ("46 1246", Other),
-        '∴' => ("6 16", Other),
+        '∴' => ("6 16", Spaced),
         '∀' => ("4 12346", Other),
         '∃' => ("4 123456", Other),
         '′' | '\'' => ("3", Other),

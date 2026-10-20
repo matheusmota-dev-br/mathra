@@ -41,6 +41,7 @@
       <button role="tab" data-group="latex" aria-selected="false">LaTeX</button>
       <button role="tab" data-group="science" aria-selected="false">Science</button>
       <button role="tab" data-group="mathml" aria-selected="false">MathML</button>
+      <button role="tab" data-group="braille" aria-selected="false">Braille</button>
     </div>
     <div class="controls">
       <label class="lang">Language
@@ -104,6 +105,61 @@
     },
   };
 
+  // the Braille tab: how the braille was checked, what is still open. The numbers are those of
+  // docs/braille-review.md; the list of missing signs is computed live from every row of this page.
+  GROUPS.braille = {
+    intro: 'How far to trust the braille column. Every equation comes out in braille in two codes: the <strong>CMU</strong> (Código Matemático Unificado) for Portuguese and Spanish, and <strong>Nemeth</strong> for the other languages. Both follow their official documents, sign by sign, and were compared with MathCAT. <strong>They still need a braille transcriber\'s review before they are used with students.</strong>',
+  };
+  const QUALITY = `
+    <section class="ref-section" id="braille-sources"><h2>Sources</h2>
+      <div class="ref-scroll"><table class="ref"><thead><tr><th>Code</th><th>Document</th><th>Default for</th></tr></thead><tbody>
+        <tr><td>Nemeth</td><td>BANA, <em>The Nemeth Braille Code for Mathematics and Science Notation</em>, 2022 edition</td><td>en and every language but pt-BR and es</td></tr>
+        <tr><td>CMU</td><td><em>Código Matemático Unificado para a Língua Portuguesa</em>, MEC/SEESP 2006 (Instituto Benjamin Constant transcription), cross-checked with the CIB <em>Código matemático unificado para Iberoamérica</em>, 2024</td><td>pt-BR, es</td></tr>
+      </tbody></table></div>
+      <p>Each sign is written in the code as dot numbers with the section of its source, and the test suite checks examples taken from the two documents. Details in <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md">spec/braille.md</a>.</p>
+    </section>
+    <section class="ref-section" id="braille-review"><h2>Compared with MathCAT</h2>
+      <p>Every row of this page was converted by mathra and by <a href="https://github.com/daisy/MathCAT">MathCAT</a> (DAISY) from the same MathML. Where they disagreed, the official document decided; that fixed about 50 signs and rules in mathra, and showed several places where MathCAT contradicts the Nemeth code. MathCAT's CMU follows the Spanish ONCE guide, so many CMU differences are expected (function names, numeric fractions, logic signs).</p>
+      <div class="ref-scroll"><table class="ref"><thead><tr><th>Code</th><th>Equal to MathCAT, before</th><th>After the review</th></tr></thead><tbody>
+        <tr><td>Nemeth</td><td>177 of 310 rows</td><td>240 of 310 rows</td></tr>
+        <tr><td>CMU</td><td>163 of 310 rows</td><td>177 of 310 rows</td></tr>
+      </tbody></table></div>
+      <p>The full report, with every fix, MathCAT's disagreements with the source and the questions for a transcriber: <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/docs/braille-review.md">docs/braille-review.md</a>. The comparison can be run again with <code>tools/braille-compare</code>.</p>
+    </section>
+    <section class="ref-section" id="braille-inferred"><h2>Inferred from a rule</h2>
+      <p>Signs written by applying a rule of the code, with no printed example to confirm them:</p>
+      <ul>
+        <li><strong>Nemeth:</strong> ⊗ (circle with an interior cross), ⪯ ⪰ (bar under the curved signs), two dots over a letter, a boxed expression (rectangle shape), ∭.</li>
+        <li><strong>CMU:</strong> the degree sign (from the 2024 edition), nabla, the brace at the start of each line of a system, a limit under max and min written as directly under.</li>
+      </ul>
+    </section>
+    <section class="ref-section" id="braille-missing"><h2>Symbols without a sign</h2>
+      <p>A symbol the code has no sign for is written as the full cell ⠿, and the conversion says so (note S-BRL-1). In the other tabs these rows are marked. Found in the rows of this page:</p>
+      <div id="braille-missing-live" class="ref-scroll"></div>
+    </section>`;
+
+  /// The symbols each code writes as ⠿, over every row of the reference.
+  function missingSigns() {
+    const found = { cmu: new Map(), nemeth: new Map() };
+    for (const [name, sections] of Object.entries(MATHRA_REFERENCE)) {
+      const input = { asciimath: "asciimath", mathml: "mathml" }[name] || "latex";
+      for (const s of sections) for (const r of s.rows) {
+        const src = r.am ?? r.mml ?? r.tex;
+        for (const code of ["cmu", "nemeth"]) {
+          let out;
+          try { out = JSON.parse(render(src, locale, true, false, input, code)); } catch (e) { continue; }
+          for (const a of out.applied) {
+            const m = a.rule === "S-BRL-1" && a.description.match(/'(.+?)'/);
+            if (m) found[code].set(m[1], (found[code].get(m[1]) || 0) + 1);
+          }
+        }
+      }
+    }
+    const list = (m) => [...m].map(([c, n]) => `<span class="sign-chip" title="${n} row(s)">${escape(c)}</span>`).join(" ") || "none";
+    return `<table class="ref"><thead><tr><th>Code</th><th>Symbols written as ⠿</th></tr></thead><tbody>
+      <tr><td>Nemeth</td><td>${list(found.nemeth)}</td></tr><tr><td>CMU</td><td>${list(found.cmu)}</td></tr></tbody></table>`;
+  }
+
   const GRAMMAR = `v ::= [A-Za-z] | greek letters | numbers | other constant symbols
 u ::= sqrt | text | bb | other unary symbols for font commands
 b ::= frac | root | stackrel | other binary symbols
@@ -133,6 +189,13 @@ E ::= IE | I/I                       expression`;
 
   function draw() {
     const g = GROUPS[group];
+    if (group === "braille") {
+      $("intro").innerHTML = g.intro;
+      $("toc").innerHTML = ["sources", "review", "inferred", "missing"].map((id) => `<a href="#braille-${id}">${{ sources: "Sources", review: "Compared with MathCAT", inferred: "Inferred from a rule", missing: "Symbols without a sign" }[id]}</a>`).join("");
+      $("sections").innerHTML = QUALITY;
+      $("braille-missing-live").innerHTML = missingSigns();
+      return;
+    }
     const data = MATHRA_REFERENCE[group];
     $("intro").innerHTML = g.intro;
     $("toc").innerHTML = data.map((s) => `<a href="#${s.id}">${escape(s.title)}</a>`).join("") + (group === "asciimath" ? '<a href="#am-grammar">Grammar</a>' : "");
@@ -143,7 +206,11 @@ E ::= IE | I/I                       expression`;
         const cells = [`<td><code>${escape(src)}</code></td>`];
         if (g.input !== "latex") cells.push(`<td><code>${escape(r.tex)}</code></td>`);
         cells.push(`<td class="drawn">${out.svg}</td>`);
-        cells.push(`<td class="braille" aria-label="braille">${escape(out.braille)}</td>`);
+        // a symbol the code has no sign for (S-BRL-1): marked, with the reason on hover
+        const missing = (out.applied || []).filter((a) => a.rule === "S-BRL-1").map((a) => a.description);
+        cells.push(missing.length
+          ? `<td class="braille no-sign" aria-label="braille, with a symbol that has no sign" title="${escape(missing.join("; "))}">${escape(out.braille)}</td>`
+          : `<td class="braille" aria-label="braille">${escape(out.braille)}</td>`);
         cells.push(`<td class="try"><a href="${escape(tryLink(src, g.input))}">Try</a></td>`);
         return `<tr>${cells.join("")}</tr>`;
       }).join("");
