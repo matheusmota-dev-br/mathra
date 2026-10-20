@@ -131,7 +131,7 @@
       <div class="card feature">
         <div class="eq"><span class="braille-sample" data-braille="\frac{3}{4} + \sqrt{x}" data-locale="pt-BR"></span><small>CMU</small></div>
         <h3>It writes braille</h3>
-        <p>Every equation also comes out in braille: the CMU for Portuguese and Spanish, Nemeth for English, following their official documents.</p>
+        <p>Every equation also comes out in braille: the CMU for Portuguese and Spanish, Nemeth for English, following their official documents and compared with MathCAT. <a href="reference.html#braille">How far to trust it</a>.</p>
       </div>
       <div class="card feature">
         <div class="eq"><span class="stat">17.9<span> µs</span></span></div>
@@ -477,7 +477,7 @@ println!("{}", r.speech);</pre>
     if (tab === "speech") { panel.innerHTML = `<p class="speech">${escape(last.speech)}</p>`; return; }
     if (tab === "braille") {
       panel.innerHTML = `<p class="braille" lang="${escape(locale)}">${escape(last.braille).replace(/\n/g, "<br>")}</p>` +
-        `<p class="braille-code">${escape(BRAILLE_NAMES[last.braille_code] || last.braille_code)} · <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md">what is covered</a></p>`;
+        `<p class="braille-code">${escape(BRAILLE_NAMES[last.braille_code] || last.braille_code)} · <a href="reference.html#braille">sources, review and open points</a> · not yet reviewed by a braille transcriber</p>`;
       return;
     }
     if (tab === "rules") {

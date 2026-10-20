@@ -246,6 +246,9 @@
   table.ref td.braille { font-size: 20px; white-space: pre; }
   table.ref td.try a { font-size: 13px; color: var(--muted); white-space: nowrap; }
   table.ref tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  table.ref td.no-sign { background: color-mix(in srgb, var(--warn-line) 22%, transparent); cursor: help; }
+  .sign-chip { display: inline-block; font-size: 16px; padding: 2px 8px; margin: 2px; border-radius: 6px; background: var(--surface-2); }
+  .ref-section ul { padding-left: 20px; }
   .grammar { background: var(--surface-2); border-radius: 10px; padding: 14px 16px; font-size: 13.5px; overflow-x: auto; }
   @media (max-width: 700px) { table.ref td.braille, table.ref th.braille { display: none; } }
   /* what to type must read as typed: no ligatures (-> would show as an arrow) */
