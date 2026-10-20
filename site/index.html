@@ -32,14 +32,17 @@
 
   <header class="hero">
     <div class="logo" id="logo" role="img" aria-label="mathra"></div>
-    <p class="tagline">Math LaTeX to <em>accessible</em> SVG.<br>No TeX install, no JavaScript runtime required.</p>
+    <p class="tagline">Math LaTeX to <em>accessible</em> SVG.<br>No TeX install. JavaScript, Python, Rust or the terminal.</p>
     <p class="sub">mathra reads the equation, builds a tree of meaning and draws it with numbered, tested rules. Every SVG says the equation out loud to screen readers.</p>
     <div class="cta">
       <a class="button solid" href="#playground">Try it now</a>
       <a class="button" href="#benchmark">See the benchmark</a>
       <a class="button" href="https://github.com/matheusmota-dev-br/mathra">GitHub</a>
     </div>
-    <div class="install"><code>cargo install mathra-cli</code></div>
+    <div class="installer" id="installer">
+      <div class="installer-tabs" role="tablist" aria-label="Install for"></div>
+      <div class="installer-line"><code id="install-cmd"></code><button type="button" class="installer-copy" id="install-copy" aria-label="Copy the command">Copy</button></div>
+    </div>
   </header>
 
   <div class="play" id="playground">
@@ -87,7 +90,7 @@
 
   <section>
     <h2>Why mathra</h2>
-    <p class="lead">One small library, the same output everywhere: the terminal, Rust, Python and the browser.</p>
+    <p class="lead">One small library, the same output everywhere: JavaScript, Python, Rust and the terminal.</p>
     <div class="features">
       <div class="card feature">
         <div class="eq" data-tex="\frac{1}{2}"></div>
@@ -149,37 +152,43 @@
 
   <section id="docs">
     <h2>Use it</h2>
-    <p class="lead">The core is a Rust crate; the CLI, Python and WebAssembly packages wrap the same code.</p>
+    <p class="lead">Pick your platform. All four packages run the same core, so an equation gives the same SVG, byte for byte, wherever it is converted.</p>
     <div class="usage">
-      <div class="card">
-        <h3>Terminal</h3>
-<pre>cargo install mathra-cli
-mathra 'x \le 2.75' -o inequality.svg
-mathra '3,14 + \sin x' --locale pt-BR
-mathra 'x = -1' --speech
-mathra '\vertA\vert' --explain</pre>
+      <div class="card platform">
+        <div class="platform-head"><h3>JavaScript and TypeScript</h3><a class="pill live" href="https://www.npmjs.com/package/@mathlabs/mathra">on npm</a></div>
+        <p>Node, bundlers (Vite, webpack, esbuild) and browsers. Types included.</p>
+        <code class="cmd">npm install @mathlabs/mathra</code>
+<pre>import { init, texToSvg, render } from "@mathlabs/mathra";
+
+await init();  // browsers and bundlers; Node needs nothing
+const svg = texToSvg("3,14", { locale: "pt-BR" });
+const { speech, warnings } = render("x^2");</pre>
       </div>
-      <div class="card">
-        <h3>Rust</h3>
-<pre>// cargo add mathra
-let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
-println!("{}", r.svg);
-println!("{}", r.speech);</pre>
-      </div>
-      <div class="card">
-        <h3>Python</h3>
+      <div class="card platform">
+        <div class="platform-head"><h3>Python</h3><span class="pill">from GitHub</span></div>
+        <p>A native module; building it needs Rust. PyPI is on the way.</p>
+        <code class="cmd">pip install "mathra @ git+https://github.com/matheusmota-dev-br/mathra#subdirectory=crates/python"</code>
 <pre>import mathra
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")
 tree = mathra.tex_to_tree("3,14", locale="pt-BR")</pre>
       </div>
-      <div class="card">
-        <h3>JavaScript (npm)</h3>
-<pre>// npm install @mathlabs/mathra
-import { init, texToSvg, render } from "@mathlabs/mathra";
-await init();  // browsers and bundlers; Node needs nothing
-const svg = texToSvg("3,14", { locale: "pt-BR" });
-const { speech, warnings } = render("x^2");</pre>
+      <div class="card platform">
+        <div class="platform-head"><h3>Terminal</h3><span class="pill">from GitHub</span></div>
+        <p>One binary, SVG to stdout or files; <code>--batch</code> for many at once.</p>
+        <code class="cmd">cargo install --git https://github.com/matheusmota-dev-br/mathra mathra-cli</code>
+<pre>mathra 'x \le 2.75' -o inequality.svg
+mathra '3,14 + \sin x' --locale pt-BR
+mathra 'x = -1' --speech
+mathra '\vertA\vert' --explain</pre>
+      </div>
+      <div class="card platform">
+        <div class="platform-head"><h3>Rust</h3><span class="pill">from GitHub</span></div>
+        <p>The core itself, for servers and native apps. crates.io is on the way.</p>
+        <code class="cmd">cargo add mathra --git https://github.com/matheusmota-dev-br/mathra</code>
+<pre>let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
+println!("{}", r.svg);
+println!("{}", r.speech);</pre>
       </div>
     </div>
 
@@ -519,6 +528,28 @@ const { speech, warnings } = render("x^2");</pre>
       tiles.append(b);
     }
   }
+
+  // the install command for each platform, in the hero
+  const INSTALL = [
+    ["npm", "npm install @mathlabs/mathra"],
+    ["pip", 'pip install "mathra @ git+https://github.com/matheusmota-dev-br/mathra#subdirectory=crates/python"'],
+    ["CLI", "cargo install --git https://github.com/matheusmota-dev-br/mathra mathra-cli"],
+    ["Rust", "cargo add mathra --git https://github.com/matheusmota-dev-br/mathra"],
+  ];
+  function showInstall(i) {
+    $("install-cmd").textContent = INSTALL[i][1];
+    [...document.querySelectorAll(".installer-tabs button")].forEach((b, j) => b.setAttribute("aria-selected", String(i === j)));
+  }
+  INSTALL.forEach(([label], i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.textContent = label;
+    b.onclick = () => showInstall(i);
+    document.querySelector(".installer-tabs").append(b);
+  });
+  showInstall(0);
+  $("install-copy").onclick = async (e) => { await navigator.clipboard.writeText($("install-cmd").textContent); flash(e.target, "Copied"); };
 
   for (const name of CHIPS) {
     const [caption, loc, src] = EXAMPLES.find((e) => e[0] === name);

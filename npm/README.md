@@ -76,7 +76,9 @@ Options: `locale` (`"en"` by default, `"pt-BR"`, `"es"`, `"fr"`, `"de"`, `"it"`,
 
 Speech in `<title>` linked with `aria-labelledby`, the source LaTeX and the tree of meaning in `<metadata>`, color from the page (`currentColor`), size in `em`, a selectable text layer and ids unique to each equation. The same input always gives the same bytes.
 
-Rules, languages and the full list of supported commands: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra).
+## Also for Python, Rust and the terminal
+
+The same core is a Python module, a Rust crate and a command-line tool, and every one gives the same SVG, byte for byte. How to install each: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.
 
 ## License
 
