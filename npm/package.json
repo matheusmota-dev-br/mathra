@@ -1,5 +1,5 @@
 {
-  "name": "@math-labs/mathra",
+  "name": "@mathlabs/mathra",
   "version": "__VERSION__",
   "description": "Math LaTeX to accessible SVG, without a TeX install. Speech for screen readers in 16 languages. Runs on WebAssembly in Node, bundlers and browsers.",
   "keywords": ["latex", "math", "equations", "svg", "accessibility", "screen-reader", "a11y", "katex", "mathjax", "webassembly", "i18n"],
