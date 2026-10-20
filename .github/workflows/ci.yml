@@ -40,6 +40,11 @@ jobs:
           tool: wasm-bindgen@0.2.129
       - run: cargo test -p mathra-wasm --target wasm32-unknown-unknown
       - run: site/build.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # the npm package as users get it: packed, installed, imported with ESM and require
+      - run: npm/build.sh && npm/test/run.sh
 
   python:
     runs-on: ubuntu-latest

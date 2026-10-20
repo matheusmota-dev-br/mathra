@@ -1,0 +1,28 @@
+{
+  "name": "mathra",
+  "version": "__VERSION__",
+  "description": "Math LaTeX to accessible SVG, without a TeX install. Speech for screen readers in 16 languages. Runs on WebAssembly in Node, bundlers and browsers.",
+  "keywords": ["latex", "math", "equations", "svg", "accessibility", "screen-reader", "a11y", "katex", "mathjax", "webassembly", "i18n"],
+  "homepage": "https://matheusmota-dev-br.github.io/mathra/",
+  "repository": { "type": "git", "url": "git+https://github.com/matheusmota-dev-br/mathra.git", "directory": "npm" },
+  "bugs": "https://github.com/matheusmota-dev-br/mathra/issues",
+  "license": "(MIT OR Apache-2.0) AND OFL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "node": {
+        "import": { "types": "./index.d.ts", "default": "./node/index.mjs" },
+        "require": { "types": "./index.d.cts", "default": "./node/index.cjs" }
+      },
+      "default": { "types": "./index.d.ts", "default": "./web/index.js" }
+    },
+    "./mathra.wasm": "./mathra.wasm",
+    "./package.json": "./package.json"
+  },
+  "main": "./node/index.cjs",
+  "module": "./web/index.js",
+  "types": "./index.d.ts",
+  "sideEffects": false,
+  "engines": { "node": ">=18" },
+  "files": ["web", "node", "mathra.wasm", "index.d.ts", "index.d.cts", "LICENSE-MIT", "LICENSE-APACHE", "OFL-STIXTwoMath.txt"]
+}

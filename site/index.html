@@ -174,12 +174,12 @@ svg = mathra.tex_to_svg(r"\sin x = 0.5")
 tree = mathra.tex_to_tree("3,14", locale="pt-BR")</pre>
       </div>
       <div class="card">
-        <h3>Browser (WebAssembly)</h3>
-<pre>await wasm_bindgen();
-const { texToSvg, render } = wasm_bindgen;
-const svg = texToSvg("3,14", "pt-BR");
-const all = JSON.parse(render("x^2"));
-// svg, speech, text, tree, applied, warnings</pre>
+        <h3>JavaScript (npm)</h3>
+<pre>// npm install mathra
+import { init, texToSvg, render } from "mathra";
+await init();  // browsers and bundlers; Node needs nothing
+const svg = texToSvg("3,14", { locale: "pt-BR" });
+const { speech, warnings } = render("x^2");</pre>
       </div>
     </div>
 

@@ -26,10 +26,11 @@ pub fn render_json(tex: &str, locale: Option<&str>, display: bool, strict: bool)
     Ok(out.to_string())
 }
 
-/// Converts math LaTeX to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja".
+/// Converts math LaTeX to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja";
+/// `display` defaults to true, `strict` to false.
 #[wasm_bindgen(js_name = texToSvg)]
-pub fn tex_to_svg(tex: &str, locale: Option<String>) -> Result<String, JsError> {
-    convert(tex, locale.as_deref()).map(|r| r.svg).map_err(|e| JsError::new(&e))
+pub fn tex_to_svg(tex: &str, locale: Option<String>, display: Option<bool>, strict: Option<bool>) -> Result<String, JsError> {
+    convert_with(tex, locale.as_deref(), display.unwrap_or(true), strict.unwrap_or(false)).map(|r| r.svg).map_err(|e| JsError::new(&e))
 }
 
 /// Tree of meaning as JSON.
