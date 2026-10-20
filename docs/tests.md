@@ -39,6 +39,7 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/latex_reader.rs` | 80 | Every command and environment the reader knows, every recovery path and, at the end (`p_*`), the problem inputs. |
 | `crates/core/tests/layout.rs` | 61 | From the tree to boxes: geometric properties (width, height, alignment, stretching), not exact coordinates. Includes the layout problem cases. |
 | `crates/core/tests/outputs.rs` | 9 | Screen reader speech in English and pt-BR, linear text, public shortcuts, error messages, locales. |
+| `crates/core/tests/locales.rs` | 5 | The 16 languages: every phrase present, the whole corpus in each one, region codes, speech and number conventions per language. |
 | `crates/core/tests/hostile_output.rs` | 5 | Hostile input: the SVG stays valid XML and injects no markup. |
 | `crates/core/tests/macros_and_packages.rs` | 11 | Substitution macros (L-MAC-1), package commands and the boundary (`spec/boundary.md`). |
 | `crates/core/tests/tolerance.rs` | 11 | Tolerant versus strict mode (`spec/tolerance.md`). |

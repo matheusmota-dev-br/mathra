@@ -8,13 +8,13 @@ Prefixes: `L` layout and locale, `S` speech and SVG output (see `svg.md`), `D` d
 
 ### L-NUM-1 · Decimal comma in the input
 
-In **pt-BR**, a comma directly between two digits is a decimal separator: `3,14` is the number 3.14.
+In the languages that write a decimal comma (pt-BR, es, fr, de, it, ru, id, tr, nl, pl), a comma directly between two digits is a decimal separator: `3,14` is the number 3.14.
 
 A comma followed by a space is still a list separator: `f(1, 5)` has two arguments.
 
-A dot between digits is decimal in both locales, because that is the LaTeX convention: `3.14` is 3,14 in pt-BR and 3.14 in en.
+A dot between digits is decimal in every locale, because that is the LaTeX convention: `3.14` is 3,14 in pt-BR and 3.14 in en.
 
-In **en**, the comma is never decimal.
+In **en, zh, ja, ko, hi and ar**, the comma is never decimal.
 
 The number is kept in the tree in canonical form, with a dot: `{"type":"number","value":"3.14"}`.
 
@@ -22,19 +22,27 @@ The number is kept in the tree in canonical form, with a dot: `{"type":"number",
 
 ### L-NUM-2 · How the number is written in the output
 
-The decimal separator drawn comes from the locale, not from the input: pt-BR writes `,`, en writes `.`. The same `3.14` comes out as `3,14` in pt-BR.
+The decimal separator drawn comes from the locale, not from the input. The same `3.14` comes out as `3,14` in every language that writes a decimal comma:
+
+| Decimal | Thousands (L-NUM-3) | Languages |
+|---|---|---|
+| `.` | `,` | en, zh, ja, ko, hi, ar |
+| `,` | `.` | pt-BR, es, de, it, id, tr, nl |
+| `,` | none | fr, ru, pl (they group thousands with spaces, which LaTeX math drops) |
+
+The comma between digits is decimal in the input (L-NUM-1) exactly in the languages that write it.
 
 ### L-NUM-3 · Thousands separator written by the author
 
-In **pt-BR**, a dot followed by groups of exactly three digits separates thousands: `1.000` is one thousand, `12.345,67` is a bit over twelve thousand. In **en**, the comma plays the same role: `1,000.5`. The number is stored without the separator (`"value":"1000"`, `"thousands":"."`) and drawn the way the author wrote it.
+The locale's thousands separator (table in L-NUM-2) followed by groups of exactly three digits separates thousands. In **pt-BR**, `1.000` is one thousand and `12.345,67` is a bit over twelve thousand; in **en**, the comma plays the same role: `1,000.5`. Indian grouping (`1,00,000`) is not recognized. The number is stored without the separator (`"value":"1000"`, `"thousands":"."`) and drawn the way the author wrote it.
 
 > Why: authors write `5,3\times1.000` meaning 5300. Treating the dot as a decimal point wrote `1,000` and changed the meaning. TeX never changes the text; mathra must not change the meaning.
 
 ## Intervals
 
-### L-INT-1 · Brazilian open interval
+### L-INT-1 · Open interval with reversed brackets
 
-In **pt-BR**, a `]` without an operand before it (at the start, or after a relation, operator or punctuation) opens an interval, and a `[` after an operand, in a span already opened with `]`, closes it. `]2, 5[` gets delimiter spacing, and the speech says "abre intervalo … fecha intervalo".
+In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without an operand before it (at the start, or after a relation, operator or punctuation) opens an interval, and a `[` after an operand, in a span already opened with `]`, closes it. `]2, 5[` gets delimiter spacing, and the speech says "abre intervalo … fecha intervalo" (pt-BR), "ouvre l'intervalle … ferme l'intervalle" (fr).
 
 ## Units
 
@@ -84,7 +92,7 @@ Package commands defined through other commands go through the same mechanism: `
 
 ### L-FUN-1 · Function name by locale
 
-The input accepts LaTeX's English names and the Brazilian ones (`\sen`, `\tg`, `\cotg`, `\cossec`, `\arcsen`, `\arctg`, `\senh`, `\mdc`, `\mmc`). The tree keeps the canonical English name (`sin`). The output writes it in the locale's language: `sin x` in en, `sen x` in pt-BR.
+The input accepts LaTeX's English names and the Brazilian ones (`\sen`, `\tg`, `\cotg`, `\cossec`, `\arcsen`, `\arctg`, `\senh`, `\mdc`, `\mmc`). The tree keeps the canonical English name (`sin`). The output writes it in the locale's language: `sin x` in en, `sen x` in pt-BR, es and it, `tg x` in ru, it and pl, `sh x` in fr, `ggT` in de. The names of each language are under `written` in `crates/core/src/locales/<code>.json`.
 
 ## Letters
 

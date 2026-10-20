@@ -17,11 +17,9 @@ struct Speaker {
 }
 
 impl Speaker {
-    fn t(&self, pt: &str, en: &str) -> String {
-        match self.loc {
-            Locale::PtBr => pt.to_string(),
-            Locale::En => en.to_string(),
-        }
+    /// A phrase of the locale, filled with `args`.
+    fn t(&self, key: &str, args: &[&str]) -> String {
+        self.loc.fill(key, args)
     }
 
     fn say(&mut self, s: impl Into<String>) {
@@ -46,14 +44,7 @@ impl Speaker {
                 self.say(l);
             }
             Node::Function { name, .. } => {
-                let f = match (self.loc, name.as_str()) {
-                    (Locale::PtBr, "lim") => "limite de".to_string(),
-                    (Locale::En, "lim") => "limit of".to_string(),
-                    (_, "det") => self.t("determinante de", "determinant of"),
-                    (_, "max") => self.t("máximo de", "maximum of"),
-                    (_, "min") => self.t("mínimo de", "minimum of"),
-                    _ => self.loc.speak_function(name),
-                };
+                let f = self.loc.speak_function(name);
                 self.say(f);
             }
             Node::Operator { symbol, class } | Node::FixedDelimiter { symbol, class, .. } => {
@@ -80,50 +71,45 @@ impl Speaker {
             Node::Fraction { num, den, rule, .. } => {
                 if !rule {
                     let (n, d) = (self.spoken(num), self.spoken(den));
-                    self.say(self.t(&format!("{n} escolhe {d}"), &format!("{n} choose {d}")));
+                    self.say(self.t("binomial", &[&n, &d]));
                 } else if let Some(name) = ordinary_fraction(num, den, self.loc) {
                     self.say(name);
                 } else if is_simple(num) && is_simple(den) {
                     let (n, d) = (self.spoken(num), self.spoken(den));
-                    self.say(self.t(&format!("{n} sobre {d}"), &format!("{n} over {d}")));
+                    self.say(self.t("fraction_simple", &[&n, &d]));
                 } else {
                     let (n, d) = (self.spoken(num), self.spoken(den));
-                    self.say(self.t(&format!("fração, {n}, sobre {d}, fim da fração"), &format!("fraction, {n}, over {d}, end fraction")));
+                    self.say(self.t("fraction", &[&n, &d]));
                 }
             }
             Node::Root { radicand, index } => {
                 let r = self.spoken(radicand);
-                let which = match index.as_deref() {
-                    None => self.t("raiz quadrada de", "square root of"),
-                    Some(Node::Number { value, .. }) if value == "3" => self.t("raiz cúbica de", "cube root of"),
-                    Some(Node::Number { value, .. }) if value == "2" => self.t("raiz quadrada de", "square root of"),
+                let phrase = match index.as_deref() {
+                    None => self.t("sqrt", &[&r]),
+                    Some(Node::Number { value, .. }) if value == "3" => self.t("cbrt", &[&r]),
+                    Some(Node::Number { value, .. }) if value == "2" => self.t("sqrt", &[&r]),
                     Some(i) => {
                         let i = self.spoken(i);
-                        self.t(&format!("raiz de índice {i} de"), &format!("root of index {i} of"))
+                        self.t("root_index", &[&i, &r])
                     }
                 };
                 if is_simple(radicand) {
-                    self.say(format!("{which} {r}"));
+                    self.say(phrase);
                 } else {
-                    self.say(format!("{which} {r}, {}", self.t("fim da raiz", "end root")));
+                    self.say(format!("{phrase}, {}", self.t("root_end", &[])));
                 }
             }
             Node::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref()),
             Node::Delimited { open, close, parts, middles } => {
                 // |x| and ‖v‖; a longer content gets an end marker, like roots: "absolute value of, a plus b, end absolute value"
-                // (pt-BR name, pt-BR end marker, English name)
                 let unit = match (open, close) {
-                    (Some('|'), Some('|')) => Some(("módulo", "fim do módulo", "absolute value")),
-                    (Some('‖'), Some('‖')) => Some(("norma", "fim da norma", "norm")),
+                    (Some('|'), Some('|')) => Some(("abs", "abs_long")),
+                    (Some('‖'), Some('‖')) => Some(("norm", "norm_long")),
                     _ => None,
                 };
-                if let (Some((pt, pt_end, en)), [inner]) = (unit, parts.as_slice()) {
+                if let (Some((short, long)), [inner]) = (unit, parts.as_slice()) {
                     let x = self.spoken(inner);
-                    let phrase = if is_simple(inner) {
-                        self.t(&format!("{pt} de {x}"), &format!("{en} of {x}"))
-                    } else {
-                        self.t(&format!("{pt} de, {x}, {pt_end}"), &format!("{en} of, {x}, end {en}"))
-                    };
+                    let phrase = self.t(if is_simple(inner) { short } else { long }, &[&x]);
                     self.say(phrase);
                     return;
                 }
@@ -146,22 +132,25 @@ impl Speaker {
             Node::Table { shape: kind, rows, .. } => self.table(*kind, rows),
             Node::Accent { base, accent, .. } => {
                 let b = self.spoken(base);
-                let phrase = match accent {
-                    '\u{20D7}' | '→' => self.t(&format!("vetor {b}"), &format!("vector {b}")),
-                    '\u{0302}' => self.t(&format!("{b} chapéu"), &format!("{b} hat")),
-                    '\u{0304}' => self.t(&format!("{b} barra"), &format!("{b} bar")),
-                    '\u{0307}' => self.t(&format!("{b} ponto"), &format!("{b} dot")),
-                    '\u{0308}' => self.t(&format!("{b} dois pontos"), &format!("{b} double dot")),
-                    '\u{0303}' => self.t(&format!("{b} til"), &format!("{b} tilde")),
-                    '⏜' => self.t(&format!("arco {b}"), &format!("arc {b}")),
-                    _ => b,
+                let key = match accent {
+                    '\u{20D7}' | '→' => "accent.vector",
+                    '\u{0302}' => "accent.hat",
+                    '\u{0304}' => "accent.bar",
+                    '\u{0307}' => "accent.dot",
+                    '\u{0308}' => "accent.ddot",
+                    '\u{0303}' => "accent.tilde",
+                    '⏜' => "accent.arc",
+                    _ => {
+                        self.say(b);
+                        return;
+                    }
                 };
-                self.say(phrase);
+                self.say(self.t(key, &[&b]));
             }
             Node::Bar { base, above } => {
                 let b = self.spoken(base);
                 if *above {
-                    self.say(self.t(&format!("{b} barra"), &format!("{b} bar")));
+                    self.say(self.t("accent.bar", &[&b]));
                 } else {
                     self.say(b);
                 }
@@ -184,12 +173,12 @@ impl Speaker {
             Node::Space { .. } | Node::Phantom { .. } => {}
             Node::Canceled { base, .. } => {
                 let b = self.spoken(base);
-                self.say(self.t(&format!("{b} cancelado"), &format!("{b} canceled")));
+                self.say(self.t("canceled", &[&b]));
             }
             Node::Framed { base, shape } => {
                 let b = self.spoken(base);
                 match shape {
-                    Frame::Circle => self.say(self.t(&format!("{b} circulado"), &format!("circled {b}"))),
+                    Frame::Circle => self.say(self.t("circled", &[&b])),
                     Frame::Rectangle => self.say(b),
                 }
             }
@@ -198,41 +187,37 @@ impl Speaker {
             Node::Arrow { symbol, above, below } => {
                 // a labeled arrow is a function or a reaction, not a limit: it is not read as "tends to"
                 let o = match symbol {
-                    '→' => self.t("seta para a direita", "right arrow"),
-                    '←' => self.t("seta para a esquerda", "left arrow"),
-                    '↔' => self.t("seta dupla", "double arrow"),
-                    '⇒' => self.t("implica", "implies"),
-                    '=' => self.t("igual", "equals"),
+                    '→' => self.t("arrow.right", &[]),
+                    '←' => self.t("arrow.left", &[]),
+                    '↔' => self.t("arrow.both", &[]),
+                    '⇒' => self.t("arrow.implies", &[]),
+                    '=' => self.t("arrow.equals", &[]),
                     other => operator(*other, Class::Rel, self.loc),
                 };
                 self.say(o);
-                if let Some(a) = above {
-                    let a = self.spoken(a);
-                    self.say(self.t(&format!("({a})"), &format!("({a})")));
-                }
-                if let Some(b) = below {
-                    let b = self.spoken(b);
-                    self.say(format!("({b})"));
+                for label in [above, below].into_iter().flatten() {
+                    let l = self.spoken(label);
+                    self.say(format!("({l})"));
                 }
             }
             Node::Stacked { base, above, below } => {
                 self.node(base);
                 if let Some(a) = above {
                     let a = self.spoken(a);
-                    self.say(self.t(&format!("com {a} em cima"), &format!("with {a} above")));
+                    self.say(self.t("with_above", &[&a]));
                 }
                 if let Some(b) = below {
                     let b = self.spoken(b);
-                    self.say(self.t(&format!("com {b} embaixo"), &format!("with {b} below")));
+                    self.say(self.t("with_below", &[&b]));
                 }
             }
             Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } | Node::Overlapped { base, .. } => self.node(base),
             Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, left, right } => {
                 let arrow = match symbol {
-                    '↓' => self.t("seta para baixo", "down arrow"),
-                    '↑' => self.t("seta para cima", "up arrow"),
-                    _ => self.t("igual", "equals"),
+                    '↓' => self.t("arrow.down", &[]),
+                    '↑' => self.t("arrow.up", &[]),
+                    _ => self.t("arrow.equals", &[]),
                 };
                 self.say(arrow);
                 for r in [left, right].into_iter().flatten() {
@@ -242,20 +227,17 @@ impl Speaker {
             }
             Node::LongDivision { dividend, divisor } => {
                 let (q, r) = divide(dividend, divisor);
-                self.say(self.t(
-                    &format!("divisão armada de {dividend} por {divisor}: quociente {q}, resto {r}"),
-                    &format!("long division of {dividend} by {divisor}: quotient {q}, remainder {r}"),
-                ));
+                self.say(self.t("long_division", &[dividend, divisor, &q, &r]));
             }
             Node::ColumnArithmetic { operation, terms } => {
                 let a: i128 = terms[0].parse().unwrap_or(0);
                 let b: i128 = terms[1].parse().unwrap_or(0);
                 let (op, r) = match operation {
-                    '+' => (self.t("mais", "plus"), a + b),
-                    '−' => (self.t("menos", "minus"), a - b),
-                    _ => (self.t("vezes", "times"), a.saturating_mul(b)),
+                    '+' => (operator('+', Class::Bin, self.loc), a + b),
+                    '−' => (operator('−', Class::Bin, self.loc), a - b),
+                    _ => (operator('×', Class::Bin, self.loc), a.saturating_mul(b)),
                 };
-                self.say(self.t(&format!("conta armada: {a} {op} {b} igual a {r}"), &format!("written calculation: {a} {op} {b} equals {r}")));
+                self.say(self.t("column_arithmetic", &[&a.to_string(), &op, &b.to_string(), &r.to_string()]));
             }
         }
     }
@@ -266,9 +248,9 @@ impl Speaker {
             let from = sub.map(|s| self.spoken(s));
             let to = sup.map(|s| self.spoken(s));
             let phrase = match (from, to) {
-                (Some(d), Some(a)) => self.t(&format!("{name} de {d} até {a} de"), &format!("{name} from {d} to {a} of")),
-                (Some(d), None) => self.t(&format!("{name} sobre {d} de"), &format!("{name} over {d} of")),
-                (None, Some(a)) => self.t(&format!("{name} até {a} de"), &format!("{name} to {a} of")),
+                (Some(d), Some(a)) => self.t("big_from_to", &[&name, &d, &a]),
+                (Some(d), None) => self.t("big_over", &[&name, &d]),
+                (None, Some(a)) => self.t("big_to", &[&name, &a]),
                 (None, None) => name,
             };
             self.say(phrase);
@@ -276,8 +258,8 @@ impl Speaker {
         }
         if let (Node::Function { name, .. }, Some(s)) = (base, sub) {
             if name == "lim" {
-                let s = self.spoken(s).replace("tende a", "tendendo a");
-                self.say(self.t(&format!("limite com {s} de"), &format!("limit as {s} of")));
+                let s = self.spoken(s).replace(self.loc.phrase("op.→"), self.loc.phrase("tending_to"));
+                self.say(self.t("lim_as", &[&s]));
                 if let Some(p) = sup {
                     let p = self.spoken(p);
                     self.say(p);
@@ -287,39 +269,32 @@ impl Speaker {
         }
         // sen² x, log₂ x: the scripts belong to the function name, before "de"/"of"
         if let Node::Function { name, .. } = base {
-            let spoken = self.spoken(base);
-            let (bare, link) = match spoken.rsplit_once(' ') {
-                Some((b, l @ ("de" | "of"))) => (b.to_string(), Some(l.to_string())),
-                _ => (spoken, None),
-            };
+            let spoken = self.loc.function_spoken(name);
+            let bare = spoken.map_or_else(|| self.loc.function_name(name), str::to_string);
             // sen⁻¹ x is the inverse function, not 1/sen x: "arco seno de x", "inverse sine of x"
-            let inverse = sup.is_some_and(|s| self.spoken(s) == self.t("menos 1", "negative 1"));
+            let minus_one = format!("{} 1", self.loc.phrase("negative"));
+            let inverse = sup.is_some_and(|s| self.spoken(s) == minus_one);
             let trig = matches!(name.as_str(), "sin" | "cos" | "tan" | "cot" | "sec" | "csc");
-            let bare = match (inverse, self.loc) {
+            let mut words = vec![match (inverse, trig) {
                 (false, _) => bare,
-                (true, Locale::En) => format!("inverse {bare}"),
-                (true, Locale::PtBr) if trig => format!("arco {bare}"),
-                (true, Locale::PtBr) => format!("inversa de {bare}"),
-            };
-            self.say(bare);
+                (true, true) => self.t("inverse_trig", &[&bare]),
+                (true, false) => self.t("inverse", &[&bare]),
+            }];
             if let Some(s) = sub {
                 let s = self.spoken(s);
-                let phrase = if name == "log" { self.t(&format!("na base {s}"), &format!("base {s}")) } else { self.t(&format!("índice {s}"), &format!("sub {s}")) };
-                self.say(phrase);
+                words.push(self.t(if name == "log" { "log_base" } else { "sub" }, &[&s]));
             }
             if let Some(s) = sup.filter(|_| !inverse) {
-                let phrase = self.superscript(s);
-                self.say(phrase);
+                words.push(self.superscript(s));
             }
-            if let Some(l) = link {
-                self.say(l);
-            }
+            let words = words.join(" ");
+            self.say(if spoken.is_some() { self.t("function_of", &[&words]) } else { words });
             return;
         }
         self.node(base);
         if let Some(s) = sub {
             let s = self.spoken(s);
-            self.say(self.t(&format!("índice {s}"), &format!("sub {s}")));
+            self.say(self.t("sub", &[&s]));
         }
         if let Some(s) = sup {
             let phrase = self.superscript(s);
@@ -328,23 +303,17 @@ impl Speaker {
     }
 
     fn superscript(&mut self, s: &Node) -> String {
-        {
-            match s {
-                Node::Number { value, .. } if value == "2" => self.t("ao quadrado", "squared"),
-                Node::Number { value, .. } if value == "3" => self.t("ao cubo", "cubed"),
-                Node::Operator { symbol: '′', .. } => self.t("linha", "prime"),
-                Node::Operator { symbol: '″', .. } => self.t("duas linhas", "double prime"),
-                Node::Operator { symbol: '°' | '∘', .. } => self.t("graus", "degrees"),
-                Node::Operator { symbol: '+', .. } => self.t("pela direita", "from the right"),
-                Node::Operator { symbol: '−', .. } => self.t("pela esquerda", "from the left"),
-                other => {
-                    let x = self.spoken(other);
-                    if is_simple(other) {
-                        self.t(&format!("elevado a {x}"), &format!("to the {x}"))
-                    } else {
-                        self.t(&format!("elevado a, {x}, fim do expoente"), &format!("to the power, {x}, end exponent"))
-                    }
-                }
+        match s {
+            Node::Number { value, .. } if value == "2" => self.t("squared", &[]),
+            Node::Number { value, .. } if value == "3" => self.t("cubed", &[]),
+            Node::Operator { symbol: '′', .. } => self.t("prime", &[]),
+            Node::Operator { symbol: '″', .. } => self.t("double_prime", &[]),
+            Node::Operator { symbol: '°' | '∘', .. } => self.t("degrees", &[]),
+            Node::Operator { symbol: '+', .. } => self.t("from_right", &[]),
+            Node::Operator { symbol: '−', .. } => self.t("from_left", &[]),
+            other => {
+                let x = self.spoken(other);
+                self.t(if is_simple(other) { "power" } else { "power_long" }, &[&x])
             }
         }
     }
@@ -354,16 +323,16 @@ impl Speaker {
         let ncol = rows.iter().map(Vec::len).max().unwrap_or(0);
         let spoken_rows: Vec<String> =
             rows.iter().map(|l| l.iter().map(|c| self.spoken(c)).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(if kind == Aligned { " " } else { ", " })).collect();
-        let body = |label: &str| -> String { spoken_rows.iter().enumerate().map(|(i, l)| format!("{label} {}: {l}", i + 1)).collect::<Vec<_>>().join("; ") };
+        let body =
+            |label: &str| -> String { spoken_rows.iter().enumerate().map(|(i, l)| format!("{}: {l}", self.t(label, &[&(i + 1).to_string()]))).collect::<Vec<_>>().join("; ") };
         let phrase = match kind {
             Matrix | PMatrix | BMatrix | BraceMatrix | VVMatrix | SmallMatrix | BorderMatrix => {
-                let r = rows.len();
-                format!("{} {r} {} {ncol}: {}", self.t("matriz", "matrix"), self.t("por", "by"), body(&self.t("linha", "row")))
+                format!("{}: {}", self.t("matrix", &[&rows.len().to_string(), &ncol.to_string()]), body("row"))
             }
-            VMatrix => format!("{}: {}", self.t("determinante", "determinant"), body(&self.t("linha", "row"))),
-            Cases => format!("{}: {}", self.t("casos", "cases"), body(&self.t("caso", "case"))),
+            VMatrix => format!("{}: {}", self.t("determinant", &[]), body("row")),
+            Cases => format!("{}: {}", self.t("cases", &[]), body("case")),
             Array | Substack => spoken_rows.join("; "),
-            Diagram => format!("{}: {}", self.t("diagrama", "diagram"), body(&self.t("linha", "row"))),
+            Diagram => format!("{}: {}", self.t("diagram", &[]), body("row")),
             Aligned | Centered => spoken_rows.join("; "),
         };
         self.say(phrase);
@@ -405,11 +374,10 @@ fn is_simple(node: &Node) -> bool {
     }
 }
 
-/// pt-BR: 1/2 → "um meio", 3/4 → "três quartos", the way it is read at school.
+/// 1/2 → "um meio", 3/4 → "três quartos", the way it is read at school, in the languages that have the
+/// names (`fractions` in the locale file).
 fn ordinary_fraction(num: &Node, den: &Node, loc: Locale) -> Option<String> {
-    if loc != Locale::PtBr {
-        return None;
-    }
+    let names = loc.fractions()?;
     let (Node::Number { value: n, .. }, Node::Number { value: d, .. }) = (num, den) else {
         return None;
     };
@@ -418,10 +386,8 @@ fn ordinary_fraction(num: &Node, den: &Node, loc: Locale) -> Option<String> {
     if !(1..=10).contains(&n) || !(2..=10).contains(&d) {
         return None;
     }
-    let names = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez"];
-    let ordinals = ["", "", "meio", "terço", "quarto", "quinto", "sexto", "sétimo", "oitavo", "nono", "décimo"];
-    let plural = if n > 1 { "s" } else { "" };
-    Some(format!("{} {}{plural}", names[n], ordinals[d]))
+    let denominator = if n > 1 { &names.plural[d] } else { &names.singular[d] };
+    Some(format!("{} {denominator}", names.numerals[n]))
 }
 
 fn divide(a: &str, b: &str) -> (String, String) {
@@ -432,150 +398,53 @@ fn divide(a: &str, b: &str) -> (String, String) {
 }
 
 fn large_operator(c: char, loc: Locale) -> String {
-    let pt = loc == Locale::PtBr;
-    match c {
-        '∑' => pt_en(pt, "somatório", "sum"),
-        '∏' => pt_en(pt, "produtório", "product"),
-        '∫' => "integral",
-        '∬' => pt_en(pt, "integral dupla", "double integral"),
-        '∭' => pt_en(pt, "integral tripla", "triple integral"),
-        '∮' => pt_en(pt, "integral de linha", "contour integral"),
-        '⋃' => pt_en(pt, "união", "union"),
-        '⋂' => pt_en(pt, "interseção", "intersection"),
-        _ => pt_en(pt, "operador", "operator"),
-    }
-    .to_string()
+    let key = match c {
+        '∑' | '∏' | '∫' | '∬' | '∭' | '∮' | '⋃' | '⋂' => format!("big.{c}"),
+        _ => "big.other".into(),
+    };
+    loc.phrase(&key).to_string()
 }
 
-fn letter(name: &str, locale: Locale) -> String {
-    let pt = matches!(locale, Locale::PtBr);
-    let greek = match name {
-        "α" => pt_en(pt, "alfa", "alpha"),
-        "β" => "beta",
-        "γ" => pt_en(pt, "gama", "gamma"),
-        "δ" => "delta",
-        "ε" | "ϵ" => pt_en(pt, "épsilon", "epsilon"),
-        "ζ" => "zeta",
-        "η" => "eta",
-        "θ" | "ϑ" => pt_en(pt, "teta", "theta"),
-        "κ" => "kappa",
-        "λ" => "lambda",
-        "μ" => pt_en(pt, "mi", "mu"),
-        "ν" => pt_en(pt, "ni", "nu"),
-        "ξ" => pt_en(pt, "csi", "xi"),
-        "π" => "pi",
-        "ρ" => pt_en(pt, "rô", "rho"),
-        "σ" => "sigma",
-        "τ" => "tau",
-        "φ" | "ϕ" => pt_en(pt, "fi", "phi"),
-        "χ" => pt_en(pt, "qui", "chi"),
-        "ψ" => "psi",
-        "ω" => pt_en(pt, "ômega", "omega"),
-        "Γ" => pt_en(pt, "gama maiúsculo", "capital gamma"),
-        "Δ" => pt_en(pt, "delta maiúsculo", "capital delta"),
-        "Θ" => pt_en(pt, "teta maiúsculo", "capital theta"),
-        "Λ" => pt_en(pt, "lambda maiúsculo", "capital lambda"),
-        "Π" => pt_en(pt, "pi maiúsculo", "capital pi"),
-        "Σ" => pt_en(pt, "sigma maiúsculo", "capital sigma"),
-        "Φ" => pt_en(pt, "fi maiúsculo", "capital phi"),
-        "Ψ" => pt_en(pt, "psi maiúsculo", "capital psi"),
-        "Ω" => pt_en(pt, "ômega maiúsculo", "capital omega"),
+fn letter(name: &str, loc: Locale) -> String {
+    let lower = match name {
+        "ϵ" => "ε",
+        "ϑ" => "θ",
+        "ϕ" => "φ",
+        other => other,
+    };
+    if let Some(n) = loc.optional(&format!("greek.{lower}")) {
+        return n.to_string();
+    }
+    // capitals with their own shape: "capital gamma", "gama maiúsculo"
+    let capital = match name {
+        "Γ" => "γ",
+        "Δ" => "δ",
+        "Θ" => "θ",
+        "Λ" => "λ",
+        "Π" => "π",
+        "Σ" => "σ",
+        "Φ" => "φ",
+        "Ψ" => "ψ",
+        "Ω" => "ω",
         _ => return name.to_string(),
     };
-    greek.to_string()
+    loc.fill("capital", &[loc.phrase(&format!("greek.{capital}"))])
 }
 
-fn operator(symbol: char, class: Class, locale: Locale) -> String {
-    let pt = matches!(locale, Locale::PtBr);
-    let text = match symbol {
-        '+' => pt_en(pt, "mais", "plus"),
-        '−' => {
-            if pt {
-                "menos"
-            } else if class == Class::Ord {
-                "negative"
-            } else {
-                "minus"
-            }
-        }
-        '±' => pt_en(pt, "mais ou menos", "plus or minus"),
-        '∓' => pt_en(pt, "menos ou mais", "minus or plus"),
-        '·' | '×' | '∗' => pt_en(pt, "vezes", "times"),
-        '/' | '÷' => pt_en(pt, "dividido por", "divided by"),
-        '=' => pt_en(pt, "é igual a", "equals"),
-        '<' => pt_en(pt, "é menor que", "is less than"),
-        '>' => pt_en(pt, "é maior que", "is greater than"),
-        '≤' => pt_en(pt, "é menor ou igual a", "is less than or equal to"),
-        '≥' => pt_en(pt, "é maior ou igual a", "is greater than or equal to"),
-        '≠' => pt_en(pt, "é diferente de", "is not equal to"),
-        '≈' => pt_en(pt, "é aproximadamente", "is approximately"),
-        '≡' => pt_en(pt, "é côngruo a", "is congruent to"),
-        '∝' => pt_en(pt, "é proporcional a", "is proportional to"),
-        '→' | '⟶' => pt_en(pt, "tende a", "tends to"),
-        '⇒' | '⟹' => pt_en(pt, "implica", "implies"),
-        '⇔' | '⟺' => pt_en(pt, "se e somente se", "if and only if"),
-        '⇌' => pt_en(pt, "em equilíbrio com", "in equilibrium with"),
-        '∈' => pt_en(pt, "pertence a", "is in"),
-        '∉' => pt_en(pt, "não pertence a", "is not in"),
-        '⊂' => pt_en(pt, "está contido em", "is a subset of"),
-        '⊆' => pt_en(pt, "está contido ou é igual a", "is a subset of or equal to"),
-        '∪' => pt_en(pt, "união", "union"),
-        '∩' => pt_en(pt, "interseção", "intersection"),
-        '∞' => pt_en(pt, "infinito", "infinity"),
-        '∂' => pt_en(pt, "derivada parcial", "partial"),
-        '∇' => "nabla",
-        '∀' => pt_en(pt, "para todo", "for all"),
-        '∃' => pt_en(pt, "existe", "there exists"),
-        '∅' => pt_en(pt, "conjunto vazio", "empty set"),
-        '(' => pt_en(pt, "abre parênteses", "open paren"),
-        ')' => pt_en(pt, "fecha parênteses", "close paren"),
-        '[' => {
-            if pt {
-                if class == Class::Close {
-                    "fecha intervalo"
-                } else {
-                    "abre colchetes"
-                }
-            } else {
-                "open bracket"
-            }
-        }
-        ']' => {
-            if pt {
-                if class == Class::Open {
-                    "abre intervalo"
-                } else {
-                    "fecha colchetes"
-                }
-            } else {
-                "close bracket"
-            }
-        }
-        '{' => pt_en(pt, "abre chaves", "open brace"),
-        '}' => pt_en(pt, "fecha chaves", "close brace"),
-        ',' => pt_en(pt, "vírgula", "comma"),
-        ';' => pt_en(pt, "ponto e vírgula", "semicolon"),
-        ':' => pt_en(pt, "dois-pontos", "colon"),
-        '!' => pt_en(pt, "fatorial", "factorial"),
-        '|' | '∣' => pt_en(pt, "barra", "bar"),
-        '°' => pt_en(pt, "graus", "degrees"),
-        '%' => pt_en(pt, "por cento", "percent"),
-        '…' | '⋯' => pt_en(pt, "e assim por diante", "and so on"),
-        '∠' => pt_en(pt, "ângulo", "angle"),
-        '△' => pt_en(pt, "triângulo", "triangle"),
-        '⊥' => pt_en(pt, "é perpendicular a", "is perpendicular to"),
-        '∥' => pt_en(pt, "é paralelo a", "is parallel to"),
-        '′' => pt_en(pt, "linha", "prime"),
-        other => return other.to_string(),
+fn operator(symbol: char, class: Class, loc: Locale) -> String {
+    let key = match symbol {
+        '−' if class == Class::Ord => "negative".to_string(),
+        // L-INT-1: ]a, b[
+        ']' if class == Class::Open => "open_interval".to_string(),
+        '[' if class == Class::Close => "close_interval".to_string(),
+        '·' | '∗' => "op.×".to_string(),
+        '÷' => "op./".to_string(),
+        '⟶' => "op.→".to_string(),
+        '⟹' => "op.⇒".to_string(),
+        '⟺' => "op.⇔".to_string(),
+        '∣' => "op.|".to_string(),
+        '⋯' => "op.…".to_string(),
+        other => format!("op.{other}"),
     };
-    text.to_string()
-}
-
-/// The pt-BR or the English word, for the symbol tables above.
-fn pt_en(pt: bool, pt_br: &'static str, en: &'static str) -> &'static str {
-    if pt {
-        pt_br
-    } else {
-        en
-    }
+    loc.optional(&key).map_or_else(|| symbol.to_string(), str::to_string)
 }

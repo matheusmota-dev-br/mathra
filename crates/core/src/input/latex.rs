@@ -450,13 +450,11 @@ impl Reader<'_> {
         Node::Number { value, group: false, thousands: None }
     }
 
-    /// L-NUM-3: `1.000` and `12.345,67` in pt-BR, `1,000` and `12,345.67` in English: the dot (or comma)
-    /// followed by groups of exactly three digits separates thousands and is kept in the drawing.
+    /// L-NUM-3: `1.000` and `12.345,67` in pt-BR, `1,000` and `12,345.67` in English: the locale's thousands
+    /// separator followed by groups of exactly three digits separates thousands and is kept in the drawing.
     fn number_with_thousands(&mut self) -> Option<Node> {
-        let (thousands, decimal) = match self.locale {
-            crate::locale::Locale::PtBr => ('.', ','),
-            crate::locale::Locale::En => (',', '.'),
-        };
+        let thousands = self.locale.thousands_separator()?;
+        let decimal = self.locale.decimal_separator();
         let mut i = self.pos;
         let digits = |i: &mut usize| -> String {
             let mut s = String::new();

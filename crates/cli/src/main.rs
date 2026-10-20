@@ -12,7 +12,8 @@ USAGE
 
 OPTIONS
   -o, --output <file>     write the SVG to a file instead of printing it
-  -l, --locale <code>     en (default) or pt-BR
+  -l, --locale <code>     en (default), pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar,
+                          id, tr, nl or pl; a region is accepted (es-MX, zh-CN)
       --inline            inline style, as in $…$; the default is display style
       --strict            refuse invalid LaTeX, like TeX (the default recovers and warns)
       --explain           show the tree, the speech and the rules applied
@@ -27,6 +28,7 @@ OPTIONS
 EXAMPLES
   mathra '3.14' -o pi.svg
   mathra '3,14' --locale pt-BR --explain
+  mathra '\\frac{3}{4}' --locale fr --speech
   mathra '\\sin^2 x' --speech
 ";
 

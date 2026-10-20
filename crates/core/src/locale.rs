@@ -1,91 +1,238 @@
 //! Writing conventions per language. The tree does not change; only how it is written and read.
+//!
+//! Every language is a JSON file in `src/locales/`, embedded in the binary: the conventions (decimal
+//! and thousands separators, open intervals, how functions are written) and the speech phrases, as
+//! templates with `{0}`, `{1}`… A phrase missing from a language falls back to English.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::OnceLock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum Locale {
     PtBr,
     #[default]
     En,
+    Es,
+    Fr,
+    De,
+    It,
+    Ru,
+    Zh,
+    Ja,
+    Ko,
+    Hi,
+    Ar,
+    Id,
+    Tr,
+    Nl,
+    Pl,
+}
+
+/// The source of each language, in the order of [`Locale::ALL`].
+const SOURCES: [(Locale, &str); 16] = [
+    (Locale::En, include_str!("locales/en.json")),
+    (Locale::PtBr, include_str!("locales/pt-BR.json")),
+    (Locale::Es, include_str!("locales/es.json")),
+    (Locale::Fr, include_str!("locales/fr.json")),
+    (Locale::De, include_str!("locales/de.json")),
+    (Locale::It, include_str!("locales/it.json")),
+    (Locale::Ru, include_str!("locales/ru.json")),
+    (Locale::Zh, include_str!("locales/zh.json")),
+    (Locale::Ja, include_str!("locales/ja.json")),
+    (Locale::Ko, include_str!("locales/ko.json")),
+    (Locale::Hi, include_str!("locales/hi.json")),
+    (Locale::Ar, include_str!("locales/ar.json")),
+    (Locale::Id, include_str!("locales/id.json")),
+    (Locale::Tr, include_str!("locales/tr.json")),
+    (Locale::Nl, include_str!("locales/nl.json")),
+    (Locale::Pl, include_str!("locales/pl.json")),
+];
+
+#[derive(Debug, Deserialize)]
+struct Data {
+    code: String,
+    name: String,
+    /// L-NUM-2
+    decimal: char,
+    /// L-NUM-3; none where thousands are grouped with spaces, which LaTeX math drops
+    thousands: Option<char>,
+    /// L-INT-1: `]a, b[` is an open interval
+    #[serde(default)]
+    open_interval: bool,
+    /// L-FUN-1: function names written differently from LaTeX's English ones
+    #[serde(default)]
+    written: HashMap<String, String>,
+    speech: HashMap<String, String>,
+    /// Fractions read the way they are at school: "três quartos", "three quarters"
+    #[serde(default)]
+    fractions: Option<Fractions>,
+}
+
+/// Numerals 0–10 and the denominators 0–10, singular and plural. Index 0 and 1 of the
+/// denominators are unused.
+#[derive(Debug, Deserialize)]
+pub(crate) struct Fractions {
+    pub numerals: Vec<String>,
+    pub singular: Vec<String>,
+    pub plural: Vec<String>,
+}
+
+fn table() -> &'static HashMap<Locale, Data> {
+    static TABLE: OnceLock<HashMap<Locale, Data>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        SOURCES
+            .iter()
+            .map(|(locale, json)| {
+                let data: Data = serde_json::from_str(json).unwrap_or_else(|e| panic!("src/locales/{}.json: {e}", locale.code()));
+                assert_eq!(data.code, locale.code(), "the file of {locale:?} declares another code");
+                (*locale, data)
+            })
+            .collect()
+    })
 }
 
 impl Locale {
+    /// Every supported language, English first.
+    pub const ALL: [Locale; 16] = [
+        Locale::En,
+        Locale::PtBr,
+        Locale::Es,
+        Locale::Fr,
+        Locale::De,
+        Locale::It,
+        Locale::Ru,
+        Locale::Zh,
+        Locale::Ja,
+        Locale::Ko,
+        Locale::Hi,
+        Locale::Ar,
+        Locale::Id,
+        Locale::Tr,
+        Locale::Nl,
+        Locale::Pl,
+    ];
+
     pub fn code(self) -> &'static str {
         match self {
             Locale::PtBr => "pt-BR",
             Locale::En => "en",
+            Locale::Es => "es",
+            Locale::Fr => "fr",
+            Locale::De => "de",
+            Locale::It => "it",
+            Locale::Ru => "ru",
+            Locale::Zh => "zh",
+            Locale::Ja => "ja",
+            Locale::Ko => "ko",
+            Locale::Hi => "hi",
+            Locale::Ar => "ar",
+            Locale::Id => "id",
+            Locale::Tr => "tr",
+            Locale::Nl => "nl",
+            Locale::Pl => "pl",
         }
+    }
+
+    fn data(self) -> &'static Data {
+        &table()[&self]
+    }
+
+    /// The language's own name for itself: "Português (Brasil)", "日本語".
+    pub fn name(self) -> &'static str {
+        &self.data().name
     }
 
     /// L-NUM-2: decimal separator in the output.
     pub fn decimal_separator(self) -> char {
-        match self {
-            Locale::PtBr => ',',
-            Locale::En => '.',
-        }
+        self.data().decimal
+    }
+
+    /// L-NUM-3: thousands separator recognized in the input and kept in the drawing.
+    pub fn thousands_separator(self) -> Option<char> {
+        self.data().thousands
     }
 
     /// L-NUM-1: is a comma between digits a decimal separator in the input?
     pub fn comma_is_decimal(self) -> bool {
-        matches!(self, Locale::PtBr)
+        self.data().decimal == ','
+    }
+
+    /// L-INT-1: is `]a, b[` an open interval?
+    pub fn open_interval(self) -> bool {
+        self.data().open_interval
     }
 
     /// L-FUN-1: how the function is written, from its canonical name.
     pub fn function_name(self, canonical: &str) -> String {
-        match (self, canonical) {
-            (Locale::PtBr, "sin") => "sen".into(),
-            (Locale::PtBr, "tan") => "tg".into(),
-            (Locale::PtBr, "cot") => "cotg".into(),
-            (Locale::PtBr, "csc") => "cossec".into(),
-            (Locale::PtBr, "arcsin") => "arcsen".into(),
-            (Locale::PtBr, "arctan") => "arctg".into(),
-            (Locale::PtBr, "sinh") => "senh".into(),
-            (Locale::PtBr, "gcd") => "mdc".into(),
-            (Locale::PtBr, "lcm") => "mmc".into(),
-            (_, other) => other.into(),
+        self.data().written.get(canonical).cloned().unwrap_or_else(|| canonical.into())
+    }
+
+    /// How the function is read aloud, with its link to the argument: "sine of", "seno de". A function
+    /// without a spoken name is read as written, without the link: "sinh".
+    pub fn speak_function(self, canonical: &str) -> String {
+        match self.function_spoken(canonical) {
+            Some(name) => self.fill("function_of", &[name]),
+            None => self.function_name(canonical),
         }
     }
 
-    /// How the function is read aloud.
-    pub fn speak_function(self, canonical: &str) -> String {
-        let name = match (self, canonical) {
-            (Locale::PtBr, "sin") => "seno",
-            (Locale::PtBr, "cos") => "cosseno",
-            (Locale::PtBr, "tan") => "tangente",
-            (Locale::PtBr, "cot") => "cotangente",
-            (Locale::PtBr, "sec") => "secante",
-            (Locale::PtBr, "csc") => "cossecante",
-            (Locale::PtBr, "log") => "logaritmo",
-            (Locale::PtBr, "ln") => "logaritmo natural",
-            (Locale::PtBr, "gcd") => "mdc",
-            (Locale::PtBr, "lcm") => "mmc",
-            (Locale::En, "sin") => "sine",
-            (Locale::En, "cos") => "cosine",
-            (Locale::En, "tan") => "tangent",
-            (Locale::En, "cot") => "cotangent",
-            (Locale::En, "sec") => "secant",
-            (Locale::En, "csc") => "cosecant",
-            (Locale::En, "log") => "log",
-            (Locale::En, "ln") => "natural log",
-            (_, other) => return self.function_name(other),
-        };
-        match self {
-            Locale::PtBr => format!("{name} de"),
-            Locale::En => format!("{name} of"),
+    /// The spoken name of a function alone: "sine", "seno"; `None` when only its written name exists.
+    pub(crate) fn function_spoken(self, canonical: &str) -> Option<&'static str> {
+        self.lookup(&format!("fn.{canonical}"))
+    }
+
+    pub(crate) fn fractions(self) -> Option<&'static Fractions> {
+        self.data().fractions.as_ref()
+    }
+
+    fn lookup(self, key: &str) -> Option<&'static str> {
+        self.data().speech.get(key).or_else(|| Locale::En.data().speech.get(key)).map(String::as_str)
+    }
+
+    /// A speech phrase; English when the language lacks it.
+    pub(crate) fn phrase(self, key: &str) -> &'static str {
+        self.lookup(key).unwrap_or_else(|| panic!("speech phrase '{key}' missing from src/locales/en.json"))
+    }
+
+    /// A speech template with `{0}`, `{1}`… replaced by `args`.
+    pub(crate) fn fill(self, key: &str, args: &[&str]) -> String {
+        let mut s = self.phrase(key).to_string();
+        for (i, a) in args.iter().enumerate() {
+            s = s.replace(&format!("{{{i}}}"), a);
         }
+        s
+    }
+
+    /// The phrase of an optional key, for symbols: `None` when no language names it.
+    pub(crate) fn optional(self, key: &str) -> Option<&'static str> {
+        self.lookup(key)
+    }
+
+    /// Phrases English has and this language lacks (it falls back to English for them).
+    pub fn missing_phrases(self) -> Vec<&'static str> {
+        let own = &self.data().speech;
+        let mut keys: Vec<&'static str> = Locale::En.data().speech.keys().map(String::as_str).filter(|k| !own.contains_key(*k)).collect();
+        keys.sort_unstable();
+        keys
     }
 }
 
 impl FromStr for Locale {
     type Err = String;
 
+    /// The language code, with or without a region: `pt-BR`, `pt`, `es-MX`, `zh_CN`, `EN`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "pt-br" | "pt" | "pt_br" => Ok(Locale::PtBr),
-            "en" | "en-us" | "en_us" => Ok(Locale::En),
-            other => Err(format!("unknown locale: {other} (use en or pt-BR)")),
-        }
+        let lower = s.to_ascii_lowercase().replace('_', "-");
+        let language = lower.split('-').next().unwrap_or_default();
+        Locale::ALL.into_iter().find(|l| l.code().to_ascii_lowercase() == lower || l.code().split('-').next() == Some(language)).ok_or_else(|| {
+            let codes: Vec<&str> = Locale::ALL.iter().map(|l| l.code()).collect();
+            format!("unknown locale: {s} (use one of {})", codes.join(", "))
+        })
     }
 }
 

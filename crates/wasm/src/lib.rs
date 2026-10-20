@@ -26,7 +26,7 @@ pub fn render_json(tex: &str, locale: Option<&str>, display: bool, strict: bool)
     Ok(out.to_string())
 }
 
-/// Converts math LaTeX to SVG. `locale`: "en" (default) or "pt-BR".
+/// Converts math LaTeX to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja".
 #[wasm_bindgen(js_name = texToSvg)]
 pub fn tex_to_svg(tex: &str, locale: Option<String>) -> Result<String, JsError> {
     convert(tex, locale.as_deref()).map(|r| r.svg).map_err(|e| JsError::new(&e))
@@ -36,6 +36,17 @@ pub fn tex_to_svg(tex: &str, locale: Option<String>) -> Result<String, JsError> 
 #[wasm_bindgen(js_name = texToTree)]
 pub fn tex_to_tree(tex: &str, locale: Option<String>) -> Result<String, JsError> {
     convert(tex, locale.as_deref()).map(|r| r.tree.to_json()).map_err(|e| JsError::new(&e))
+}
+
+/// The supported languages as JSON: `[{"code":"en","name":"English"}, …]`.
+pub fn locales_json() -> String {
+    let list: Vec<serde_json::Value> = mathra::Locale::ALL.iter().map(|l| serde_json::json!({ "code": l.code(), "name": l.name() })).collect();
+    serde_json::Value::Array(list).to_string()
+}
+
+#[wasm_bindgen]
+pub fn locales() -> String {
+    locales_json()
 }
 
 /// Every output in one JSON string (see `render_json`). `display` defaults to true, `strict` to false.

@@ -24,3 +24,10 @@ fn render_carries_every_output() {
     assert_eq!(json["warnings"][0]["rule"], "E-REC-1");
     assert!(mathra_wasm::render_json(r"\vertA\vert", None, true, true).is_err());
 }
+
+#[test]
+fn locales_lists_every_language() {
+    let list: serde_json::Value = serde_json::from_str(&mathra_wasm::locales_json()).unwrap();
+    assert_eq!(list[0]["code"], "en");
+    assert!(list.as_array().unwrap().iter().any(|l| l["code"] == "ja" && l["name"] == "日本語"));
+}

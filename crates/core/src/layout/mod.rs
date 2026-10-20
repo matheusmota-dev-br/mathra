@@ -378,8 +378,8 @@ pub fn classes(children: &[Node], locale: Locale, mut registry: Option<&mut Regi
         |cl: &[Option<Class>], i: usize| -> Option<Class> { cl[..i].iter().rev().flatten().next().copied().or(if initial_ord { Some(Class::Ord) } else { None }) };
     let neighbor_after = |cl: &[Option<Class>], i: usize| -> Option<Class> { cl[i + 1..].iter().flatten().next().copied() };
 
-    // L-INT-1 (pt-BR): ]a, b[ is an open interval, so ] opens and [ closes
-    if locale == Locale::PtBr {
+    // L-INT-1 (pt-BR, fr…): ]a, b[ is an open interval, so ] opens and [ closes
+    if locale.open_interval() {
         for i in 0..children.len() {
             let Node::Operator { symbol, .. } = &children[i] else {
                 continue;
