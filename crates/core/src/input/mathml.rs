@@ -80,8 +80,15 @@ impl Reader<'_> {
     /// The children of an element as a row (`<mrow>`, and every element with an inferred mrow).
     fn row(&mut self, node: Xml, variant: Variant) -> R<Node> {
         let mut children = Vec::new();
-        for child in Self::elements(node) {
-            match self.element(child, variant)? {
+        let elements = Self::elements(node);
+        for (i, child) in elements.iter().enumerate() {
+            // <mi>rank</mi><mo>&ApplyFunction;</mo>: a function name, even one mathra does not know
+            let applied = elements.get(i + 1).is_some_and(|n| n.tag_name().name() == "mo" && text_of(*n) == "\u{2061}");
+            let node = match self.element(*child, variant)? {
+                Node::Identifier { name, .. } if applied && name.chars().count() > 1 => Node::Function { name, limits: false },
+                other => other,
+            };
+            match node {
                 Node::Row { children: c } if c.is_empty() => {}
                 other => children.push(other),
             }
@@ -247,9 +254,11 @@ impl Reader<'_> {
                     operator(&t)
                 }
             }
-            // several letters: a function name (sin, lim) or an upright word
+            // several letters: a function name (sin, lim, and rank or Var, which MathJax writes as a bare
+            // <mi>: MathML 3.2.3 reads a multi-letter mi as a function name); words come in <mtext>
             _ => match symbols::function(&t) {
                 Some((canonical, limits)) => Node::Function { name: canonical.to_string(), limits },
+                None if explicit.is_none_or(|v| v == Variant::Upright) && t.chars().all(char::is_alphabetic) => Node::Function { name: t, limits: false },
                 None => Node::Identifier { name: t, variant: explicit.unwrap_or(if variant == Variant::Italic { Variant::Upright } else { variant }) },
             },
         }
@@ -451,9 +460,11 @@ impl Reader<'_> {
 }
 
 /// Text of an element, with the white space MathML ignores (around and repeated) removed.
+/// Only XML white space is trimmed and collapsed: a no-break space (`&#xA0;`, as in MathJax's
+/// `<mtext>&#xA0;and&#xA0;</mtext>`) is content and stays.
 fn text_of(node: Xml) -> String {
     let raw: String = node.descendants().filter(Xml::is_text).filter_map(|t| t.text()).collect();
-    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+    raw.split([' ', '\t', '\r', '\n']).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 fn parse_variant(v: &str) -> Option<Variant> {
@@ -521,6 +532,10 @@ fn operator(t: &str) -> Node {
                 other => other,
             };
             Node::Operator { symbol, class: symbols::class_of_char(c).or_else(|| symbols::class_of_char(symbol)).unwrap_or(Class::Ord) }
+        }
+        // MathJax writes consecutive relations as one <mo>≤≥≠</mo>: each symbol is an operator
+        _ if visible.chars().all(|c| !c.is_alphanumeric()) && !matches!(visible.as_str(), "..." | "''" | ":=" | "!=" | "<=" | ">=" | "->" | "++" | "--" | "&&" | "||") => {
+            Node::row(visible.chars().map(|c| operator(&c.to_string())).collect())
         }
         _ => match visible.as_str() {
             "..." => Node::Operator { symbol: '…', class: Class::Inner },
@@ -632,7 +647,9 @@ fn decoration(mark: &Node, above: bool, accent: bool) -> Option<Decoration> {
 fn fences(children: Vec<Node>) -> Node {
     let fence = |n: &Node, class: Class| -> Option<char> {
         match n {
-            // bars are fences on either side, whatever their class
+            // bars are fences on either side, whatever their class; MathJax writes \\| as ∥ (U+2225), the
+            // parallel sign, where a norm is meant
+            Node::Operator { symbol: '∥', .. } => Some('‖'),
             Node::Operator { symbol, class: c } if *c == class || matches!(symbol, '|' | '‖') => Some(*symbol),
             _ => None,
         }
@@ -642,9 +659,10 @@ fn fences(children: Vec<Node>) -> Node {
         let open = fence(&children[0], Class::Open);
         let close = fence(&children[n - 1], Class::Close);
         // a table between fences
+        // a table between fences, with or without column alignments (MathJax writes columnalign on cases)
         let inner_table = |range: std::ops::Range<usize>| -> Option<(TableKind, Vec<Vec<Node>>)> {
             match &children[range] {
-                [Node::Table { shape: TableKind::Matrix, rows, .. }] => Some((TableKind::Matrix, rows.clone())),
+                [Node::Table { shape: TableKind::Matrix | TableKind::Array, rows, .. }] => Some((TableKind::Matrix, rows.clone())),
                 _ => None,
             }
         };

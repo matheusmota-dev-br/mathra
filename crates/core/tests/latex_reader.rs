@@ -1366,3 +1366,11 @@ fn mathtools_colon_equals_and_centernot() {
     assert_eq!(tree(r"a \centernot= b"), tree(r"a \not= b"));
     assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b"));
 }
+
+#[test]
+fn unbraced_command_as_an_argument() {
+    // found by the braille review: \boldsymbol\alpha read only the backslash as its argument
+    assert_eq!(tree(r"\boldsymbol\alpha"), tree(r"\boldsymbol{\alpha}"));
+    assert_eq!(tree(r"\mathbf\alpha + \text\o"), tree(r"\mathbf{\alpha} + \text{\o}"));
+    assert_eq!(tree(r"\frac\alpha\beta"), tree(r"\frac{\alpha}{\beta}"));
+}

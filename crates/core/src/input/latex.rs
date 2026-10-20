@@ -226,6 +226,13 @@ impl Reader<'_> {
                 self.tolerate(rules::E_REC_4, col, "'{' without a matching '}'", "closed at the end")?;
                 Ok(s)
             }
+            // an unbraced command is a whole argument, as in TeX: \boldsymbol\alpha, \mathbb\R
+            Some('\\') => {
+                let start = self.pos;
+                self.pos += 1;
+                self.read_command_name();
+                Ok(self.c[start..self.pos].iter().collect())
+            }
             Some(c) => {
                 self.pos += 1;
                 Ok(c.to_string())

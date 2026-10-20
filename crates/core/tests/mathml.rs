@@ -57,7 +57,8 @@ fn token_elements() {
     assert_eq!(first("<mi>x</mi>"), Node::Identifier { name: "x".into(), variant: Variant::Italic });
     assert_eq!(first("<mi>Γ</mi>"), Node::Identifier { name: "Γ".into(), variant: Variant::Upright });
     assert_eq!(first("<mi>sin</mi>"), Node::Function { name: "sin".into(), limits: false });
-    assert_eq!(first("<mi>speed</mi>"), Node::Identifier { name: "speed".into(), variant: Variant::Upright });
+    assert_eq!(first("<mi>speed</mi>"), Node::Function { name: "speed".into(), limits: false });
+    assert_eq!(first("<mi mathvariant=\"bold\">AB</mi>"), Node::Identifier { name: "AB".into(), variant: Variant::Bold });
     assert_eq!(first("<mi mathvariant=\"bold\">v</mi>"), Node::Identifier { name: "v".into(), variant: Variant::Bold });
     assert_eq!(first("<mi> x </mi>"), Node::Identifier { name: "x".into(), variant: Variant::Italic });
     assert_eq!(first("<mn>3.14</mn>"), Node::Number { value: "3.14".into(), group: false, thousands: None });
@@ -223,4 +224,28 @@ fn invalid_xml_and_deep_nesting_are_errors() {
     }
     let deep = format!("<math>{}<mi>x</mi>{}</math>", "<mrow>".repeat(200), "</mrow>".repeat(200));
     assert!(convert(&deep, &options(false)).unwrap_err().to_string().contains("nesting"));
+}
+
+/// Found by feeding MathJax's MathML to mathra next to MathCAT.
+#[test]
+fn mathjax_mathml_conventions() {
+    // consecutive relations in one <mo>
+    let r = mml("<mo>≤≥≠</mo>");
+    assert_eq!(r.tree.children().len(), 3, "{:?}", r.tree);
+    assert_eq!(r.text, latex(r"\le \ge \ne").text);
+    // the no-break space of <mtext> is content
+    assert_eq!(mml("<mi>p</mi><mtext>&#xA0;and&#xA0;</mtext><mi>q</mi>").text.split_whitespace().collect::<Vec<_>>(), ["p", "and", "q"]);
+    // a name followed by ApplyFunction is a function, even one mathra does not know
+    assert!(matches!(first("<mi>rank</mi><mo>&#x2061;</mo><mi>M</mi>"), Node::Function { .. }));
+    // cases with column alignment: still cases
+    let n = first(r#"<mrow><mo>{</mo><mtable columnalign="left left"><mtr><mtd><mn>1</mn></mtd><mtd><mi>x</mi></mtd></mtr></mtable></mrow>"#);
+    assert!(matches!(n, Node::Table { shape: TableKind::Cases, .. }), "{n:?}");
+}
+
+#[test]
+fn mathjax_norm_bars_are_a_norm() {
+    // MathJax writes \| as the parallel sign ∥ (U+2225); between two of them is a norm
+    let n = first(r#"<mo data-mjx-texclass="ORD">&#x2225;</mo><mi>x</mi><mo data-mjx-texclass="ORD">&#x2225;</mo>"#);
+    assert!(matches!(n, Node::Delimited { open: Some('‖'), close: Some('‖'), .. }), "{n:?}");
+    assert_eq!(mml("<mi>a</mi><mo>∥</mo><mi>b</mi>").text, latex(r"a \parallel b").text);
 }
