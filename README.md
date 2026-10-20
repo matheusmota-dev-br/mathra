@@ -79,7 +79,7 @@ $ mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech      # square root of
 
 ## Braille
 
-Every equation also comes out in braille, as Unicode braille cells: in the **CMU** (Código Matemático Unificado) for Portuguese and Spanish, and in **Nemeth** for the other languages, or in either one by choice. Both follow their official documents, and the tests check them against the documents' own examples; what is covered and what is still open is in [`spec/braille.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md). The braille also goes into the SVG's `<metadata>`.
+Every equation also comes out in braille, as Unicode braille cells: in the **CMU** (Código Matemático Unificado) for Portuguese and Spanish, and in **Nemeth** for the other languages, or in either one by choice. Both follow their official documents, and the tests check them against the documents' own examples; what is covered and what is still open is in [`spec/braille.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md). The braille also goes into the SVG's `<metadata>`. It was compared with MathCAT row by row, with the official documents deciding every disagreement ([`docs/braille-review.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/docs/braille-review.md), and the Braille tab of the [reference page](https://matheusmota-dev-br.github.io/mathra/reference.html#braille)); it still needs a braille transcriber's review before it reaches students.
 
 ```console
 $ mathra '\frac{3}{4} + \sqrt{x}' --locale pt-BR --braille     # ⠼⠒⠙⠖⠫⠱⠭
