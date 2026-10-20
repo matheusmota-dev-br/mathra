@@ -50,7 +50,7 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/wasm/tests/native.rs` | 2 | Exported functions outside the browser, and the errors before they become a `JsError`. |
 | `crates/wasm/tests/web.rs` | 2 | The same functions inside wasm, on Node, including the `JsError`. |
 | `npm/test/*.test.*` | 7 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales. Run with `npm/build.sh && npm/test/run.sh`. |
-| `crates/python/tests/test_mathra.py` | 7 | The installed Python package: SVG, tree, locale, `ValueError`, version. |
+| `crates/python/tests/test_mathra.py` | 11 | The installed Python package: SVG, tree, `render`, `locales`, `display` and `strict`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
 
 ## Coverage
 

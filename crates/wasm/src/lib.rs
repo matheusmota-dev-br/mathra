@@ -12,18 +12,7 @@ pub fn convert_with(tex: &str, locale: Option<&str>, display: bool, strict: bool
 
 /// Everything at once, as JSON: `svg`, `speech`, `text`, `tree`, `applied` and `warnings`.
 pub fn render_json(tex: &str, locale: Option<&str>, display: bool, strict: bool) -> Result<String, String> {
-    let r = convert_with(tex, locale, display, strict)?;
-    let rules = |list: &[mathra::Applied]| -> Vec<serde_json::Value> { list.iter().map(|a| serde_json::json!({ "rule": a.rule, "description": a.description })).collect() };
-    let tree: serde_json::Value = serde_json::from_str(&r.tree.to_json()).map_err(|e| e.to_string())?;
-    let out = serde_json::json!({
-        "svg": r.svg,
-        "speech": r.speech,
-        "text": r.text,
-        "tree": tree,
-        "applied": rules(&r.applied),
-        "warnings": rules(&r.warnings),
-    });
-    Ok(out.to_string())
+    convert_with(tex, locale, display, strict).map(|r| r.to_json())
 }
 
 /// Converts math LaTeX to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja";

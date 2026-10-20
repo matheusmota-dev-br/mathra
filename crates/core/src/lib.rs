@@ -48,6 +48,24 @@ pub struct Output {
     pub warnings: Vec<Applied>,
 }
 
+impl Output {
+    /// Every output as one JSON object: `svg`, `speech`, `text`, `tree`, `applied` and `warnings`, the
+    /// last two as lists of `{"rule", "description"}`. What the JavaScript and Python packages return.
+    pub fn to_json(&self) -> String {
+        let rules = |list: &[Applied]| -> Vec<serde_json::Value> { list.iter().map(|a| serde_json::json!({ "rule": a.rule, "description": a.description })).collect() };
+        let tree: serde_json::Value = serde_json::from_str(&self.tree.to_json()).expect("the tree serializes to valid JSON");
+        serde_json::json!({
+            "svg": self.svg,
+            "speech": self.speech,
+            "text": self.text,
+            "tree": tree,
+            "applied": rules(&self.applied),
+            "warnings": rules(&self.warnings),
+        })
+        .to_string()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     Syntax { column: usize, message: String },
