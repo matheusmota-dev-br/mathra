@@ -86,11 +86,10 @@ impl Writer {
             Node::Table { shape, rows, .. } => self.table(*shape, rows),
             Node::Accent { base, accent, below, .. } => self.mark(base, *accent, *below),
             Node::Bar { base, above } => self.mark(base, '\u{0304}', !above),
-            Node::Brace { base, label, .. } => {
+            // no sign for a horizontal brace or bracket in the 2006 code
+            Node::Brace { base, above, .. } => {
                 self.node(base);
-                if label.is_some() {
-                    self.missing('⏞');
-                }
+                self.missing(if *above { '⏞' } else { '⏟' });
             }
             Node::Text { parts } => {
                 for p in parts {
@@ -106,12 +105,29 @@ impl Writer {
                     self.missing('⟶');
                 }
             }
-            Node::Stacked { base, .. } => {
+            // "sobrescrito" ⠡⠡ and "subscrito" ⠌⠌: directly over and under (§2.2)
+            Node::Stacked { base, above, below } => {
                 self.node(base);
-                self.missing('⏜');
+                let filled = |n: Option<&Node>| n.filter(|n| **n != Node::row(vec![])).cloned();
+                if let Some(b) = filled(below.as_deref()) {
+                    self.dots("34 34");
+                    self.argument(&b);
+                }
+                if let Some(a) = filled(above.as_deref()) {
+                    self.dots("16 16");
+                    self.argument(&a);
+                }
+            }
+            // the 2006 code has no sign for striking out or framing an expression
+            Node::Canceled { base, .. } => {
+                self.node(base);
+                self.missing('╱');
+            }
+            Node::Framed { base, shape: Frame::Rectangle, .. } => {
+                self.node(base);
+                self.missing('▭');
             }
             Node::Framed { base, .. }
-            | Node::Canceled { base, .. }
             | Node::Colored { base, .. }
             | Node::ForcedClass { base, .. }
             | Node::Style { base, .. }
@@ -142,6 +158,51 @@ impl Writer {
     fn row(&mut self, children: &[Node]) {
         let mut i = 0;
         while i < children.len() {
+            // left indices (an isotope's ¹⁴₆C): the letter first, then ⠠⠌ lower and ⠈⠡ upper (§2.2, §2.4.2)
+            if let (Node::Scripts { base, sup, sub }, Some(next)) = (&children[i], children.get(i + 1)) {
+                if **base == Node::row(vec![]) {
+                    let (letter, right_sup, right_sub) = match next {
+                        Node::Scripts { base, sup, sub } => (base.as_ref(), sup.as_deref(), sub.as_deref()),
+                        other => (other, None, None),
+                    };
+                    self.node(letter);
+                    if let Some(s) = sub {
+                        self.dots("6 34");
+                        self.argument(s);
+                    }
+                    if let Some(s) = sup {
+                        self.dots("4 16");
+                        self.argument(s);
+                    }
+                    self.indices(right_sup, right_sub);
+                    i += 2;
+                    continue;
+                }
+            }
+            // geometry: ∠ and a name of several points in auxiliary parentheses; △ and □ directly
+            // followed by the points (§8.1)
+            if let Node::Operator { symbol: s @ ('∠' | '△' | '□'), .. } = &children[i] {
+                let points: Vec<&Node> = children[i + 1..].iter().take_while(|n| matches!(n, Node::Identifier { name, .. } if name.chars().count() == 1)).collect();
+                if !points.is_empty() {
+                    self.dots(match s {
+                        '∠' => "45 25",
+                        '△' => "6 23456",
+                        _ => "456 13456",
+                    });
+                    let aux = *s == '∠' && points.len() > 1;
+                    if aux {
+                        self.push(AUX_OPEN);
+                    }
+                    for p in &points {
+                        self.node(p);
+                    }
+                    if aux {
+                        self.push(AUX_CLOSE);
+                    }
+                    i += 1 + points.len();
+                    continue;
+                }
+            }
             // a mixed number: the whole part, then the fraction (§3.2.2: 2 3/4 = ⠼⠃⠼⠒⠙)
             if let (Node::Number { value, thousands, .. }, Some(f @ Node::Fraction { .. })) = (&children[i], children.get(i + 1)) {
                 if numeric_fraction(f).is_some() && !value.contains('.') {
@@ -189,7 +250,14 @@ impl Writer {
     fn identifier(&mut self, name: &str, variant: Variant) {
         let mut chars = name.chars();
         let (Some(c), None) = (chars.next(), chars.next()) else {
-            self.text(name);
+            if matches!(variant, Variant::Italic | Variant::Upright) {
+                self.text(name);
+            } else {
+                // each letter of a word in a typographic variant takes its prefix
+                for c in name.chars() {
+                    self.letter_in_variant(c, variant);
+                }
+            }
             return;
         };
         // §3.5: the number sets ℕ ℤ ℚ ℝ ℂ
@@ -197,12 +265,18 @@ impl Writer {
             self.push(&format!("⠸{}", cells(letter(c).unwrap_or("123456"))));
             return;
         }
-        // §1.1: other typographic variants (Gothic, bold…): ⠠ before lowercase, ⠰ before capitals
+        self.letter_in_variant(c, variant);
+    }
+
+    fn letter_in_variant(&mut self, c: char, variant: Variant) {
+        // §1.1: other typographic variants (Gothic, bold…): ⠠ before lowercase, ⠰ before capitals, and the
+        // ⠰ stands for the capital sign ("$z" in the table: the letter itself, no ⠨)
         let variant_prefix = match variant {
             Variant::Italic | Variant::Upright => "",
             _ if c.is_uppercase() => "⠰",
             _ => "⠠",
         };
+        let c = if variant_prefix == "⠰" && c.is_ascii_uppercase() { c.to_ascii_lowercase() } else { c };
         match self.letter_cells(c) {
             Some(l) => {
                 // §1.1 a: a letter a–j right after a number takes ⠐, or it would read as a digit
@@ -291,7 +365,11 @@ impl Writer {
                 digits.clear();
             }
             if c.is_whitespace() {
-                self.blank();
+                // a space alone (\ , a MathML no-break space) is not a word break: the CMU writes no blanks
+                // inside an expression
+                if !t.trim().is_empty() {
+                    self.blank();
+                }
             } else if let Some(l) = self.letter_cells(c).or_else(|| portuguese_letter(c)) {
                 self.push(&l);
             } else {
@@ -311,9 +389,13 @@ impl Writer {
         }
         match sign(c) {
             Some(d) => {
+                // "portanto" and "posto que" have a blank on each side (§6.3); the bars and the comma are
+                // followed by one (§1.3, §6.1)
+                if matches!(c, '∴' | '∵') {
+                    self.blank();
+                }
                 self.dots(d);
-                // the bars and the comma are followed by a blank (§1.3, §6.1)
-                if matches!(c, '|' | ',') {
+                if matches!(c, '|' | ',' | '∴' | '∵') {
                     self.blank();
                 }
             }
@@ -367,6 +449,20 @@ impl Writer {
                 self.dots("156");
                 return;
             }
+            // max, min, sup…: in display style the limit is directly under the name, the "subscrito" ⠌⠌
+            // (§2.1, §2.2); lim and log have their own forms below
+            Node::Function { name, limits: true } if name != "lim" => {
+                self.function_name(name);
+                if let Some(s) = sub {
+                    self.dots("34 34");
+                    self.argument(s);
+                }
+                if let Some(s) = sup {
+                    self.dots("16 16");
+                    self.argument(s);
+                }
+                return;
+            }
             Node::Function { name, .. } if name == "log" && sub.is_some() && sup.is_none() => {
                 // §7.5.2: log⠄ base ⠱ x
                 self.function_name("log");
@@ -379,7 +475,12 @@ impl Writer {
             _ => {}
         }
         self.node(base);
-        // marks to the right (primes ⠳, §2.4) before the indices, the subscript before the superscript (§2.4.2)
+        self.indices(sup, sub);
+    }
+
+    /// Right marks and indices: primes ⠳ (§2.4) before the indices, the subscript before the superscript
+    /// (§2.4.2).
+    fn indices(&mut self, sup: Option<&Node>, sub: Option<&Node>) {
         let (primes, sup) = split_primes(sup);
         for _ in 0..primes {
             self.dots("1256");
@@ -410,6 +511,9 @@ impl Writer {
             '∮' => "12346 356",
             '⋃' => "123456 345",
             '⋂' => "123456 156",
+            // conjunction and disjunction "of larger size" (§6.2)
+            '⋀' => "456 26",
+            '⋁' => "456 24",
             other => {
                 self.missing(other);
                 return;
@@ -611,12 +715,27 @@ fn sign(c: char) -> Option<&'static str> {
         '∪' => "456 345",
         '∩' => "456 156",
         '∅' => "456 245",
-        '∖' => "5 3",
+        '∖' | '\\' => "5 3",
+        // degree, as after a superscript (CIB 2024, §11.5)
+        '°' => "356",
+        // negations by §4.3: ⠘ before the relation
+        '≁' => "45 5 26 3",
+        '⇏' => "45 25 135",
+        '⇍' => "45 246 25",
+        '⇎' => "45 246 25 135",
         '→' | '⟶' => "25 2",
         '⇒' | '⟹' => "25 135",
         '⇐' | '⟸' => "246 25",
         '⇔' | '⟺' => "246 25 135",
         '∞' => "3456 1256",
+        '…' | '⋯' => "3 3 3",
+        '∘' => "6 23",
+        '∴' => "6 16",
+        '∵' => "4 34",
+        'ℵ' => "6 1256",
+        '∼' => "5 26 3",
+        // nabla: ^ï in the 2006 text, 4-12456 as the CIB 2024 edition prints it
+        '∇' | '𝛁' => "4 12456",
         '∀' => "46 3",
         '∃' => "46 26",
         '¬' => "6 3",

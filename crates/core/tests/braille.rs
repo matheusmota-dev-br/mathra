@@ -200,10 +200,10 @@ fn braille_reaches_the_svg_and_the_json() {
 #[test]
 fn s_brl_1_a_symbol_without_a_sign_is_the_full_cell() {
     for code in BrailleCode::ALL {
-        let r = convert(r"a \star b", &Options { braille: Some(code), ..Options::default() }).unwrap();
+        let r = convert(r"a \ltimes b", &Options { braille: Some(code), ..Options::default() }).unwrap();
         assert!(r.braille.contains('⠿'), "{code}: {}", r.braille);
         let note = r.applied.iter().find(|a| a.rule == "S-BRL-1").unwrap_or_else(|| panic!("{code}: {:?}", r.applied));
-        assert!(note.description.contains('⋆'), "{}", note.description);
+        assert!(note.description.contains('⋉'), "{}", note.description);
         // it is a note on the output, not a problem with the input
         assert!(r.warnings.is_empty());
     }
@@ -221,4 +221,104 @@ fn every_construction_of_the_corpus_has_braille_in_both_codes() {
             }
         }
     }
+}
+
+/// Found by comparing with MathCAT (DAISY) and settled by the BANA 2022 document, which wins where
+/// the two disagree (MathCAT writes ⟹ with three shafts and a Fraktur letter with ⠸⠸, for example).
+#[test]
+fn nemeth_signs_settled_against_the_source() {
+    check(
+        BrailleCode::Nemeth,
+        &[
+            ("f(x)|_{x=4}", "⠋⠷⠭⠾⠳⠰⠭⠀⠰⠨⠅⠀⠼⠲", "§14.8.7: the space after a comparison keeps the level"),
+            ("a \\ll b", "⠁⠀⠐⠅⠈⠐⠅⠻⠀⠃", "Rule 21 table"),
+            ("a \\cong b", "⠁⠀⠈⠱⠨⠅⠀⠃", "Rule 21 table, equals under tilde"),
+            ("a \\approx b", "⠁⠀⠈⠱⠈⠱⠀⠃", "Rule 21 table, double tilde"),
+            ("A \\supset B", "⠠⠁⠀⠸⠨⠂⠀⠠⠃", "Rule 21 table"),
+            ("x \\mid x > 0", "⠭⠀⠳⠀⠭⠀⠨⠂⠀⠼⠴", "§21.7, Ex. 21-18"),
+            ("p \\wedge q \\vee r", "⠏⠈⠩⠟⠈⠬⠗", "Rule 20 table"),
+            ("a \\oplus b", "⠁⠫⠉⠸⠫⠬⠻⠃", "Rule 20 table"),
+            ("f \\circ g", "⠋⠨⠡⠛", "Rule 20 table"),
+            ("\\lfloor x \\rfloor + \\lceil y \\rceil", "⠈⠰⠷⠭⠈⠰⠾⠬⠈⠘⠷⠽⠈⠘⠾", "§19.4, Ex. 19-22"),
+            ("\\therefore AB", "⠠⠡⠀⠠⠁⠠⠃", "§23.18, Ex. 23-50"),
+            ("\\angle ABC", "⠫⠪⠀⠠⠁⠠⠃⠠⠉", "Rule 17, Ex. 6-18"),
+            ("p \\implies q", "⠏⠀⠫⠶⠶⠕⠀⠟", "Ex. 22-19: two shaft cells"),
+            ("\\mathfrak{g}", "⠸⠛", "Ex. 6-2: German letter"),
+            ("\\mathsf{A}", "⠠⠨⠰⠠⠁", "Rule 2 typeforms"),
+            ("\\Phi", "⠨⠠⠋", "§6.1.4: capitals have no alternative form"),
+            ("\\cancel{x}", "⠪⠭⠻", "Rule 12"),
+            ("\\underline{x}", "⠭⠩⠱", "§15.2.3, Ex. 15-24"),
+            ("\\overbrace{x+y}", "⠐⠭⠬⠽⠣⠨⠷⠻", "Ex. 19-17"),
+            ("\\underbrace{x+y}", "⠐⠭⠬⠽⠩⠨⠾⠻", "Ex. 19-18"),
+            ("\\hbar", "⠈⠓", "Rule 23 table"),
+            ("\\aleph", "⠠⠠⠁", "§6.1, Hebrew"),
+            ("A \\Leftarrow B", "⠠⠁⠀⠫⠪⠶⠶⠀⠠⠃", "Ex. 22-20"),
+            ("\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}", "⠈⠠⠷⠁⠀⠃⠈⠠⠾\n⠈⠠⠷⠉⠀⠙⠈⠠⠾", "§19.6 table: ⠈⠠⠷"),
+        ],
+    );
+}
+
+#[test]
+fn nemeth_systems_keep_what_surrounds_them_on_the_top_line() {
+    // Ex. 19-30: what precedes and follows the system is on its first line; the other rows align below
+    let b = braille(r"f(x) = \begin{cases} 1 & x > 0 \\ 0 & x \le 0 \end{cases}", BrailleCode::Nemeth);
+    assert_eq!(b, "⠋⠷⠭⠾⠀⠨⠅⠀⠨⠠⠷⠼⠂⠀⠭⠀⠨⠂⠀⠼⠴\n⠀⠀⠀⠀⠀⠀⠀⠀⠨⠠⠷⠼⠴⠀⠭⠀⠐⠅⠱⠀⠼⠴");
+    let b = braille(r"\begin{rcases} a \\ b \end{rcases} \Rightarrow c", BrailleCode::Nemeth);
+    assert_eq!(b, "⠁⠨⠠⠾⠀⠫⠶⠶⠕⠀⠉\n⠃⠨⠠⠾");
+}
+
+#[test]
+fn cmu_signs_settled_against_the_source() {
+    check(
+        BrailleCode::Cmu,
+        &[
+            ("{}^{14}_{6}\\mathrm{C}", "⠨⠉⠠⠌⠼⠋⠈⠡⠼⠁⠙", "§2.2: left indices after the letter"),
+            ("\\overset{x}{=}", "⠶⠡⠡⠭", "§2.2: sobrescrito"),
+            ("\\underset{x}{=}", "⠶⠌⠌⠭", "§2.2: subscrito"),
+            ("1, 2, \\ldots, n", "⠼⠁⠂⠀⠼⠃⠂⠀⠄⠄⠄⠂⠀⠝", "§3.2.1 and §6.1"),
+            ("f \\circ g", "⠋⠠⠆⠛", "§7.1: composição"),
+            ("a \\therefore b", "⠁⠀⠠⠡⠀⠃", "§6.3: portanto"),
+            ("a \\because b", "⠁⠀⠈⠌⠀⠃", "§6.3: posto que"),
+            ("\\angle ABC", "⠘⠒⠢⠨⠁⠨⠃⠨⠉⠔", "§8.1: ângulo"),
+            ("\\triangle ABC", "⠠⠾⠨⠁⠨⠃⠨⠉", "§8.1: triângulo"),
+            ("p \\wedge q", "⠏⠰⠂⠟", "§6.2: conjunção"),
+            ("\\neg p", "⠠⠄⠏", "§6.2: negação"),
+            ("\\aleph", "⠠⠳", "§6.1: alef"),
+            ("x \\sim y", "⠭⠐⠢⠄⠽", "§6.1: equivale a"),
+            ("\\nabla f", "⠈⠻⠋", "§7.3"),
+        ],
+    );
+}
+
+#[test]
+fn cmu_variants_limits_and_signs_it_lacks() {
+    check(
+        BrailleCode::Cmu,
+        &[
+            ("\\mathcal{L}", "⠰⠇", "§1.1: ⠰ before a capital in another variant, no ⠨"),
+            ("\\mathfrak{g}", "⠠⠛", "§1.1: ⠠ before a lowercase letter in another variant"),
+            ("\\mathbb{C}", "⠸⠉", "§3.5: number sets"),
+            ("\\max_{x} f(x)", "⠍⠁⠭⠄⠌⠌⠭⠋⠣⠭⠜", "§2.1, §2.2: a limit directly under the name"),
+        ],
+    );
+    // the 2006 code has no sign for these: the full cell and S-BRL-1, not a silent omission
+    for tex in [r"\cancel{x}", r"\boxed{x}", r"\overbrace{a+b}", r"\hat{x}"] {
+        let r = convert(tex, &Options { locale: Locale::PtBr, ..Options::default() }).unwrap();
+        assert!(r.braille.contains('⠿'), "{tex}: {}", r.braille);
+        assert!(r.applied.iter().any(|a| a.rule == "S-BRL-1"), "{tex}");
+    }
+}
+
+#[test]
+fn signs_found_by_the_live_list_on_the_reference_page() {
+    check(
+        BrailleCode::Nemeth,
+        &[
+            ("A \\backslash B", "⠠⠁⠸⠡⠠⠃", "Rule 20 table"),
+            ("\\overarc{AB}", "⠐⠠⠁⠠⠃⠣⠫⠁⠻", "Ex. 15-54"),
+            ("\\SIrange{1}{10}{m}", "⠼⠂⠀⠍⠀⠤⠤⠀⠼⠂⠴⠀⠍", "Rule 8 dash, §20.1.1, §6.3.1 c"),
+            ("\\ce{A <=>[K] B}", "⠠⠁⠀⠐⠫⠒⠒⠕⠫⠪⠒⠒⠣⠠⠅⠻⠀⠠⠃", "Rule 21 table: right over left arrow, modified"),
+        ],
+    );
+    check(BrailleCode::Cmu, &[("A \\backslash B", "⠨⠁⠐⠄⠨⠃", "§6.1: diferença de conjuntos"), ("x \\nsim y", "⠭⠘⠐⠢⠄⠽", "§4.3")]);
 }
