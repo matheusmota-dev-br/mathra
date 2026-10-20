@@ -87,7 +87,12 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             group(radicand, loc, s);
         }
         Node::Scripts { base, sup, sub } => {
-            write_node(base, loc, s);
+            // sin²x, log₂x: the scripts stick to the function name, and the space goes after them
+            let function = if let Node::Function { name, .. } = base.as_ref() { Some(name) } else { None };
+            match function {
+                Some(name) => s.push_str(&loc.function_name(name)),
+                None => write_node(base, loc, s),
+            }
             if let Some(b) = sub {
                 s.push('_');
                 group(b, loc, s);
@@ -109,6 +114,9 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
                         group(other, loc, s);
                     }
                 }
+            }
+            if function.is_some() {
+                s.push(' ');
             }
         }
         Node::Delimited { open, close, parts, middles } => {
@@ -223,7 +231,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
                 (Ok(a), Ok(b)) if b > 0 => (a / b, a % b),
                 _ => (0, 0),
             };
-            let remainder = if loc == Locale::PtBr { "resto" } else { "remainder" };
+            let remainder = loc.phrase("remainder");
             s.push_str(&format!("{dividend} ÷ {divisor} = {q} ({remainder} {r})"));
         }
         Node::ColumnArithmetic { operation, terms } => {
