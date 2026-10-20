@@ -1,9 +1,9 @@
-# mathra
+# @mathra/mathra
 
 Math LaTeX to accessible SVG, without a TeX install. Every SVG carries the phrase a screen reader says, in 16 languages, and draws with the STIX Two Math font embedded, so it looks the same everywhere. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**.
 
 ```sh
-npm install mathra
+npm install @mathra/mathra
 ```
 
 ## Node
@@ -11,7 +11,7 @@ npm install mathra
 Works right away:
 
 ```js
-import { texToSvg, render } from "mathra";      // or: const { texToSvg } = require("mathra")
+import { texToSvg, render } from "@mathra/mathra";      // or: const { texToSvg } = require("@mathra/mathra")
 
 const svg = texToSvg(String.raw`x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`);
 const { speech } = render(String.raw`\frac{3}{4}`, { locale: "fr" });   // "trois quarts"
@@ -22,7 +22,7 @@ const { speech } = render(String.raw`\frac{3}{4}`, { locale: "fr" });   // "troi
 Await `init()` once; it fetches `mathra.wasm` next to the module:
 
 ```js
-import { init, texToSvg } from "mathra";
+import { init, texToSvg } from "@mathra/mathra";
 
 await init();
 document.querySelector("#eq").innerHTML = texToSvg(String.raw`e^{i\pi} + 1 = 0`);
@@ -32,7 +32,7 @@ Without a bundler, from a CDN:
 
 ```html
 <script type="module">
-  import { init, texToSvg } from "https://cdn.jsdelivr.net/npm/mathra/web/index.js";
+  import { init, texToSvg } from "https://cdn.jsdelivr.net/npm/@mathra/mathra/web/index.js";
   await init();
   document.body.innerHTML = texToSvg("3,14", { locale: "pt-BR" });
 </script>
