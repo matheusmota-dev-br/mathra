@@ -2,7 +2,7 @@
 
 # mathra
 
-SVG equations without a TeX install. mathra reads math LaTeX, builds a **tree of meaning** (what each piece is) and draws it with **explicit rules**, numbered and tested. The locale decides the form: English by default, and in pt-BR `3,14` is a single number and `\sin` comes out as `sen`.
+SVG equations without a TeX install. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**. mathra reads math LaTeX, builds a **tree of meaning** (what each piece is) and draws it with **explicit rules**, numbered and tested. The locale decides the form: English by default, and in pt-BR `3,14` is a single number and `\sin` comes out as `sen`.
 
 ```console
 $ mathra '3,14' --locale pt-BR --explain
@@ -98,9 +98,10 @@ tree = mathra.tex_to_tree("3,14", locale="pt-BR")      # JSON
 **JavaScript** (`crates/wasm`; the `.wasm` builds with `cargo build -p mathra-wasm --release --target wasm32-unknown-unknown`, packaging with wasm-pack is still to do)
 
 ```js
-import { texToSvg } from "mathra";
+import { texToSvg, render } from "mathra";
 const svg = texToSvg("3.14");
 const pt = texToSvg("3,14", "pt-BR");
+const all = JSON.parse(render("x^2"));   // svg, speech, text, tree, applied, warnings
 ```
 
 **Rust** (`cargo add mathra`)

@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathra</title>
+<meta name="description" content="Math LaTeX to accessible SVG, without a TeX install. Try it in the browser: it runs on WebAssembly.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#fbf9f4">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* the palette of docs/banner.svg: navy ink, amber baseline, dashed glyph boxes */
+  :root, :root[data-theme="light"] {
+    --bg: #fbf9f4; --surface: #ffffff; --surface-2: #f4f1ea; --line: #e5dfd2; --box: #c9c1b0;
+    --ink: #0e1726; --muted: #5d6b80; --accent: #f2b544; --accent-ink: #9a5b00;
+    --grid: rgba(14, 23, 38, 0.045);
+    --btn: #0e1726; --btn-ink: #fbf9f4;
+    --warn-bg: #fff4d9; --warn-line: #ecc56a; --warn-ink: #6b4a00;
+    --err-bg: #fdeceb; --err-line: #e6a29d; --err-ink: #8a1f17;
+    --tok-cmd: #2457b3; --tok-env: #7b3fb3; --tok-brace: #9a5b00; --tok-script: #b5306b; --tok-num: #17784a; --tok-align: #c2410c; --tok-comment: #8a94a3;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1726; --surface: #131e31; --surface-2: #1a273d; --line: #26354f; --box: #3a4b66;
+    --ink: #eef2f8; --muted: #8796ad; --accent: #f2b544; --accent-ink: #f2b544;
+    --grid: rgba(238, 242, 248, 0.04);
+    --btn: #f2b544; --btn-ink: #0e1726;
+    --warn-bg: #2b2412; --warn-line: #77612a; --warn-ink: #f2d690;
+    --err-bg: #2d1818; --err-line: #7a3434; --err-ink: #f4b4ae;
+    --tok-cmd: #8ab4ff; --tok-env: #cfa8f5; --tok-brace: #f2b544; --tok-script: #f590b8; --tok-num: #7fd6a6; --tok-align: #ff9a62; --tok-comment: #6b7a92;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: inherit; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  a:hover { color: var(--accent-ink); }
+  code, pre, textarea { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  code { font-size: 0.9em; }
+  .serif { font-family: "STIX Two Text", "STIX Two Math", Georgia, serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+  /* top bar */
+  .bar { display: flex; align-items: center; gap: 20px; padding: 14px 0; font-size: 14px; }
+  .bar .name { font-family: "STIX Two Text", Georgia, serif; font-size: 20px; font-weight: 600; text-decoration: none; }
+  .bar nav { display: flex; gap: 18px; margin-left: auto; align-items: center; }
+  .bar nav a { text-decoration: none; color: var(--muted); }
+  .bar nav a:hover { color: var(--ink); }
+  @media (max-width: 560px) { .bar nav a[href^="#"] { display: none; } }
+  .theme { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; width: 34px; height: 34px; cursor: pointer; font-size: 15px; line-height: 1; }
+
+  /* hero */
+  .hero { text-align: center; padding: 48px 0 28px; }
+  .logo { display: inline-block; font-size: clamp(64px, 13vw, 128px); color: var(--ink); line-height: 0; }
+  .logo svg { display: block; }
+  .logo .boxes { fill: none; stroke: var(--box); stroke-dasharray: 4 4; }
+  .logo .base { stroke: var(--accent); stroke-width: 2.5; }
+  .tagline { font-family: "STIX Two Text", Georgia, serif; font-size: clamp(22px, 3.2vw, 32px); line-height: 1.3; margin: 22px auto 10px; max-width: 760px; }
+  .tagline em { font-style: italic; }
+  .sub { color: var(--muted); margin: 0 auto 26px; max-width: 620px; }
+  .cta { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .button {
+    display: inline-flex; align-items: center; gap: 8px; font: 500 14px/1 Inter, system-ui, sans-serif; cursor: pointer;
+    padding: 11px 18px; border-radius: 8px; text-decoration: none; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink);
+  }
+  .button:hover { border-color: var(--ink); color: var(--ink); }
+  .button.solid { background: var(--btn); color: var(--btn-ink); border-color: var(--btn); }
+  .button.solid:hover { opacity: 0.9; color: var(--btn-ink); }
+  .install { display: inline-block; margin-top: 18px; font-size: 13px; color: var(--muted); }
+  .install code { color: var(--ink); background: var(--surface-2); padding: 3px 8px; border-radius: 6px; }
+
+  /* playground */
+  .play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; margin: 28px 0 16px; }
+  .play > * { min-width: 0; }
+  @media (max-width: 860px) { .play { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .label { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  .editor { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .code { position: relative; flex: 1; background: var(--surface-2); border: 1px solid transparent; border-radius: 10px; }
+  .code:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .code pre, .code textarea {
+    margin: 0; padding: 14px; min-height: 170px; font: 14.5px/1.6 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; border: 0;
+  }
+  .code pre { color: var(--ink); pointer-events: none; }
+  .code textarea {
+    position: absolute; inset: 0; width: 100%; height: 100%; resize: none; overflow: hidden; outline: none;
+    background: transparent; color: transparent; caret-color: var(--ink);
+  }
+  .code textarea::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: transparent; }
+  .t-cmd { color: var(--tok-cmd); }
+  .t-env { color: var(--tok-env); font-weight: 500; }
+  .t-brace { color: var(--tok-brace); }
+  .t-script { color: var(--tok-script); font-weight: 500; }
+  .t-num { color: var(--tok-num); }
+  .t-align { color: var(--tok-align); font-weight: 500; }
+  .t-comment { color: var(--tok-comment); font-style: italic; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 14px; color: var(--muted); }
+  .controls label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .controls input[type="checkbox"] { accent-color: var(--accent); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { font: 500 13px/1 Inter, system-ui, sans-serif; border: 0; background: none; color: var(--muted); padding: 7px 11px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button {
+    font: 13px/1 Inter, system-ui, sans-serif; padding: 6px 11px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line); background: none; color: var(--ink);
+  }
+  .chips button:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+  .out { display: flex; flex-direction: column; }
+  .paper {
+    flex: 1; min-height: 240px; position: relative; border-radius: 14px 14px 0 0;
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px; background-position: -1px -1px;
+  }
+  .paper .label { position: absolute; top: 14px; left: 16px; }
+  .preview { min-height: 240px; height: 100%; padding: 48px 24px 32px; display: flex; align-items: center; overflow-x: auto; font-size: 36px; color: var(--ink); }
+  .preview > svg { margin: 0 auto; flex-shrink: 0; }
+  .preview .status { margin: 0 auto; font-size: 15px; color: var(--muted); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .actions .button { padding: 8px 13px; font-size: 13px; }
+  .messages { display: flex; flex-direction: column; gap: 6px; padding: 0 16px 14px; }
+  .messages:empty { display: none; }
+  .msg { font: 12.5px/1.5 "JetBrains Mono", ui-monospace, monospace; padding: 7px 10px; border-radius: 8px; border: 1px solid; overflow-wrap: anywhere; }
+  .msg.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .msg.err { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
+
+  .inspect { margin-bottom: 8px; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 10px; overflow-x: auto; }
+  .tabs button {
+    font: 500 14px/1 Inter, system-ui, sans-serif; border: 0; border-bottom: 2px solid transparent; background: none;
+    color: var(--muted); padding: 14px 12px 12px; white-space: nowrap; cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .panel { padding: 16px; }
+  .panel pre { margin: 0; padding: 14px; background: var(--surface-2); border-radius: 10px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 380px; overflow: auto; }
+  .panel .speech { font-family: "STIX Two Text", Georgia, serif; font-size: 20px; line-height: 1.5; margin: 0; }
+  .panel .speech::before { content: "“"; color: var(--accent); }
+  .panel .speech::after { content: "”"; color: var(--accent); }
+  .panel .rule { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; font-size: 14px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .panel .rule:last-child { border-bottom: 0; }
+  .panel .rule code { color: var(--accent-ink); font-weight: 500; }
+  .panel .empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+  /* sections */
+  section { padding: 56px 0 8px; }
+  h2 { font-family: "STIX Two Text", Georgia, serif; font-weight: 600; font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; margin: 0 0 8px; }
+  h2 + .lead { color: var(--muted); margin: 0 0 24px; max-width: 680px; }
+  h3 { font-size: 16px; margin: 0 0 6px; }
+
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .feature { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .feature p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .feature .eq { min-height: 70px; display: flex; align-items: center; gap: 14px; font-size: 26px; color: var(--ink); overflow-x: auto; }
+  .feature .eq small { font-size: 12px; color: var(--muted); font-family: Inter, system-ui, sans-serif; }
+  .feature .stat { font-family: "STIX Two Text", Georgia, serif; font-size: 40px; line-height: 1; }
+  .feature .stat span { font-size: 18px; color: var(--muted); }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .tile { padding: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; display: flex; flex-direction: column; overflow: hidden; }
+  @media (min-width: 640px) { .tile.wide { grid-column: span 2; } }
+  .tile:hover { border-color: var(--accent); }
+  .tile .eq { flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; padding: 20px 16px; font-size: 19px; overflow: hidden; color: var(--ink); }
+  .tile .eq svg { max-width: 100%; height: auto; }
+  .tile .cap { font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
+  .tile .cap span:last-child { color: var(--accent-ink); }
+
+  .usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+  .usage > * { min-width: 0; }
+  .usage .card { padding: 18px; }
+  .usage pre { margin: 10px 0 0; background: var(--surface-2); border-radius: 10px; padding: 12px 14px; font-size: 13px; overflow-x: auto; line-height: 1.6; }
+  .prose { max-width: 760px; }
+  .prose p, .prose li { color: var(--ink); }
+  .prose ul { padding-left: 20px; }
+
+  footer { margin-top: 64px; padding: 28px 0 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <a class="name" href="#">mathra</a>
+    <nav>
+      <a href="#playground">Playground</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/matheusmota-dev-br/mathra">GitHub</a>
+      <button class="theme" id="theme" type="button" aria-label="Toggle dark mode">◐</button>
+    </nav>
+  </div>
+
+  <header class="hero">
+    <div class="logo" id="logo" role="img" aria-label="mathra"></div>
+    <p class="tagline">Math LaTeX to <em>accessible</em> SVG.<br>No TeX install, no JavaScript runtime required.</p>
+    <p class="sub">mathra reads the equation, builds a tree of meaning and draws it with numbered, tested rules. Every SVG says the equation out loud to screen readers.</p>
+    <div class="cta">
+      <a class="button solid" href="#playground">Try it now</a>
+      <a class="button" href="#docs">Read the docs</a>
+      <a class="button" href="https://github.com/matheusmota-dev-br/mathra">GitHub</a>
+    </div>
+    <div class="install"><code>cargo install mathra-cli</code></div>
+  </header>
+
+  <div class="play" id="playground">
+    <div class="card editor">
+      <span class="label">LaTeX</span>
+      <div class="code">
+        <pre id="highlight" aria-hidden="true"></pre>
+        <textarea id="tex" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="LaTeX input">x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}</textarea>
+      </div>
+      <div class="controls">
+        <div class="seg" id="locale" role="group" aria-label="Locale">
+          <button type="button" data-locale="en" aria-pressed="true">en</button>
+          <button type="button" data-locale="pt-BR" aria-pressed="false">pt-BR</button>
+        </div>
+        <label><input type="checkbox" id="inline"> Inline</label>
+        <label><input type="checkbox" id="strict"> Strict</label>
+      </div>
+      <div class="chips" id="chips" aria-label="Examples"></div>
+    </div>
+
+    <div class="card out">
+      <div class="paper">
+        <span class="label">SVG</span>
+        <div class="preview" id="preview" aria-live="polite"><span class="status">Loading WebAssembly…</span></div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="actions">
+        <button class="button solid" id="download" type="button">Download SVG</button>
+        <button class="button" id="copy-svg" type="button">Copy SVG</button>
+        <button class="button" id="copy-link" type="button">Copy link</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card inspect">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="speech" aria-selected="true">Speech</button>
+      <button role="tab" data-tab="text" aria-selected="false">Plain text</button>
+      <button role="tab" data-tab="rules" aria-selected="false">Rules</button>
+      <button role="tab" data-tab="tree" aria-selected="false">Tree</button>
+      <button role="tab" data-tab="svg" aria-selected="false">SVG source</button>
+    </div>
+    <div class="panel" id="panel" role="tabpanel"></div>
+  </div>
+
+  <section>
+    <h2>Why mathra</h2>
+    <p class="lead">One small library, the same output everywhere: the terminal, Rust, Python and the browser.</p>
+    <div class="features">
+      <div class="card feature">
+        <div class="eq" data-tex="\frac{1}{2}"></div>
+        <h3>It speaks the equation</h3>
+        <p>The SVG's <code>&lt;title&gt;</code> carries the phrase a screen reader says: <em>“1 over 2”</em>, not “image”.</p>
+      </div>
+      <div class="card feature">
+        <div class="eq"><span data-tex="3{,}14 + \sen x" data-locale="pt-BR"></span><small>pt-BR</small></div>
+        <h3>It knows the locale</h3>
+        <p>In pt-BR, <code>3,14</code> is one number, <code>\sin</code> is written <em>sen</em> and the speech is in Portuguese.</p>
+      </div>
+      <div class="card feature">
+        <div class="eq" data-tex="\vertA\vert = C_{16,2}"></div>
+        <h3>It forgives broken input</h3>
+        <p>Typos and editor leftovers are fixed and reported as numbered warnings. <em>Strict</em> refuses them, like TeX.</p>
+      </div>
+      <div class="card feature">
+        <div class="eq"><span class="stat">18.7<span> µs</span></span></div>
+        <h3>It is fast and stable</h3>
+        <p>Mean time per equation on the corpus. The same input always writes the same bytes.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="gallery">
+    <h2>Gallery</h2>
+    <p class="lead">Drawn live on this page. Click one to open it in the playground.</p>
+    <div class="gallery" id="tiles"></div>
+  </section>
+
+  <section id="docs">
+    <h2>Use it</h2>
+    <p class="lead">The core is a Rust crate; the CLI, Python and WebAssembly packages wrap the same code.</p>
+    <div class="usage">
+      <div class="card">
+        <h3>Terminal</h3>
+<pre>cargo install mathra-cli
+mathra 'x \le 2.75' -o inequality.svg
+mathra '3,14 + \sin x' --locale pt-BR
+mathra 'x = -1' --speech
+mathra '\vertA\vert' --explain</pre>
+      </div>
+      <div class="card">
+        <h3>Rust</h3>
+<pre>// cargo add mathra
+let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
+println!("{}", r.svg);
+println!("{}", r.speech);</pre>
+      </div>
+      <div class="card">
+        <h3>Python</h3>
+<pre>import mathra
+
+svg = mathra.tex_to_svg(r"\sin x = 0.5")
+tree = mathra.tex_to_tree("3,14", locale="pt-BR")</pre>
+      </div>
+      <div class="card">
+        <h3>Browser (WebAssembly)</h3>
+<pre>await wasm_bindgen();
+const { texToSvg, render } = wasm_bindgen;
+const svg = texToSvg("3,14", "pt-BR");
+const all = JSON.parse(render("x^2"));
+// svg, speech, text, tree, applied, warnings</pre>
+      </div>
+    </div>
+
+    <div class="prose">
+      <h2 style="margin-top:48px">What the SVG carries</h2>
+      <ul>
+        <li><strong>Speech</strong> in <code>&lt;title&gt;</code>, linked with <code>aria-labelledby</code>.</li>
+        <li>The source LaTeX and the tree of meaning in <code>&lt;metadata&gt;</code>.</li>
+        <li>Color from the page (<code>currentColor</code>), size in <code>em</code>, baseline aligned with the text around it.</li>
+        <li>A transparent text layer for selection, reused glyphs and ids unique to each equation.</li>
+      </ul>
+
+      <h2 style="margin-top:40px">Broken LaTeX</h2>
+      <p>By default mathra draws what it can and reports what it fixed, as <code>E-REC-1</code> to <code>E-REC-9</code> (<a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/tolerance.md">spec/tolerance.md</a>). Every rule that shapes the output is numbered in <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/rules.md">spec/rules.md</a>; the <em>Rules</em> tab shows which ones acted on your equation.</p>
+
+      <h2 style="margin-top:40px">What it converts</h2>
+      <p>Fractions, roots, scripts and limits, stretchy delimiters, matrices and <code>array</code>, <code>cases</code>, <code>aligned</code>, accents and braces, <code>\text</code>, alphabets, <code>\cancel</code>, <code>\boxed</code>, <code>\color</code>, siunitx, basic <code>\ce</code>, physics and braket, <code>\newcommand</code> and friends, amscd diagrams, and the computed <code>\divchave</code> and <code>\contaarmada</code>. The full list is in the <a href="https://github.com/matheusmota-dev-br/mathra#what-it-converts">README</a>.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>mathra · MIT or Apache-2.0 · STIX Two Math font under OFL-1.1</span>
+    <a href="https://github.com/matheusmota-dev-br/mathra">github.com/matheusmota-dev-br/mathra</a>
+  </footer>
+</div>
+
+<script src="pkg/mathra_wasm.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const EXAMPLES = [
+    ["Quadratic formula", "en", String.raw`x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`],
+    ["Euler's identity", "en", String.raw`e^{i\pi} + 1 = 0`],
+    ["Gaussian integral", "en", String.raw`\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}`],
+    ["Basel problem", "en", String.raw`\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}`],
+    ["Maxwell's equations", "en", String.raw`\begin{aligned}
+  \nabla \cdot \vec{E} &= \frac{\rho}{\varepsilon_0} \\
+  \nabla \cdot \vec{B} &= 0 \\
+  \nabla \times \vec{E} &= -\frac{\partial \vec{B}}{\partial t} \\
+  \nabla \times \vec{B} &= \mu_0 \vec{J} + \mu_0 \varepsilon_0 \frac{\partial \vec{E}}{\partial t}
+\end{aligned}`],
+    ["Schrödinger equation", "en", String.raw`i\hbar \frac{\partial}{\partial t} \Psi(\mathbf{r}, t) = \left[ -\frac{\hbar^2}{2m} \nabla^2 + V(\mathbf{r}, t) \right] \Psi(\mathbf{r}, t)`],
+    ["Cauchy's integral formula", "en", String.raw`f(a) = \frac{1}{2\pi i} \oint_{\gamma} \frac{f(z)}{z - a}\, dz`],
+    ["Bayes' theorem", "en", String.raw`P(A \mid B) = \frac{P(B \mid A)\, P(A)}{P(B)}`],
+    ["Continued fraction", "en", String.raw`\varphi = 1 + \cfrac{1}{1 + \cfrac{1}{1 + \cfrac{1}{1 + \cdots}}}`],
+    ["Matrix", "en", String.raw`A = \begin{pmatrix} a_{11} & a_{12} & \cdots & a_{1n} \\ a_{21} & a_{22} & \cdots & a_{2n} \\ \vdots & \vdots & \ddots & \vdots \\ a_{m1} & a_{m2} & \cdots & a_{mn} \end{pmatrix}`],
+    ["Piecewise", "en", String.raw`|x| = \begin{cases} x & \text{if } x \ge 0 \\ -x & \text{if } x < 0 \end{cases}`],
+    ["Binomial theorem", "en", String.raw`(x + y)^n = \sum_{k=0}^{n} \binom{n}{k} x^{n-k} y^{k}`],
+    ["Labeled brace", "en", String.raw`\underbrace{1 + 2 + \cdots + n}_{n \text{ terms}} = \frac{n(n+1)}{2}`],
+    ["Chemistry (mhchem)", "en", String.raw`\ce{CH4 + 2 O2 -> CO2 + 2 H2O}`],
+    ["Units (siunitx)", "en", String.raw`g = \SI{9.81}{\meter\per\second\squared}`],
+    ["Commutative diagram", "en", String.raw`\begin{CD} A @>f>> B \\ @VgVV @VVhV \\ C @>k>> D \end{CD}`],
+    ["Trigonometry", "pt-BR", String.raw`\sen^2 \theta + \cos^2 \theta = 1,\quad x \in \left]0{,}5;\, 2{,}5\right[`],
+    ["Divisão armada", "pt-BR", String.raw`\divchave{247}{5}`],
+  ];
+  const WIDE = ["Schrödinger equation"];
+  const CHIPS = ["Quadratic formula", "Maxwell's equations", "Matrix", "Piecewise", "Chemistry (mhchem)", "Trigonometry", "Divisão armada"];
+
+  const $ = (id) => document.getElementById(id);
+  const tex = $("tex"), inline = $("inline"), strict = $("strict");
+  const preview = $("preview"), messages = $("messages"), panel = $("panel");
+  let render = null, last = null, tab = "speech", locale = "en";
+
+  // theme: light unless the visitor picked dark
+  function setTheme(t) {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("mathra-theme", t); } catch (e) {}
+  }
+  try { const t = localStorage.getItem("mathra-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  $("theme").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+
+  const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  function convert(src, loc, display, strictMode) {
+    return JSON.parse(render(src, loc, display, strictMode));
+  }
+
+  // the wordmark, drawn by mathra: the box of each glyph and the baseline, as in docs/banner.svg
+  function drawLogo() {
+    const svg = convert(String.raw`\mathrm{mathra}`, "en", true, false).svg;
+    const doc = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+    const [, top, width] = doc.getAttribute("viewBox").split(" ").map(Number);
+    const xs = [...doc.querySelectorAll("use")].map((u) => Number(u.getAttribute("x")));
+    const depth = 230, pad = 260, margin = 60;
+    const ns = "http://www.w3.org/2000/svg";
+    const boxes = document.createElementNS(ns, "g");
+    boxes.setAttribute("class", "boxes");
+    xs.forEach((x, i) => {
+      const r = document.createElementNS(ns, "rect");
+      const w = (xs[i + 1] ?? width) - x;
+      Object.entries({ x, y: top - margin, width: w, height: -top + margin + depth, "vector-effect": "non-scaling-stroke" }).forEach(([k, v]) => r.setAttribute(k, v));
+      boxes.append(r);
+    });
+    const base = document.createElementNS(ns, "line");
+    Object.entries({ class: "base", x1: -pad, y1: 0, x2: width + pad, y2: 0, "vector-effect": "non-scaling-stroke" }).forEach(([k, v]) => base.setAttribute(k, v));
+    const glyphs = doc.querySelector("g[fill]");
+    doc.insertBefore(boxes, glyphs);
+    doc.insertBefore(base, glyphs);
+    const vbw = width + 2 * pad, vbh = -top + 2 * margin + depth;
+    doc.setAttribute("viewBox", `${-pad} ${top - 2 * margin} ${vbw} ${vbh}`);
+    doc.setAttribute("width", `${vbw / 1000}em`);
+    doc.setAttribute("height", `${vbh / 1000}em`);
+    doc.removeAttribute("style");
+    doc.setAttribute("aria-hidden", "true");
+    doc.querySelector("title")?.remove();
+    $("logo").replaceChildren(doc);
+  }
+
+  function readHash() {
+    const p = new URLSearchParams(location.hash.slice(1));
+    if (!p.has("tex")) return;
+    tex.value = p.get("tex");
+    setLocale(p.get("locale") || "en");
+    inline.checked = p.get("inline") === "1";
+    strict.checked = p.get("strict") === "1";
+  }
+
+  function link() {
+    const p = new URLSearchParams({ tex: tex.value });
+    if (locale !== "en") p.set("locale", locale);
+    if (inline.checked) p.set("inline", "1");
+    if (strict.checked) p.set("strict", "1");
+    return `${location.href.split("#")[0]}#${p}`;
+  }
+
+  function setLocale(l) {
+    locale = l;
+    for (const b of $("locale").children) b.setAttribute("aria-pressed", String(b.dataset.locale === l));
+  }
+
+  // LaTeX colors for the editor: commands, environments, braces, scripts, numbers, alignment, comments
+  const TOKENS = /(%[^\n]*)|(\\(?:begin|end))(\{)([^}\n]*)(\})|(\\\\)|(\\[a-zA-Z@]+\*?|\\.)|([{}\[\]])|([\^_])|(&)|(\d+(?:[.,]\d+)*)/g;
+  function highlight() {
+    const src = tex.value;
+    let html = "", at = 0;
+    for (const m of src.matchAll(TOKENS)) {
+      html += escape(src.slice(at, m.index));
+      const span = (cls, t) => `<span class="t-${cls}">${escape(t)}</span>`;
+      if (m[1]) html += span("comment", m[1]);
+      else if (m[2]) html += span("cmd", m[2]) + span("brace", m[3]) + span("env", m[4]) + span("brace", m[5]);
+      else if (m[6] || m[10]) html += span("align", m[0]);
+      else if (m[7]) html += span("cmd", m[7]);
+      else if (m[8]) html += span("brace", m[8]);
+      else if (m[9]) html += span("script", m[9]);
+      else html += span("num", m[11]);
+      at = m.index + m[0].length;
+    }
+    // a trailing newline needs a character after it to take up a line
+    $("highlight").innerHTML = html + escape(src.slice(at)) + "\n";
+  }
+
+  // shrinks the preview font until the equation fits its box, instead of scrolling
+  const PREVIEW_EM = 36, MIN_EM = 14;
+  function fit() {
+    const svg = preview.querySelector("svg");
+    preview.style.fontSize = PREVIEW_EM + "px";
+    if (!svg) return;
+    const room = preview.clientWidth - 48;
+    const width = svg.getBoundingClientRect().width;
+    if (width > room) preview.style.fontSize = Math.max(MIN_EM, (PREVIEW_EM * room) / width) + "px";
+  }
+  window.addEventListener("resize", fit);
+
+  function update() {
+    highlight();
+    if (!render) return;
+    messages.replaceChildren();
+    try {
+      last = convert(tex.value, locale, !inline.checked, strict.checked);
+      preview.innerHTML = tex.value.trim() ? last.svg : '<span class="status">Type some LaTeX on the left.</span>';
+      fit();
+      for (const w of last.warnings) {
+        const el = document.createElement("div");
+        el.className = "msg warn";
+        el.textContent = `${w.rule}  ${w.description}`;
+        messages.append(el);
+      }
+    } catch (e) {
+      last = null;
+      preview.innerHTML = "";
+      const el = document.createElement("div");
+      el.className = "msg err";
+      el.textContent = String(e.message ?? e);
+      messages.append(el);
+    }
+    if (location.protocol !== "file:" || location.hash) history.replaceState(null, "", link());
+    showTab();
+  }
+
+  function showTab() {
+    for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === tab));
+    if (!last) { panel.innerHTML = '<p class="empty">No output.</p>'; return; }
+    if (tab === "speech") { panel.innerHTML = `<p class="speech">${escape(last.speech)}</p>`; return; }
+    if (tab === "rules") {
+      const rows = [...last.warnings, ...last.applied];
+      panel.innerHTML = rows.length
+        ? rows.map((r) => `<div class="rule"><code>${escape(r.rule)}</code><span>${escape(r.description)}</span></div>`).join("")
+        : '<p class="empty">No rule changed this equation.</p>';
+      return;
+    }
+    const text = { text: last.text, tree: JSON.stringify(last.tree, null, 2), svg: last.svg }[tab];
+    panel.innerHTML = `<pre>${escape(text)}</pre>`;
+  }
+
+  function load(src, loc) {
+    tex.value = src;
+    setLocale(loc);
+    update();
+  }
+
+  function flash(button, label) {
+    const old = button.textContent;
+    button.textContent = label;
+    setTimeout(() => (button.textContent = old), 1200);
+  }
+
+  function drawStatic() {
+    for (const el of document.querySelectorAll("[data-tex]")) {
+      el.innerHTML = convert(el.dataset.tex, el.dataset.locale || "en", true, false).svg;
+    }
+    const tiles = $("tiles");
+    for (const [caption, loc, src] of EXAMPLES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = WIDE.includes(caption) ? "card tile wide" : "card tile";
+      b.innerHTML = `<div class="eq">${convert(src, loc, true, false).svg}</div><div class="cap"><span>${escape(caption)}</span><span>${loc === "en" ? "" : loc}</span></div>`;
+      b.onclick = () => { load(src, loc); $("playground").scrollIntoView(); tex.focus({ preventScroll: true }); };
+      tiles.append(b);
+    }
+  }
+
+  for (const name of CHIPS) {
+    const [caption, loc, src] = EXAMPLES.find((e) => e[0] === name);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = caption.replace(/ \(.*\)$/, "");
+    b.onclick = () => load(src, loc);
+    $("chips").append(b);
+  }
+  for (const b of $("locale").children) b.onclick = () => { setLocale(b.dataset.locale); update(); };
+  for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => { tab = b.dataset.tab; showTab(); };
+  tex.addEventListener("input", update);
+  inline.addEventListener("change", update);
+  strict.addEventListener("change", update);
+  window.addEventListener("hashchange", () => { readHash(); update(); });
+
+  $("copy-link").onclick = async (e) => { await navigator.clipboard.writeText(link()); flash(e.target, "Copied"); };
+  $("copy-svg").onclick = async (e) => { if (last) { await navigator.clipboard.writeText(last.svg); flash(e.target, "Copied"); } };
+  $("download").onclick = () => {
+    if (!last) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([last.svg], { type: "image/svg+xml" }));
+    a.download = "equation.svg";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  };
+
+  // opened from disk (file://), the browser blocks fetching the .wasm: read the base64 copy instead
+  function wasmSource() {
+    if (location.protocol !== "file:") return Promise.resolve("pkg/mathra_wasm_bg.wasm");
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "pkg/mathra_wasm_bytes.js";
+      s.onload = () => resolve(Uint8Array.from(atob(MATHRA_WASM_BASE64), (c) => c.charCodeAt(0)));
+      s.onerror = () => reject(new Error("pkg/mathra_wasm_bytes.js not found: run site/build.sh"));
+      document.head.append(s);
+    });
+  }
+
+  readHash();
+  highlight();
+  if (typeof wasm_bindgen === "undefined") {
+    preview.innerHTML = '<span class="status">pkg/mathra_wasm.js not found: run <code>site/build.sh</code>.</span>';
+    return;
+  }
+  wasmSource()
+    .then((module_or_path) => wasm_bindgen({ module_or_path }))
+    .then(() => {
+      render = wasm_bindgen.render;
+      drawLogo();
+      drawStatic();
+      update();
+    })
+    .catch((e) => { preview.innerHTML = `<span class="status">Could not load WebAssembly: ${escape(String(e.message ?? e))}</span>`; });
+})();
+</script>
+</body>
+</html>
