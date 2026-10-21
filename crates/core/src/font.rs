@@ -7,16 +7,54 @@ use ttf_parser::math::{Constants, MathValue};
 pub use ttf_parser::GlyphId;
 use ttf_parser::{Face, OutlineBuilder};
 
-static DATA: &[u8] = include_bytes!("../fonts/STIXTwoMath-Regular.otf");
+static STIX_TWO: &[u8] = include_bytes!("../fonts/STIXTwoMath-Regular.otf");
+#[cfg(feature = "latin-modern")]
+static LATIN_MODERN: &[u8] = include_bytes!("../fonts/latinmodern-math.otf");
+/// The name of the default font.
 pub const NAME: &str = "STIX Two Math";
+
+/// The math fonts mathra can typeset in: STIX Two Math (the default), and with the `latin-modern`
+/// feature Latin Modern Math, the OpenType Computer Modern that TeX's own documents are set in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum MathFont {
+    #[default]
+    StixTwo,
+    #[cfg(feature = "latin-modern")]
+    LatinModern,
+}
+
+impl MathFont {
+    pub fn name(self) -> &'static str {
+        match self {
+            MathFont::StixTwo => NAME,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => "Latin Modern Math",
+        }
+    }
+
+    /// The font, parsed once.
+    pub fn get(self) -> &'static Font {
+        match self {
+            MathFont::StixTwo => {
+                static FONT: OnceLock<Font> = OnceLock::new();
+                FONT.get_or_init(|| Font::parse(STIX_TWO))
+            }
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => {
+                static FONT: OnceLock<Font> = OnceLock::new();
+                FONT.get_or_init(|| Font::parse(LATIN_MODERN))
+            }
+        }
+    }
+}
 
 pub struct Font {
     face: Face<'static>,
 }
 
+/// The default font (STIX Two Math).
 pub fn font() -> &'static Font {
-    static FONT: OnceLock<Font> = OnceLock::new();
-    FONT.get_or_init(|| Font { face: Face::parse(DATA, 0).expect("valid embedded font") })
+    MathFont::StixTwo.get()
 }
 
 /// One part of an assembled glyph (tall parenthesis, long brace).
@@ -30,6 +68,10 @@ pub struct Part {
 }
 
 impl Font {
+    fn parse(data: &'static [u8]) -> Font {
+        Font { face: Face::parse(data, 0).expect("valid embedded font") }
+    }
+
     pub fn units_per_em(&self) -> f32 {
         f32::from(self.face.units_per_em())
     }

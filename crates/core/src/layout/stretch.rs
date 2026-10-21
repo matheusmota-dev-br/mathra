@@ -1,7 +1,7 @@
 //! Glyphs that grow: tall parentheses, radicals, braces and long arrows.
 //! First try the font's ready-made variants; if none is enough, assemble from parts.
 
-use crate::font::{font, Part};
+use crate::font::{Font, Part};
 use crate::Error;
 
 use super::{glyph_id, k, Item, MathBox, Style};
@@ -10,28 +10,28 @@ type R<T> = Result<T, Error>;
 
 /// Vertical glyph with a total height of at least `target` (already at the style's scale).
 pub fn vertical(c: char, target: f32, e: Style) -> R<MathBox> {
-    let f = font();
+    let f = e.font();
     let s = e.scale();
     let id = f.glyph(c).ok_or(Error::MissingGlyph { character: c })?;
-    let base = glyph_id(id, s);
+    let base = glyph_id(id, s, f);
     if base.total() >= target {
         return Ok(base);
     }
     let variants = f.variants(id, true);
     for (v, measure) in &variants {
         if measure * s >= target {
-            return Ok(glyph_id(*v, s));
+            return Ok(glyph_id(*v, s, f));
         }
     }
     if let Some(parts) = f.assembly(id, true) {
-        return Ok(assemble(&parts, target / s, s, true));
+        return Ok(assemble(&parts, target / s, s, true, f));
     }
-    Ok(variants.last().map_or(base, |(v, _)| glyph_id(*v, s)))
+    Ok(variants.last().map_or(base, |(v, _)| glyph_id(*v, s, f)))
 }
 
 /// Horizontal glyph with a width of at least `target`.
 pub fn horizontal(c: char, target: f32, e: Style) -> R<MathBox> {
-    let f = font();
+    let f = e.font();
     let s = e.scale();
     let id = f.glyph(c).ok_or(Error::MissingGlyph { character: c })?;
     let width = |g| {
@@ -39,18 +39,18 @@ pub fn horizontal(c: char, target: f32, e: Style) -> R<MathBox> {
         (x1 - x0) * s
     };
     if width(id) >= target {
-        return Ok(glyph_id(id, s));
+        return Ok(glyph_id(id, s, f));
     }
     let variants = f.variants(id, false);
     for (v, _) in &variants {
         if width(*v) >= target {
-            return Ok(glyph_id(*v, s));
+            return Ok(glyph_id(*v, s, f));
         }
     }
     if let Some(parts) = f.assembly(id, false) {
-        return Ok(assemble(&parts, target / s, s, false));
+        return Ok(assemble(&parts, target / s, s, false, f));
     }
-    Ok(variants.last().map_or(glyph_id(id, s), |(v, _)| glyph_id(*v, s)))
+    Ok(variants.last().map_or(glyph_id(id, s, f), |(v, _)| glyph_id(*v, s, f)))
 }
 
 /// Delimiter centered on the math axis, covering `target` of total height.
@@ -65,8 +65,7 @@ pub fn delimiter(c: char, target: f32, e: Style) -> R<MathBox> {
 
 /// Assembles the parts (bottom to top or left to right), repeating the extenders
 /// as few times as needed to reach the size, with overlap between connectors.
-fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool) -> MathBox {
-    let f = font();
+fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool, f: &Font) -> MathBox {
     let overlap = f.min_overlap();
     let sequence = |n: usize| -> Vec<Part> { parts.iter().flat_map(|p| std::iter::repeat_n(*p, if p.extender { n } else { 1 })).collect() };
     let size = |seq: &[Part], ov: f32| -> f32 { seq.iter().map(|p| p.advance).sum::<f32>() - ov * seq.len().saturating_sub(1) as f32 };
@@ -88,7 +87,7 @@ fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool) -> MathBox {
         let (x0, y0, _, _) = f.limits(p.id);
         let (x, y) = if vertical { (0.0, (cursor - y0) * s) } else { ((cursor - x0) * s, 0.0) };
         math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None });
-        let g = glyph_id(p.id, s);
+        let g = glyph_id(p.id, s, f);
         if vertical {
             math_box.width = math_box.width.max(g.width);
         } else {

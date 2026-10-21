@@ -155,7 +155,9 @@ println!("{}", r.speech);
 
 ## What it converts
 
-Layout follows the parameters of the embedded font's MATH table.
+Layout follows the parameters of the embedded font's MATH table. The font is STIX Two Math; with the
+`latin-modern` feature, `convert_in_font` and `typeset_in_font` can also set an equation in Latin
+Modern Math, the OpenType Computer Modern of TeX's own documents (about 700 KB more in the binary).
 
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
@@ -244,4 +246,4 @@ The banner above is drawn by mathra itself (`cargo run -p mathra --example banne
 
 ## Licenses
 
-Code: your choice of [MIT](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`).
+Code: your choice of [MIT](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`). With the `latin-modern` feature, also Latin Modern Math, GUST Font License (`crates/core/fonts/GUST-FONT-LICENSE-LatinModernMath.txt`).

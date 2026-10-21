@@ -12,7 +12,7 @@ pub use math_box::{Item, MathBox};
 
 use ttf_parser::math::Constants;
 
-use crate::font::font;
+use crate::font::{Font, MathFont};
 use crate::locale::Locale;
 use crate::rules::{self, Registry};
 use crate::tree::*;
@@ -34,22 +34,34 @@ pub enum Level {
 pub struct Style {
     pub level: Level,
     pub cramped: bool,
+    /// The font the equation is set in.
+    pub font: MathFont,
 }
 
 impl Style {
     pub fn display() -> Style {
-        Style { level: Level::Display, cramped: false }
+        Style { level: Level::Display, cramped: false, font: MathFont::default() }
     }
 
     pub fn text() -> Style {
-        Style { level: Level::Text, cramped: false }
+        Style { level: Level::Text, cramped: false, font: MathFont::default() }
+    }
+
+    /// The same style in another font.
+    pub fn in_font(self, font: MathFont) -> Style {
+        Style { font, ..self }
+    }
+
+    /// The style's font.
+    pub fn font(self) -> &'static Font {
+        self.font.get()
     }
 
     pub fn scale(self) -> f32 {
         match self.level {
             Level::Display | Level::Text => 1.0,
-            Level::Script => font().script_scale(),
-            Level::ScriptScript => font().script_script_scale(),
+            Level::Script => self.font().script_scale(),
+            Level::ScriptScript => self.font().script_script_scale(),
         }
     }
 
@@ -62,7 +74,7 @@ impl Style {
             Level::Display | Level::Text => Level::Script,
             _ => Level::ScriptScript,
         };
-        Style { level, cramped: self.cramped }
+        Style { level, cramped: self.cramped, font: self.font }
     }
 
     fn sub(self) -> Style {
@@ -75,7 +87,7 @@ impl Style {
             Level::Text => Level::Script,
             _ => Level::ScriptScript,
         };
-        Style { level, cramped: self.cramped }
+        Style { level, cramped: self.cramped, font: self.font }
     }
 
     fn den(self) -> Style {
@@ -104,17 +116,17 @@ pub struct Context<'a> {
 
 /// MATH table constant already at the style's scale.
 fn k(e: Style, f: impl Fn(&Constants<'static>) -> ttf_parser::math::MathValue<'static>) -> f32 {
-    font().c(f) * e.scale()
+    e.font().c(f) * e.scale()
 }
 
 fn em(e: Style, amount: f32) -> f32 {
-    font().units_per_em() * amount * e.scale()
+    e.font().units_per_em() * amount * e.scale()
 }
 
 pub(crate) fn glyph(c: char, e: Style) -> R<MathBox> {
-    let f = font();
+    let f = e.font();
     let id = f.glyph(c).or_else(|| equivalent(c).and_then(|x| f.glyph(x))).ok_or(Error::MissingGlyph { character: c })?;
-    Ok(glyph_id(id, e.scale()))
+    Ok(glyph_id(id, e.scale(), f))
 }
 
 /// Characters the font lacks, drawn with an equivalent it has.
@@ -127,8 +139,7 @@ fn equivalent(c: char) -> Option<char> {
     })
 }
 
-pub(crate) fn glyph_id(id: ttf_parser::GlyphId, s: f32) -> MathBox {
-    let f = font();
+pub(crate) fn glyph_id(id: ttf_parser::GlyphId, s: f32, f: &Font) -> MathBox {
     let (_, y0, _, y1) = f.limits(id);
     MathBox {
         width: f.advance(id) * s,
@@ -163,8 +174,8 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
         }
         // small capitals: a lowercase letter is its capital at the height of the x
         if small_caps > 0 && c.is_lowercase() {
-            if let Some(id) = c.to_uppercase().next().and_then(|u| font().glyph(u)) {
-                math_box.append(&glyph_id(id, e.scale() * SMALL_CAPS_SCALE));
+            if let Some(id) = c.to_uppercase().next().and_then(|u| e.font().glyph(u)) {
+                math_box.append(&glyph_id(id, e.scale() * SMALL_CAPS_SCALE, e.font()));
                 continue;
             }
         }
@@ -325,7 +336,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
                 2 => Level::Script,
                 _ => Level::ScriptScript,
             };
-            compose(base, Style { level, cramped: e.cramped }, ctx)
+            compose(base, Style { level, cramped: e.cramped, font: e.font }, ctx)
         }
         Node::LongDivision { dividend, divisor } => arithmetic::long_division(dividend, divisor, e),
         Node::ColumnArithmetic { operation, terms } => arithmetic::column_arithmetic(*operation, terms, e),
@@ -557,7 +568,7 @@ fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, e:
 }
 
 fn compose_root(radicand: &Node, index: Option<&Node>, e: Style, ctx: &mut Context) -> R<MathBox> {
-    let f = font();
+    let f = e.font();
     let base = compose(radicand, e.cramp(), ctx)?;
     let thickness = k(e, |c| c.radical_rule_thickness());
     let mut gap = if e.level == Level::Display { k(e, |c| c.radical_display_style_vertical_gap()) } else { k(e, |c| c.radical_vertical_gap()) };
@@ -575,7 +586,7 @@ fn compose_root(radicand: &Node, index: Option<&Node>, e: Style, ctx: &mut Conte
 
     let mut math_box = MathBox::empty();
     if let Some(ind) = index {
-        let ei = Style { level: Level::ScriptScript, cramped: true };
+        let ei = Style { level: Level::ScriptScript, cramped: true, font: e.font };
         let i = compose(ind, ei, ctx)?;
         let before = k(e, |c| c.radical_kern_before_degree());
         let after = k(e, |c| c.radical_kern_after_degree());
@@ -714,7 +725,7 @@ fn limits(b: MathBox, above: Option<&Node>, below: Option<&Node>, e: Style, ctx:
 }
 
 fn large_operator(c: char, e: Style) -> R<MathBox> {
-    let f = font();
+    let f = e.font();
     let id = f.glyph(c).ok_or(Error::MissingGlyph { character: c })?;
     let mut chosen = id;
     if e.level == Level::Display {
@@ -726,7 +737,7 @@ fn large_operator(c: char, e: Style) -> R<MathBox> {
             }
         }
     }
-    let mut math_box = glyph_id(chosen, e.scale());
+    let mut math_box = glyph_id(chosen, e.scale(), f);
     // centered on the math axis
     let axis = k(e, |c| c.axis_height());
     let offset = axis - (math_box.height - math_box.depth) / 2.0;
@@ -778,8 +789,8 @@ fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Sty
         a.width / 2.0
     } else {
         a.accent_point.unwrap_or_else(|| {
-            let id = font().glyph(accent).expect("glyph already resolved");
-            let (x0, _, x1, _) = font().limits(id);
+            let id = e.font().glyph(accent).expect("glyph already resolved");
+            let (x0, _, x1, _) = e.font().limits(id);
             (x0 + x1) / 2.0 * e.scale()
         })
     };
@@ -795,7 +806,7 @@ fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Sty
         // (combining accents have zero advance)
         let glyphs = a.items.iter().filter_map(|i| if let Item::Glyph { id, x, scale, .. } = i { Some((*id, *x, *scale)) } else { None });
         let (x0, x1) = glyphs.fold((0.0f32, a.width), |(x0, x1), (id, x, scale)| {
-            let (g0, _, g1, _) = font().limits(id);
+            let (g0, _, g1, _) = e.font().limits(id);
             (x0.min(x + g0 * scale), x1.max(x + g1 * scale))
         });
         math_box.place(&a, -x0, dy);
