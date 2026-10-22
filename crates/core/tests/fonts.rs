@@ -28,6 +28,15 @@ mod latin_modern {
     }
 
     #[test]
+    fn words_are_a_third_of_an_em_apart() {
+        assert_eq!(MathFont::StixTwo.word_space(), 0.25);
+        assert!((MathFont::LatinModern.word_space() - 0.332).abs() < 1e-6);
+        let options = Options { display: false, ..Default::default() };
+        let w = |t: &str| typeset_in_font(t, &options, MathFont::LatinModern).unwrap().0.width;
+        assert!((w(r"\text{a b}") - w(r"\text{ab}") - 332.0).abs() < 1e-3);
+    }
+
+    #[test]
     fn draws_its_own_glyphs() {
         let svg = convert_in_font(r"\left( \frac{a}{b} \right)", &Options::default(), MathFont::LatinModern).unwrap().svg;
         assert!(svg.contains("<mathra:font>Latin Modern Math</mathra:font>"));

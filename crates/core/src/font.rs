@@ -32,6 +32,19 @@ impl MathFont {
         }
     }
 
+    /// The space between words in text, in em: a quarter em in STIX Two Math, and in Latin Modern
+    /// Math its space, as wide as Computer Modern's (a third of an em).
+    pub fn word_space(self) -> f32 {
+        match self {
+            MathFont::StixTwo => 0.25,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => {
+                let f = self.get();
+                f.glyph(' ').map_or(0.25, |g| f.advance(g) / f.units_per_em())
+            }
+        }
+    }
+
     /// The font, parsed once.
     pub fn get(self) -> &'static Font {
         match self {

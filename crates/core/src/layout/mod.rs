@@ -182,7 +182,7 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
         // bold through the math block letters; accented ones stay regular
         let c = if bold > 0 { alphabet::character(c, Variant::Bold) } else { c };
         if c == ' ' || c == '\u{00A0}' {
-            math_box.append(&MathBox::space(em(e, 0.25)));
+            math_box.append(&MathBox::space(em(e, e.font.word_space())));
             continue;
         }
         if c == '\u{2003}' {
