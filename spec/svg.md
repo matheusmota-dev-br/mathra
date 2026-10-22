@@ -6,7 +6,7 @@ A mathra SVG is an outline drawing that carries the speech, the source and the t
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1"
      viewBox="0 -645 1730 658" width="1.73em" height="0.658em"
      style="vertical-align: -0.013em"
-     role="img" aria-labelledby="mathra-0f561d1c-speech" lang="en" data-mathra-version="1.1.1">
+     role="img" aria-labelledby="mathra-0f561d1c-speech" lang="en" data-mathra-version="1.2.0">
   <title id="mathra-0f561d1c-speech">3.14</title>
   <metadata>
     <mathra:source type="latex">3.14</mathra:source>

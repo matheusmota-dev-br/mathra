@@ -13,4 +13,4 @@ homepage = "https://github.com/matheusmota-dev-br/mathra"
 
 [workspace.dependencies]
 # the published name of the core lives only here and in crates/core/Cargo.toml
-mathra = { path = "crates/core", version = "1.1.1" }
+mathra = { path = "crates/core", version = "1.2.0" }
