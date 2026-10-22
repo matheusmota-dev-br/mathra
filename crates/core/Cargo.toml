@@ -3,7 +3,9 @@ name = "mathra"
 description = "Equation converter: math LaTeX to a tree of meaning and accessible SVG, with locale rules (English and pt-BR)."
 version.workspace = true
 edition.workspace = true
-# the code is MIT OR Apache-2.0; the embedded STIX Two Math font is OFL-1.1
+# the code is MIT OR Apache-2.0; the embedded STIX Two Math font is OFL-1.1, and Latin Modern Math
+# (built only with the `latin-modern` feature) is under the GUST Font License, which SPDX does not list:
+# its text is in fonts/
 license = "(MIT OR Apache-2.0) AND OFL-1.1"
 repository.workspace = true
 homepage.workspace = true
@@ -11,6 +13,11 @@ readme = "../../README.md"
 keywords = ["latex", "math", "svg", "accessibility", "equation"]
 categories = ["text-processing", "rendering", "accessibility", "mathematics"]
 include = ["src/**", "fonts/**", "Cargo.toml"]
+
+[features]
+# Latin Modern Math (the OpenType Computer Modern, GUST Font License) as a second font,
+# chosen with `Options::font`: some 700 KB more in the binary
+latin-modern = []
 
 [dependencies]
 ttf-parser = "0.25"

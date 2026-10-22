@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::font::{font, NAME};
+use crate::font::MathFont;
 use crate::layout::{Item, MathBox};
 use crate::locale::Locale;
 use crate::VERSION;
@@ -20,6 +20,8 @@ pub struct Content<'a> {
     pub braille_code: crate::BrailleCode,
     pub locale: Locale,
     pub warnings: &'a [crate::Applied],
+    /// The font the equation was set in: its glyphs are drawn from it.
+    pub font: MathFont,
 }
 
 fn n(v: f32) -> String {
@@ -32,7 +34,7 @@ fn n(v: f32) -> String {
 }
 
 pub fn generate(c: &Content) -> String {
-    let f = font();
+    let f = c.font.get();
     let em = f.units_per_em();
     let math_box = c.math_box;
     let total_height = math_box.height + math_box.depth;
@@ -66,7 +68,7 @@ pub fn generate(c: &Content) -> String {
         escape(c.tree_json),
         c.braille_code,
         escape(c.braille),
-        NAME,
+        c.font.name(),
         c.warnings.iter().map(|a| format!(r#"<mathra:warning rule="{}">{}</mathra:warning>"#, a.rule, escape(&a.description))).collect::<String>(),
     );
 

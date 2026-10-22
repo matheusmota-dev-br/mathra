@@ -32,9 +32,9 @@ pub fn compose(
 ) -> R<MathBox> {
     use TableKind::*;
     let cell_style = match kind {
-        SmallMatrix => Style { level: Level::Script, cramped: e.cramped },
+        SmallMatrix => Style { level: Level::Script, cramped: e.cramped, font: e.font },
         Substack => e,
-        Aligned | Centered => Style { level: Level::Display, cramped: false },
+        Aligned | Centered => Style { level: Level::Display, cramped: false, font: e.font },
         _ => e.not_display(),
     };
     let span = |node: &Node| {

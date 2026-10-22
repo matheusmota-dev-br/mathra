@@ -158,9 +158,14 @@ impl std::error::Error for Error {}
 
 /// Converts an equation (LaTeX by default; see [`Options::input`]) to SVG, speech, text and tree.
 pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
+    convert_in_font(tex, options, font::MathFont::default())
+}
+
+/// [`convert`], with the equation set in `font`.
+pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<Output, Error> {
     let mut registry = rules::Registry::default();
     let (tree, input) = read(tex, options, &mut registry)?;
-    let style = if options.display { layout::Style::display() } else { layout::Style::text() };
+    let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let math_box = {
         let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict };
         layout::compose(&tree, style, &mut ctx)?
@@ -185,6 +190,7 @@ pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
         braille_code,
         locale: options.locale,
         warnings: &registry.warnings,
+        font,
     });
     Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, applied: registry.applied, warnings: registry.warnings })
 }
@@ -192,9 +198,14 @@ pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
 /// The composed box, without generating SVG: for callers that draw the equation inside something
 /// else (tikra's figure labels). Also returns the tolerant mode's warnings.
 pub fn typeset(tex: &str, options: &Options) -> Result<(layout::MathBox, Vec<Applied>), Error> {
+    typeset_in_font(tex, options, font::MathFont::default())
+}
+
+/// [`typeset`], with the equation set in `font` (its glyph ids are that font's).
+pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<(layout::MathBox, Vec<Applied>), Error> {
     let mut registry = rules::Registry::default();
     let (tree, _) = read(tex, options, &mut registry)?;
-    let style = if options.display { layout::Style::display() } else { layout::Style::text() };
+    let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict };
     let math_box = layout::compose(&tree, style, &mut ctx)?;
     registry.dedup();
