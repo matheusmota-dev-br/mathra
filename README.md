@@ -2,7 +2,9 @@
 
 # mathra
 
-Accessible SVG equations from LaTeX, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**.
+Accessible SVG equations from LaTeX, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**, or **[watch the 60-second demo](https://youtu.be/pXuaCwmWaDg)**.
+
+<p align="center"><a href="https://youtu.be/pXuaCwmWaDg"><img src="https://img.youtube.com/vi/pXuaCwmWaDg/maxresdefault.jpg" alt="mathra in 60 seconds: watch the demo on YouTube" width="720"></a></p>
 
 mathra reads math LaTeX, builds a **tree of meaning** (what each piece is) and draws it with **explicit rules**, numbered and tested. Every SVG carries the phrase a screen reader says, in 16 languages, and the locale decides the form: in pt-BR `3,14` is a single number and `\sin` comes out as `sen`. All four packages run the same core, so an equation gives the same SVG, byte for byte, wherever it is converted.
 
@@ -249,6 +251,10 @@ To change behavior, write the rule in `spec/`, cite its id in the code and add a
 The tests cover 97.4% of the lines of the core, the CLI and the Python module (100% of the CLI, the Python module, the LaTeX layout and the SVG); the gaps are in the MathML and AsciiMath readers and the braille codes. [docs/tests.md](https://github.com/matheusmota-dev-br/mathra/blob/main/docs/tests.md) explains how to run each suite (including wasm on Node and pytest), what each file checks, the coverage per file and the problem inputs already tested.
 
 The banner above is drawn by mathra itself (`cargo run -p mathra --example banner`); `tests/banner.rs` fails if it goes stale.
+
+## Sponsor
+
+mathra is free and open source. If it is useful to you, you can support its work on [GitHub Sponsors](https://github.com/sponsors/matheusmota-dev-br).
 
 ## Licenses
 

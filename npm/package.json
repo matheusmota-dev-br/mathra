@@ -6,6 +6,7 @@
   "homepage": "https://matheusmota-dev-br.github.io/mathra/",
   "repository": { "type": "git", "url": "git+https://github.com/matheusmota-dev-br/mathra.git", "directory": "npm" },
   "bugs": "https://github.com/matheusmota-dev-br/mathra/issues",
+  "funding": "https://github.com/sponsors/matheusmota-dev-br",
   "license": "(MIT OR Apache-2.0) AND OFL-1.1",
   "type": "module",
   "exports": {

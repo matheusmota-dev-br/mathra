@@ -14,6 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
+<script src="code.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -35,6 +36,7 @@
     <p class="sub">mathra reads the equation (LaTeX, MathML or AsciiMath), builds a tree of meaning and draws it with numbered, tested rules. Every SVG says the equation out loud to screen readers and carries it in braille.</p>
     <div class="cta">
       <a class="button solid" href="#playground">Try it now</a>
+      <a class="button" href="#demo">Watch the demo</a>
       <a class="button" href="#gallery">See the gallery</a>
       <a class="button" href="#benchmark">See the benchmark</a>
     </div>
@@ -101,6 +103,15 @@
     </div>
     <div class="panel" id="panel" role="tabpanel"></div>
   </div>
+
+  <section id="demo">
+    <h2>In 60 seconds</h2>
+    <p class="lead">What mathra does, from one command to speech, braille and the platforms. Every drawing and phrase in it is mathra's real output.</p>
+    <div class="video">
+      <iframe src="https://www.youtube-nocookie.com/embed/pXuaCwmWaDg?rel=0" title="mathra in 60 seconds" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+    </div>
+    <p class="video-link"><a href="https://youtu.be/pXuaCwmWaDg">Watch on YouTube</a></p>
+  </section>
 
   <section>
     <h2>Why mathra</h2>
@@ -182,7 +193,7 @@
         <div class="platform-head"><h3>JavaScript and TypeScript</h3><a class="pill live" href="https://www.npmjs.com/package/@mathlabs/mathra">on npm</a></div>
         <p>Node, bundlers (Vite, webpack, esbuild) and browsers. Types included.</p>
         <code class="cmd">npm install @mathlabs/mathra</code>
-<pre>import { init, texToSvg, render } from "@mathlabs/mathra";
+<pre data-lang="js">import { init, texToSvg, render } from "@mathlabs/mathra";
 
 await init();  // browsers and bundlers; Node needs nothing
 const svg = texToSvg("3,14", { locale: "pt-BR" });
@@ -193,7 +204,7 @@ render("sqrt(x)/2", { input: "asciimath" });  // or "mathml"</pre>
         <div class="platform-head"><h3>Python</h3><a class="pill live" href="https://pypi.org/project/mathra/">on PyPI</a></div>
         <p>Python 3.9 and later, wheels for Linux, macOS and Windows. Types included.</p>
         <code class="cmd">pip install mathra</code>
-<pre>import mathra
+<pre data-lang="py">import mathra
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")
 r = mathra.render(r"\frac{3}{4}", locale="fr")
@@ -204,7 +215,7 @@ mathra.render("x^2", locale="pt-BR")["braille"]  # '⠭⠡⠼⠃'</pre>
         <div class="platform-head"><h3>Terminal</h3><a class="pill live" href="https://crates.io/crates/mathra-cli">on crates.io</a></div>
         <p>One binary, SVG to stdout or files; <code>--batch</code> for many at once.</p>
         <code class="cmd">cargo install mathra-cli</code>
-<pre>mathra 'x \le 2.75' -o inequality.svg
+<pre data-lang="sh">mathra 'x \le 2.75' -o inequality.svg
 mathra '3,14 + \sin x' --locale pt-BR
 mathra 'x = -1' --speech
 mathra '\vertA\vert' --explain
@@ -215,7 +226,7 @@ mathra '\frac{3}{4}' -l pt-BR --braille</pre>
         <div class="platform-head"><h3>Rust</h3><a class="pill live" href="https://crates.io/crates/mathra">on crates.io</a></div>
         <p>The core itself, for servers and native apps. API docs on <a href="https://docs.rs/mathra">docs.rs</a>.</p>
         <code class="cmd">cargo add mathra</code>
-<pre>let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
+<pre data-lang="rust">let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
 println!("{}", r.svg);
 println!("{}", r.speech);</pre>
       </div>
@@ -226,7 +237,7 @@ println!("{}", r.speech);</pre>
 
   <footer>
     <span>mathra · MIT or Apache-2.0 · STIX Two Math font under OFL-1.1</span>
-    <a href="https://github.com/matheusmota-dev-br/mathra">github.com/matheusmota-dev-br/mathra</a>
+    <span><a href="https://github.com/sponsors/matheusmota-dev-br">Sponsor mathra</a> · <a href="https://github.com/matheusmota-dev-br/mathra">github.com/matheusmota-dev-br/mathra</a></span>
   </footer>
 </div>
 
