@@ -548,5 +548,8 @@
    "de os": "dos",
    "em os": "nos"
   }
+ },
+ "optional": {
+  "dot_product": "escalar"
  }
 }

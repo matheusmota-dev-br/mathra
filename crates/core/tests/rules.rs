@@ -233,3 +233,10 @@ fn s_svg_9_braille_in_metadata() {
     assert!(r.svg.contains(r#"<mathra:braille code="cmu">⠫⠱⠭</mathra:braille>"#), "{}", r.svg);
     assert!(en(r"\sqrt{x}").svg.contains(r#"<mathra:braille code="nemeth">⠜⠭⠻</mathra:braille>"#));
 }
+
+#[test]
+fn l_opr_1_the_dot_between_vectors_is_the_dot_product() {
+    assert_eq!(en(r"\vec{v} \cdot \vec{w}").speech, "vector v dot vector w");
+    assert_eq!(pt(r"\mathbf{u} \cdot \mathbf{v}").speech, "u escalar v");
+    assert_eq!(en(r"2 \cdot 3").speech, "2 times 3");
+}

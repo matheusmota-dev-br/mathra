@@ -432,5 +432,8 @@
    "R": "the real numbers",
    "C": "the complex numbers"
   }
+ },
+ "optional": {
+  "dot_product": "dot"
  }
 }

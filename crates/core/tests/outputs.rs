@@ -365,3 +365,26 @@ fn double_struck_letters_are_read_as_number_sets() {
     // only a preposition that ends a word contracts: a variable named a stays
     assert_eq!(speech(r"a \mathbb{R}", Locale::PtBr), "a os reais");
 }
+
+#[test]
+fn the_dot_between_vectors_is_spoken_dot() {
+    for (tex, english, portuguese) in [
+        (r"\vec{v} \cdot \vec{w}", "vector v dot vector w", "vetor v escalar vetor w"),
+        (r"\overrightarrow{AB} \cdot \overrightarrow{CD}", "vector A B dot vector C D", "vetor A B escalar vetor C D"),
+        (r"\mathbf{u} \cdot \mathbf{v} = 0", "u dot v equals 0", "u escalar v é igual a 0"),
+        (r"\boldsymbol{u} \cdot \boldsymbol{v}", "u dot v", "u escalar v"),
+        (r"\vb{a} \vdot \vb{b}", "a dot b", "a escalar b"),
+        (r"\vec{v}_1 \cdot \vec{v}_2", "vector v sub 1 dot vector v sub 2", "vetor v índice 1 escalar vetor v índice 2"),
+        // a scalar on either side: the dot is a product of numbers
+        (r"a \cdot b", "a times b", "a vezes b"),
+        (r"2 \cdot \vec{v}", "2 times vector v", "2 vezes vetor v"),
+        (r"\vec{a} \cdot \vec{b} + 2 \cdot 3", "vector a dot vector b plus 2 times 3", "vetor a escalar vetor b mais 2 vezes 3"),
+    ] {
+        assert_eq!(speech(tex, Locale::En), english, "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), portuguese, "{tex}");
+    }
+    let asciimath = convert("vec u * vec v", &Options { input: mathra::Input::AsciiMath, ..options(Locale::En) }).unwrap();
+    assert_eq!(asciimath.speech, "vector u dot vector v");
+    // a language without the word keeps "times"
+    assert_eq!(speech(r"\vec{v} \cdot \vec{w}", Locale::De), "Vektor v mal Vektor w");
+}

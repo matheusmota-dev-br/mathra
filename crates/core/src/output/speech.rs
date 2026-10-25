@@ -73,8 +73,14 @@ impl Speaker {
             Node::Row { children } => {
                 let children = &pair_bars(children);
                 let cl = classes(children, self.loc, None, false);
-                for (child, class) in children.iter().zip(cl) {
+                for (i, (child, class)) in children.iter().zip(cl).enumerate() {
                     match (child, class) {
+                        // L-OPR-1: between two vectors, the dot is the dot product: "v dot w"
+                        (Node::Operator { symbol: '·', .. }, Some(Class::Bin))
+                            if i > 0 && children.get(i + 1).is_some_and(is_vector) && is_vector(&children[i - 1]) && self.loc.own_phrase("dot_product").is_some() =>
+                        {
+                            self.say(self.loc.own_phrase("dot_product").unwrap_or_default());
+                        }
                         (Node::Operator { symbol, .. }, Some(c)) => {
                             let o = operator(*symbol, c, self.loc);
                             self.say(o);
@@ -443,6 +449,18 @@ fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
                 .collect(),
         ),
         other => other.clone(),
+    }
+}
+
+/// L-OPR-1: a vector by its notation: an arrow over it (`\vec`, `\overrightarrow`) or a bold letter
+/// (`\mathbf`, `\boldsymbol`, `\vb`), also with an index (`\vec{v}_1`).
+fn is_vector(node: &Node) -> bool {
+    match node {
+        Node::Accent { accent: '⃗' | '→', .. } => true,
+        Node::Identifier { variant: Variant::Bold | Variant::BoldItalic, .. } => true,
+        Node::Row { children } => children.len() == 1 && is_vector(&children[0]),
+        Node::Scripts { base, sup: None, .. } => is_vector(base),
+        _ => false,
     }
 }
 

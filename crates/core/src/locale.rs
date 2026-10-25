@@ -68,6 +68,10 @@ struct Data {
     #[serde(default)]
     written: HashMap<String, String>,
     speech: HashMap<String, String>,
+    /// Phrases a language may have, with no English fallback: without one, the general reading
+    /// stays (`dot_product`, L-OPR-1: "dot" instead of "times")
+    #[serde(default)]
+    optional: HashMap<String, String>,
     /// Fractions read the way they are at school: "três quartos", "three quarters"
     #[serde(default)]
     fractions: Option<Fractions>,
@@ -271,6 +275,11 @@ impl Locale {
             let head = before.strip_suffix(preposition).filter(|h| h.ends_with(' '))?;
             Some((format!("{head}{joined}"), rest.to_string()))
         })
+    }
+
+    /// A phrase of `optional`, only in this language: `None` keeps the general reading.
+    pub(crate) fn own_phrase(self, key: &str) -> Option<&'static str> {
+        self.data().optional.get(key).map(String::as_str)
     }
 
     fn lookup(self, key: &str) -> Option<&'static str> {

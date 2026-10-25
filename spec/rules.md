@@ -125,6 +125,12 @@ Latin letters and lowercase Greek letters are drawn with Unicode's math italic c
 
 A double-struck capital, written `\mathbb{R}`, `RR` (AsciiMath), `mathvariant="double-struck"` or as the character (ℝ, 𝔸), is read as the number set it names: ℕ, ℤ, ℚ, ℝ and ℂ are "the natural numbers", "the integers", "the rational numbers", "the real numbers" and "the complex numbers" ("os naturais", "os inteiros", "os racionais", "os reais", "os complexos"). Any other is read as a letter: "double-struck P", "P duplo". Where the language contracts a preposition with the article of the name, the speech does: `x \in \mathbb{R}` is "x pertence aos reais", `A \subset \mathbb{Z}` is "A está contido nos inteiros". The names are in the `double_struck` section of the language's file (`locales.md`); a language without it reads the letter alone, as before.
 
+## Operators
+
+### L-OPR-1 · The dot between vectors
+
+`\cdot` (and physics' `\vdot`) between two vectors is the dot product and is spoken "dot" ("escalar" in pt-BR): `\vec{v} \cdot \vec{w}` is "vector v dot vector w". A vector is a letter with an arrow over it (`\vec`, `\overrightarrow`) or a bold letter (`\mathbf`, `\boldsymbol`, `\vb`), also with an index. Anywhere else the dot is "times" (`2 \cdot 3`, `a \cdot b`, `2 \cdot \vec{v}`). The word is in the `optional` section of the language's file (`locales.md`); a language without it keeps "times". The drawing is the same dot.
+
 ## Spacing
 
 ### L-ESP-1 · Space between atoms
