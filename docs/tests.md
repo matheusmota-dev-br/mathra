@@ -35,7 +35,7 @@ cargo llvm-cov report --summary-only        # or --html
 
 | File | Tests | What it checks |
 |---|---:|---|
-| `crates/core/tests/rules.rs` | 24 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
+| `crates/core/tests/rules.rs` | 25 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
 | `crates/core/tests/structures.rs` | 24 | Fractions, roots, matrices, cases, alignments: what sits above, below or beside what. |
 | `crates/core/tests/latex_reader.rs` | 91 | Every command and environment the reader knows (including every amssymb symbol and negation, drawn in strict mode so the font must have it), every recovery path and, at the end (`p_*`), the problem inputs. |
 | `crates/core/tests/layout.rs` | 65 | From the tree to boxes: geometric properties (width, height, alignment, stretching), not exact coordinates. Includes the layout problem cases. |

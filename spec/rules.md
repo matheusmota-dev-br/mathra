@@ -74,9 +74,12 @@ In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without
 
 An input that starts with a `<math>` element (after an optional XML prolog or comments) is read as MathML, even in LaTeX mode: LaTeX never starts that way, and editors put MathML on the clipboard. The other notations are in `input.md`.
 
-### L-ENT-3 · Text size commands
+### L-ENT-3 · Document commands: sizes and packages
 
-`\small`, `\scriptsize`, `\large` and similar are ignored: the size comes from whoever uses the SVG.
+Commands that belong to the document, not to the equation, are ignored and noted:
+
+- `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG.
+- `\usepackage{…}`, `\RequirePackage{…}` and MathJax's `\require{…}`, with their optional argument: the supported packages are already loaded.
 
 ### L-TXT-1 · Quotes in text
 

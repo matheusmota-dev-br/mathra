@@ -193,6 +193,16 @@ fn l_che_1_labeled_arrow_in_chemistry() {
 }
 
 #[test]
+fn l_ent_3_size_commands_and_packages_are_ignored() {
+    for tex in [r"\Large x", r"\usepackage{amsmath} x", r"\usepackage[utf8]{inputenc} x", r"\require{mhchem} x"] {
+        let r = en(tex);
+        assert_eq!(r.text, "x", "{tex}");
+        assert!(rules(&r).contains(&"L-ENT-3"), "{tex}");
+        assert!(r.warnings.is_empty(), "{tex}: {:?}", r.warnings);
+    }
+}
+
+#[test]
 fn l_ent_4_mathml_pasted_as_latex_is_read_as_mathml() {
     let r = en("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
     assert_eq!(r.text, "x^2");
