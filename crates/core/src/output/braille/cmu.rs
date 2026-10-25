@@ -136,6 +136,7 @@ impl Writer {
             | Node::Scaled { base, .. }
             | Node::Smashed { base, .. }
             | Node::Overlapped { base, .. }
+            | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(*symbol),
@@ -600,7 +601,7 @@ fn simple(n: &Node) -> bool {
         Node::Fraction { .. } => numeric_fraction(n).is_some(),
         Node::Scripts { base, sup, sub } => simple(base) && sup.as_deref().is_none_or(simple) && sub.as_deref().is_none_or(simple),
         Node::Accent { base, .. } | Node::Bar { base, .. } => simple(base),
-        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } => simple(base),
+        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => simple(base),
         // a signed term: x⁻¹ = ⠭⠡⠤⠼⠁ (§5.2)
         Node::Row { children } => match children.as_slice() {
             [one] => simple(one),

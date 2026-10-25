@@ -191,8 +191,11 @@ impl Speaker {
                     Frame::Fill => self.say(b),
                 }
             }
-            Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } => self.node(base),
-            Node::Quantity { unit, .. } => self.node(unit),
+            Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => self.node(base),
+            Node::Quantity { value, unit } => {
+                let named = units_by_name(unit, value.as_deref(), self.loc);
+                self.node(&named);
+            }
             Node::Arrow { symbol, above, below } => {
                 // a labeled arrow is a function or a reaction, not a limit: it is not read as "tends to"
                 let o = match symbol {
@@ -374,6 +377,60 @@ fn pair_bars(children: &[Node]) -> Vec<Node> {
 }
 
 /// A single token: number, letter, or the same thing with a simple subscript.
+/// L-UNI-3: a quantity's units by their names, in the languages that have them ("9.81 meters per
+/// second squared"): each unit becomes the text of its name, `/` becomes "per", and the grouping of
+/// the denominator goes. The last unit before "per" agrees in number with the value. A unit the
+/// language does not name keeps its symbol; a language without unit names reads the symbols.
+fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
+    let Some(per) = loc.unit_per() else {
+        return unit.clone();
+    };
+    let plural = value.is_none_or(|v| loc.unit_plural(v));
+    let name = |node: &Node, plural: bool| -> Node {
+        let named = |n: &Node| match n {
+            Node::Unit { prefix, name, .. } => loc.unit_name(prefix.as_deref(), name, plural).map(|t| Node::Text { parts: vec![TextPart::Text(t)] }),
+            _ => None,
+        };
+        match node {
+            Node::Scripts { base, sup, sub } => match named(base) {
+                Some(b) => Node::Scripts { base: Box::new(b), sup: sup.clone(), sub: sub.clone() },
+                None => node.clone(),
+            },
+            other => named(other).unwrap_or_else(|| other.clone()),
+        }
+    };
+    let is_unit = |n: &Node| matches!(n, Node::Unit { .. }) || matches!(n, Node::Scripts { base, .. } if matches!(base.as_ref(), Node::Unit { .. }));
+    let words = |children: &[Node]| -> Vec<Node> {
+        let slash = children.iter().position(|c| matches!(c, Node::Operator { symbol: '/', .. }));
+        let numerator = slash.unwrap_or(children.len());
+        let last = children[..numerator].iter().rposition(is_unit);
+        let mut out = Vec::new();
+        for (i, c) in children.iter().enumerate() {
+            match c {
+                // 1/s: "per second"
+                Node::Number { .. } if slash == Some(1) && i == 0 => {}
+                Node::Operator { symbol: '/', .. } => out.push(Node::Text { parts: vec![TextPart::Text(per.to_string())] }),
+                Node::Operator { symbol: '(' | ')' | '·', .. } if slash.is_some_and(|s| i > s) => {}
+                c if is_unit(c) => out.push(name(c, plural && Some(i) == last)),
+                c => out.push(c.clone()),
+            }
+        }
+        out
+    };
+    match unit {
+        Node::Row { children } => Node::row(
+            children
+                .iter()
+                .map(|c| match c {
+                    Node::Row { children: inner } if inner.iter().any(is_unit) => Node::row(words(inner)),
+                    other => other.clone(),
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
 fn is_simple(node: &Node) -> bool {
     match node {
         Node::Number { .. } | Node::Identifier { .. } | Node::Operator { .. } => true,

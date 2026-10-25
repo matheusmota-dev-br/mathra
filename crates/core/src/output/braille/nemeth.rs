@@ -284,6 +284,7 @@ impl Writer {
             | Node::Scaled { base, .. }
             | Node::Smashed { base, .. }
             | Node::Overlapped { base, .. }
+            | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base, ctx),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(ctx, *symbol),
@@ -544,6 +545,10 @@ impl Writer {
         if let Some(s) = sub {
             let numeric = matches!(s, Node::Number { value, .. } if !value.contains('.'));
             // a letter, also an upright one (H in H₂O), or an abbreviated function name
+            let base = match base {
+                Node::Unit { base, .. } => base.as_ref(),
+                other => other,
+            };
             let on_letter = matches!(base, Node::Identifier { name, .. } if name.chars().count() == 1)
                 || matches!(base, Node::Function { .. })
                 || matches!(base, Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(t)] if !t.is_empty() && t.chars().all(|c| c.is_ascii_alphabetic())));
@@ -1044,7 +1049,7 @@ fn fraction_depth(n: &Node) -> usize {
         Node::Root { radicand, .. } => fraction_depth(radicand),
         // a fraction at script level does not make the outer one complex (§13.5)
         Node::Scripts { base, .. } => fraction_depth(base),
-        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Framed { base, .. } => fraction_depth(base),
+        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Framed { base, .. } | Node::Unit { base, .. } => fraction_depth(base),
         _ => 0,
     }
 }

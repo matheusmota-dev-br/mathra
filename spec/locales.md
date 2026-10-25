@@ -43,6 +43,7 @@ A code with a region (`es-MX`, `zh-CN`, `pt-PT`) uses its language. Regions with
 - `decimal`, `thousands`, `open_interval`: rules L-NUM-1 to L-NUM-3 and L-INT-1 (`rules.md`).
 - `written`: function names that differ from LaTeX's (L-FUN-1). Missing ones are written as in LaTeX.
 - `fractions` (optional): school names for 1/2 to 10/10, such as "trois quarts". Without it, `\frac{3}{4}` is read with `fraction_simple`.
+- `units` (optional, L-UNI-3): the names of the siunitx units, by command name: `per`, `singular` (`one` or `below_two`: when the unit after a value is singular), `prefixes` (`"kilo": "quilo"`), `names` (`"meter": ["metro", "metros"]`, singular and plural) and `compounds`, for prefixed names that are not a plain concatenation (`"kilometer": ["quilômetro", "quilômetros"]`). Without it, units are read by their symbols. en and pt-BR have it.
 - `speech`: every phrase, as a template where `{0}`, `{1}`… are the parts in order (`binomial` gets n and k, `long_division` gets dividend, divisor, quotient and remainder). The template decides the word order, so "k parmi n" (fr) and "2 分之 1" (zh, denominator first) need no code.
 
 Keys: `op.<symbol>` for operators and relations, `big.<symbol>` for large operators, `greek.<letter>` for lowercase Greek (capitals use `capital`), `fn.<name>` for spoken function names (a function without one is read as written, without `function_of`), `accent.*`, `arrow.*`, and the structure keys in `en.json`.

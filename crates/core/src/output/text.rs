@@ -15,6 +15,7 @@ fn alone(node: &Node) -> bool {
         Node::Number { .. } | Node::Identifier { .. } | Node::Operator { .. } => true,
         Node::Row { children } => children.len() == 1 && alone(&children[0]),
         Node::Text { parts } => parts.len() == 1,
+        Node::Unit { base, .. } => alone(base),
         _ => false,
     }
 }
@@ -213,7 +214,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             }
         }
         Node::Phantom { .. } => {}
-        Node::Canceled { base, .. } | Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } => write_node(base, loc, s),
+        Node::Canceled { base, .. } | Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => write_node(base, loc, s),
         Node::Framed { base, shape, .. } => {
             if *shape == Frame::Circle {
                 s.push('(');

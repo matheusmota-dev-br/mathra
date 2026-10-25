@@ -259,8 +259,8 @@ fn greek_letters_by_locale() {
 #[test]
 fn framed_boxes_ranges_and_lists_are_spoken_in_each_language() {
     for (loc, boxed, range, list) in [
-        (Locale::En, "boxed x", "1 m to 2 m", "and"),
-        (Locale::PtBr, "x em uma caixa", "1 m a 2 m", "e"),
+        (Locale::En, "boxed x", "1 meter to 2 meters", "and"),
+        (Locale::PtBr, "x em uma caixa", "1 metro a 2 metros", "e"),
         (Locale::Es, "x en un recuadro", "1 m a 2 m", "y"),
         (Locale::Fr, "x encadré", "1 m à 2 m", "et"),
         (Locale::De, "x eingerahmt", "1 m bis 2 m", "und"),
@@ -314,4 +314,30 @@ fn large_operators_are_spaced_from_their_operand() {
     ] {
         assert_eq!(text(tex, Locale::En), expected, "{tex}");
     }
+}
+
+#[test]
+fn units_are_spoken_by_name() {
+    for (tex, english, portuguese) in [
+        (r"\qty{5}{\kilo\gram}", "5 kilograms", "5 quilogramas"),
+        (r"\SI{1}{\meter}", "1 meter", "1 metro"),
+        (r"\SI{1.5}{\meter}", "1.5 meters", "1,5 metro"),
+        (r"\SI{2}{\kilo\meter}", "2 kilometers", "2 quilômetros"),
+        (r"\SI{3}{\milli\second}", "3 milliseconds", "3 milissegundos"),
+        (r"\si{\meter\per\second}", "meters per second", "metros por segundo"),
+        (r"\SI{8.314}{\joule\per\mole\per\kelvin}", "8.314 joules per mole kelvin", "8,314 joules por mol kelvin"),
+        (r"\SI{1}{\per\second}", "1 per second", "1 por segundo"),
+        (r"\SI{20}{\degreeCelsius}", "20 degrees Celsius", "20 graus Celsius"),
+        (r"\SI{2}{\metre}", "2 meters", "2 metros"),
+        (r"\SIrange{1}{10}{\kilo\gram}", "1 kilogram to 10 kilograms", "1 quilograma a 10 quilogramas"),
+    ] {
+        assert_eq!(speech(tex, Locale::En), english, "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), portuguese, "{tex}");
+    }
+    // a unit the reader does not know keeps the name it was written with
+    assert_eq!(speech(r"\SI{2}{\foo}", Locale::En), "2 foo");
+    // a language without unit names reads the symbols, as before
+    assert_eq!(speech(r"\qty{5}{\kilo\gram}", Locale::Fr), "5 kg");
+    // units written as letters, not as siunitx commands, are not named
+    assert_eq!(speech(r"\si{km}", Locale::En), speech(r"\mathrm{km}", Locale::En));
 }

@@ -56,6 +56,10 @@ In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without
 
 ## Chemistry
 
+### L-UNI-3 · Units spoken by name
+
+The tree keeps the siunitx name of each unit and its prefix (`{"type": "unit", "prefix": "kilo", "name": "gram"}`, drawn `kg`), and the speech says the name: `\SI{9.81}{\meter\per\second\squared}` is "9.81 meters per second squared", "9,81 metros por segundo ao quadrado". `\per` is spoken "per" ("por"), and the parentheses and the dot of a denominator are not read ("joules per mole kelvin"). The last unit before "per" agrees in number with the value: in English only 1 is singular (1 meter, 1.5 meters); in pt-BR, values below 2 are (1,5 metro, 2 metros). Without a value (`\si`) the unit is plural. The names are in the `units` section of the language's file (`locales.md`); a language without it, or a unit it does not name, reads the symbol, as before. The drawing, the text and the braille keep the symbols.
+
 ### L-CHE-1 · mhchem
 
 `\ce{…}` reads chemical formulas: element symbols upright, digits after them as subscripts, charges as superscripts (`Ag+`, `SO4^2-`, `[H+]`), radicals (`^{.}` → •), oxidation states (`^{II}`), states (`(aq)`, `(s)`, `(l)`, `(g)`), isotopes on an empty base (`^{14}_{6}C`) and bonds (`-`, `=`, `#`, `\bond{…}`), which are drawn as lines and are not read as minus, equals or congruence. Coefficients may be integers, decimals (`0.5`), fractions (`1/2`, drawn small) or math (`$x$`, or a lone lowercase letter); after the dot of a hydrate (`CuSO4.5H2O`, also `*`) a number is a coefficient again, not a subscript. The arrows are `->`, `<-`, `<->` (resonance), `<-->`, `<=>`, `<=>>` and `<<=>`; `[above][below]` right after an arrow are labels, read as `\ce` themselves, and the arrow stretches over them. `\frac{…}{…}` inside `\ce` keeps formulas in numerator and denominator, and any other command (`\Delta`) is read as math. `\pu{123 kJ mol^-1}` writes a quantity with mhchem's unit syntax.

@@ -189,6 +189,14 @@ pub enum Node {
         value: Option<String>,
         unit: Box<Node>,
     },
+    /// One siunitx unit (`\kilo\gram`): `base` draws its symbol (kg); `prefix` and `name` are the
+    /// siunitx names it was written with, for the speech ("kilograms").
+    Unit {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
+        name: String,
+        base: Box<Node>,
+    },
     /// Table cell spanning several columns (`\multicolumn`, `\hdotsfor`).
     Multicolumn {
         columns: usize,

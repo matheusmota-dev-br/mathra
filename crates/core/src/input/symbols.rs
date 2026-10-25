@@ -929,6 +929,24 @@ pub fn unit(name: &str) -> Option<&'static str> {
     })
 }
 
+/// The name a unit is spoken by, for the spellings siunitx accepts twice.
+pub fn canonical_unit(name: &str) -> &str {
+    match name {
+        "metre" => "meter",
+        "litre" => "liter",
+        "celsius" => "degreeCelsius",
+        "atmosphere" => "atm",
+        other => other,
+    }
+}
+
+pub fn canonical_prefix(name: &str) -> &str {
+    match name {
+        "deka" => "deca",
+        other => other,
+    }
+}
+
 pub fn prefix(name: &str) -> Option<&'static str> {
     Some(match name {
         "yotta" => "Y",

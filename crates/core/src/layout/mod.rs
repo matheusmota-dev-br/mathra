@@ -252,7 +252,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         Node::Table { shape: kind, rows, columns, verticals, horizontals, between, intertexts } => {
             table::compose(*kind, rows, columns, verticals, horizontals, between, intertexts, e, ctx)
         }
-        Node::Multicolumn { base, .. } => compose(base, e, ctx),
+        Node::Multicolumn { base, .. } | Node::Unit { base, .. } => compose(base, e, ctx),
         Node::Raised { em: amount, base } => {
             let mut math_box = compose(base, e, ctx)?;
             math_box.shift_vertical(em(e, *amount));
@@ -383,7 +383,7 @@ pub fn class_of(node: &Node) -> Option<Class> {
         Node::Operator { class, .. } | Node::FixedDelimiter { class, .. } | Node::ForcedClass { class, .. } => *class,
         Node::Fraction { .. } | Node::Delimited { .. } => Class::Inner,
         Node::Table { shape: kind, .. } if !matches!(kind, TableKind::Array | TableKind::Aligned | TableKind::Centered | TableKind::Substack | TableKind::Diagram) => Class::Inner,
-        Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } => return class_of(base),
+        Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } | Node::Unit { base, .. } => return class_of(base),
         Node::Scripts { base, .. } => return class_of(base),
         Node::Arrow { .. } => Class::Rel,
         Node::Colored { base, .. } | Node::Style { base, .. } => match base.as_ref() {

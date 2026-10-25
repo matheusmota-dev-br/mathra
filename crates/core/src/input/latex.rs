@@ -2061,9 +2061,11 @@ impl Reader<'_> {
     /// L-UNI-1: `\SI{9,8}{\meter\per\second\squared}` → 9,8 m/s² in pt-BR.
     fn quantity(&mut self, value: Option<String>, unit: &str, col: usize) -> R<Node> {
         let unit_node = if unit.contains('\\') {
-            let mut numerator: Vec<(String, i32)> = Vec::new();
-            let mut denominator: Vec<(String, i32)> = Vec::new();
+            // (symbol, exponent, prefix names, unit name)
+            let mut numerator: Vec<(String, i32, String, String)> = Vec::new();
+            let mut denominator: Vec<(String, i32, String, String)> = Vec::new();
             let mut prefix = String::new();
+            let mut prefix_names = String::new();
             let mut per = false;
             let mut last_in_den = false;
             for token in unit.split('\\').map(str::trim).filter(|t| !t.is_empty()) {
@@ -2088,6 +2090,7 @@ impl Reader<'_> {
                         if let Some(p) = symbols::prefix(name) {
                             // \square\kilo\meter: the pending exponent still applies (km²)
                             prefix.insert_str(0, p);
+                            prefix_names.insert_str(0, symbols::canonical_prefix(name));
                             continue;
                         }
                         let symbol = match symbols::unit(name) {
@@ -2106,20 +2109,22 @@ impl Reader<'_> {
                         };
                         let text = format!("{}{symbol}", prefix.trim_end_matches(['²', '³']));
                         prefix.clear();
+                        let names = (std::mem::take(&mut prefix_names), symbols::canonical_unit(name).to_string());
                         if per {
-                            denominator.push((text, exponent));
+                            denominator.push((text, exponent, names.0, names.1));
                             last_in_den = true;
                             per = false;
                         } else {
-                            numerator.push((text, exponent));
+                            numerator.push((text, exponent, names.0, names.1));
                             last_in_den = false;
                         }
                     }
                 }
             }
             let mut children = Vec::new();
-            let unit_node = |u: &(String, i32)| -> Node {
-                let base = Node::Text { parts: vec![TextPart::Text(u.0.clone())] };
+            let unit_node = |u: &(String, i32, String, String)| -> Node {
+                let text = Node::Text { parts: vec![TextPart::Text(u.0.clone())] };
+                let base = Node::Unit { prefix: Some(u.2.clone()).filter(|p| !p.is_empty()), name: u.3.clone(), base: Box::new(text) };
                 if u.1 == 1 {
                     base
                 } else {
@@ -2152,6 +2157,8 @@ impl Reader<'_> {
                 }
             }
             self.registry.note(rules::L_UNI_1, format!("unit {unit} written with a slash for negative exponents"));
+            let names: Vec<String> = numerator.iter().chain(&denominator).map(|u| format!("{}{}", u.2, u.3)).collect();
+            self.registry.note(rules::L_UNI_3, format!("units kept by name for the speech: {}", names.join(", ")));
             Node::row(children)
         } else {
             self.sub_reader(unit, Variant::Upright)?

@@ -35,11 +35,11 @@ cargo llvm-cov report --summary-only        # or --html
 
 | File | Tests | What it checks |
 |---|---:|---|
-| `crates/core/tests/rules.rs` | 25 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
+| `crates/core/tests/rules.rs` | 26 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
 | `crates/core/tests/structures.rs` | 24 | Fractions, roots, matrices, cases, alignments: what sits above, below or beside what. |
 | `crates/core/tests/latex_reader.rs` | 91 | Every command and environment the reader knows (including every amssymb symbol and negation, drawn in strict mode so the font must have it), every recovery path and, at the end (`p_*`), the problem inputs. |
 | `crates/core/tests/layout.rs` | 66 | From the tree to boxes: geometric properties (width, height, alignment, stretching), not exact coordinates. Includes the layout problem cases. |
-| `crates/core/tests/outputs.rs` | 13 | Screen reader speech in English and pt-BR, linear text, public shortcuts, error messages, locales. |
+| `crates/core/tests/outputs.rs` | 14 | Screen reader speech in English and pt-BR, linear text, public shortcuts, error messages, locales. |
 | `crates/core/tests/locales.rs` | 8 | The 16 languages: every phrase present, the whole corpus, the chemistry, physics and siunitx constructions and the MathML and AsciiMath inputs in each one, region codes, speech and number conventions per language. |
 | `crates/core/tests/hostile_output.rs` | 7 | Hostile input, in LaTeX, MathML and AsciiMath: the SVG stays valid XML and injects no markup; an XML entity bomb stays bounded. |
 | `crates/core/tests/macros_and_packages.rs` | 19 | Substitution macros (L-MAC-1), package commands (physics, braket, siunitx ranges and lists, tensor, mathtools) and the boundary (`spec/boundary.md`). |

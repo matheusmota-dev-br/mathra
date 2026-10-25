@@ -203,6 +203,15 @@ fn l_ent_3_size_commands_and_packages_are_ignored() {
 }
 
 #[test]
+fn l_uni_3_units_are_spoken_by_name() {
+    let r = en(r"\SI{9.81}{\meter\per\second\squared}");
+    assert_eq!(r.speech, "9.81 meters per second squared");
+    assert_eq!(r.text, "9.81 m/s^2");
+    assert!(rules(&r).contains(&"L-UNI-3"));
+    assert_eq!(pt(r"\SI{9,81}{\meter\per\second\squared}").speech, "9,81 metros por segundo ao quadrado");
+}
+
+#[test]
 fn l_ent_4_mathml_pasted_as_latex_is_read_as_mathml() {
     let r = en("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
     assert_eq!(r.text, "x^2");
