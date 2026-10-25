@@ -14,6 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
+<script src="code.js"></script>
 <style>
   .docs { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; padding: 32px 0 0; }
   .docs-toc { position: sticky; top: 16px; align-self: start; font-size: 14px; }
@@ -90,33 +91,33 @@
       <section id="first">
         <h2>First equation</h2>
         <h3>Node</h3>
-<pre>import { texToSvg, render } from "@mathlabs/mathra";   // or require("@mathlabs/mathra")
+<pre data-lang="js">import { texToSvg, render } from "@mathlabs/mathra";   // or require("@mathlabs/mathra")
 
 const svg = texToSvg(String.raw`x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`);
 const { speech } = render(String.raw`\frac{3}{4}`, { locale: "fr" });   // "trois quarts"</pre>
         <h3>Browsers and bundlers (Vite, webpack, esbuild)</h3>
         <p>Await <code>init()</code> once. It fetches the WebAssembly next to the module.</p>
-<pre>import { init, texToSvg } from "@mathlabs/mathra";
+<pre data-lang="js">import { init, texToSvg } from "@mathlabs/mathra";
 
 await init();
 document.querySelector("#eq").innerHTML = texToSvg(String.raw`e^{i\pi} + 1 = 0`);</pre>
         <p>Without a bundler, from a CDN:</p>
-<pre>&lt;script type="module"&gt;
+<pre data-lang="html">&lt;script type="module"&gt;
   import { init, texToSvg } from "https://cdn.jsdelivr.net/npm/@mathlabs/mathra/web/index.js";
   await init();
   document.body.innerHTML = texToSvg("3,14", { locale: "pt-BR" });
 &lt;/script&gt;</pre>
         <h3>Python</h3>
-<pre>import mathra
+<pre data-lang="py">import mathra
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")
 r = mathra.render(r"\frac{3}{4}", locale="fr")   # a dict
 r["speech"]                                       # 'trois quarts'</pre>
         <h3>Terminal</h3>
-<pre>$ mathra 'f(1, 5) = \sin x - 2.5' -o function.svg
+<pre data-lang="sh">$ mathra 'f(1, 5) = \sin x - 2.5' -o function.svg
 $ mathra '3,14' --locale pt-BR --explain</pre>
         <h3>Rust</h3>
-<pre>let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
+<pre data-lang="rust">let r = mathra::convert("3.14", &amp;mathra::Options::default())?;
 println!("{}", r.svg);
 println!("{}", r.speech);</pre>
       </section>
@@ -176,7 +177,7 @@ println!("{}", r.speech);</pre>
       <section id="broken">
         <h2>Broken input</h2>
         <p>LaTeX copied from OCR, chat apps, HTML editors or unescaped JSON is often broken. By default mathra draws what it can and returns a warning for each fix. With <em>strict</em>, it refuses instead. A valid equation gives the same result in both modes.</p>
-<pre>$ mathra '\vertA\vert = C_{16,2}' --text
+<pre data-lang="sh">$ mathra '\vertA\vert = C_{16,2}' --text
 mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 |A| = C_(16, 2)</pre>
         <div class="tablewrap"><table>
@@ -197,7 +198,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 
       <section id="cli">
         <h2>The command line</h2>
-<pre>mathra &lt;equation&gt; [options]
+<pre data-lang="sh">mathra &lt;equation&gt; [options]
 echo '&lt;equation&gt;' | mathra [options]</pre>
         <div class="tablewrap"><table>
           <tr><th>Option</th><th>What it does</th></tr>
@@ -212,7 +213,7 @@ echo '&lt;equation&gt;' | mathra [options]</pre>
           <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>…; prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line</td></tr>
           <tr><td><code>-V, --version</code>, <code>-h, --help</code></td><td>Version and help</td></tr>
         </table></div>
-<pre>$ mathra --batch -o out/ &lt; equations.txt
+<pre data-lang="sh">$ mathra --batch -o out/ &lt; equations.txt
 ok
 warning	E-REC-1 column 1: unsupported command: \vertA; read as \vert A</pre>
       </section>
@@ -227,7 +228,7 @@ warning	E-REC-1 column 1: unsupported command: \vertA; read as \vert A</pre>
       <section id="braille">
         <h2>Braille</h2>
         <p>Every equation also comes out in braille, as Unicode braille cells: in the CMU (Código Matemático Unificado) for Portuguese and Spanish, and in Nemeth for the other languages, or in either by choice.</p>
-<pre>$ mathra '\frac{3}{4} + \sqrt{x}' --locale pt-BR --braille     # ⠼⠒⠙⠖⠫⠱⠭
+<pre data-lang="sh">$ mathra '\frac{3}{4} + \sqrt{x}' --locale pt-BR --braille     # ⠼⠒⠙⠖⠫⠱⠭
 $ mathra 'x^2 + 1' --braille                                     # ⠭⠘⠆⠐⠬⠂ (Nemeth)</pre>
         <p class="note">Both codes follow their official documents and were compared with MathCAT, but they have not been reviewed by a braille transcriber yet. <a href="reference.html#braille">How far to trust them</a>.</p>
       </section>

@@ -99,6 +99,15 @@
   .t-num { color: var(--tok-num); }
   .t-align { color: var(--tok-align); font-weight: 500; }
   .t-comment { color: var(--tok-comment); font-style: italic; }
+  /* the code samples (code.js), in the editor's colors; comments in --muted because they carry results */
+  .c-kw { color: var(--tok-env); font-weight: 500; }
+  .c-fn { color: var(--tok-cmd); }
+  .c-str { color: var(--tok-num); }
+  .c-num { color: var(--tok-align); }
+  .c-flag { color: var(--tok-script); }
+  .c-tag { color: var(--tok-brace); }
+  .c-comment { color: var(--muted); font-style: italic; }
+  .c-prompt { color: var(--muted); user-select: none; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-size: 14px; color: var(--muted); }
   .controls label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
   .controls input[type="checkbox"] { accent-color: var(--accent); }
