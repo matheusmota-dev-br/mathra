@@ -189,6 +189,14 @@ pub enum Node {
         value: Option<String>,
         unit: Box<Node>,
     },
+    /// One siunitx unit (`\kilo\gram`): `base` draws its symbol (kg); `prefix` and `name` are the
+    /// siunitx names it was written with, for the speech ("kilograms").
+    Unit {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        prefix: Option<String>,
+        name: String,
+        base: Box<Node>,
+    },
     /// Table cell spanning several columns (`\multicolumn`, `\hdotsfor`).
     Multicolumn {
         columns: usize,
@@ -369,6 +377,14 @@ impl Node {
 
     pub fn row(children: Vec<Node>) -> Node {
         Node::Row { children }
+    }
+
+    /// The node inside one-child rows, borrowed: what `simplify` would return.
+    pub fn single(&self) -> &Node {
+        match self {
+            Node::Row { children } if children.len() == 1 => children[0].single(),
+            other => other,
+        }
     }
 
     /// A single node, without the surrounding Row when it has only one child.

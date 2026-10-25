@@ -259,8 +259,8 @@ fn greek_letters_by_locale() {
 #[test]
 fn framed_boxes_ranges_and_lists_are_spoken_in_each_language() {
     for (loc, boxed, range, list) in [
-        (Locale::En, "boxed x", "1 m to 2 m", "and"),
-        (Locale::PtBr, "x em uma caixa", "1 m a 2 m", "e"),
+        (Locale::En, "boxed x", "1 meter to 2 meters", "and"),
+        (Locale::PtBr, "x em uma caixa", "1 metro a 2 metros", "e"),
         (Locale::Es, "x en un recuadro", "1 m a 2 m", "y"),
         (Locale::Fr, "x encadré", "1 m à 2 m", "et"),
         (Locale::De, "x eingerahmt", "1 m bis 2 m", "und"),
@@ -283,4 +283,108 @@ fn physics_nabla_angles_and_integrals() {
     assert_eq!(speech(r"\ang{1;2;3}", Locale::En), "1 degrees 2 prime 3 double prime");
     assert_eq!(speech(r"\iiiint f", Locale::En), "integral f");
     assert_eq!(text(r"\overbracket{a}^{n}", Locale::En), "a [n]");
+}
+
+#[test]
+fn binomials_say_their_parentheses_once() {
+    // the parentheses are part of the binomial: "n choose k" and (n ¦ k), with no second pair
+    for tex in [r"\binom{n}{k}", r"\dbinom{n}{k}", r"\tbinom{n}{k}", r"{n \choose k}", r"\left( n \atop k \right)"] {
+        assert_eq!(speech(tex, Locale::En), "n choose k", "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), "n escolhe k", "{tex}");
+        assert_eq!(text(tex, Locale::En), "(n ¦ k)", "{tex}");
+    }
+    let mathml = r#"<math><mrow><mo>(</mo><mfrac linethickness="0"><mi>n</mi><mi>k</mi></mfrac><mo>)</mo></mrow></math>"#;
+    assert_eq!(speech(mathml, Locale::En), "n choose k");
+    // other brackets around a fraction without a rule keep their own words and symbols
+    assert_eq!(text(r"{n \brack k}", Locale::En), "[n ¦ k]");
+    assert!(speech(r"{n \brack k}", Locale::En).starts_with("open bracket"));
+}
+
+#[test]
+fn large_operators_are_spaced_from_their_operand() {
+    // like sin^2 x: the limits stick to the operator, and a space separates it from what it applies to
+    for (tex, expected) in [
+        (r"\int_0^1 x^2\,dx", "∫_0^1 x^2 dx"),
+        (r"\sum_{i=1}^n i", "∑_(i = 1)^n i"),
+        (r"\iint_D f\,dA", "∬_D f dA"),
+        (r"\oint_C F", "∮_C F"),
+        (r"\prod_{k} a_k", "∏_k a_k"),
+        (r"\bigcup_{i} A_i", "⋃_i A_i"),
+        (r"\int f\,dx", "∫ f dx"),
+    ] {
+        assert_eq!(text(tex, Locale::En), expected, "{tex}");
+    }
+}
+
+#[test]
+fn units_are_spoken_by_name() {
+    for (tex, english, portuguese) in [
+        (r"\qty{5}{\kilo\gram}", "5 kilograms", "5 quilogramas"),
+        (r"\SI{1}{\meter}", "1 meter", "1 metro"),
+        (r"\SI{1.5}{\meter}", "1.5 meters", "1,5 metro"),
+        (r"\SI{2}{\kilo\meter}", "2 kilometers", "2 quilômetros"),
+        (r"\SI{3}{\milli\second}", "3 milliseconds", "3 milissegundos"),
+        (r"\si{\meter\per\second}", "meters per second", "metros por segundo"),
+        (r"\SI{8.314}{\joule\per\mole\per\kelvin}", "8.314 joules per mole kelvin", "8,314 joules por mol kelvin"),
+        (r"\SI{1}{\per\second}", "1 per second", "1 por segundo"),
+        (r"\SI{20}{\degreeCelsius}", "20 degrees Celsius", "20 graus Celsius"),
+        (r"\SI{2}{\metre}", "2 meters", "2 metros"),
+        (r"\SIrange{1}{10}{\kilo\gram}", "1 kilogram to 10 kilograms", "1 quilograma a 10 quilogramas"),
+    ] {
+        assert_eq!(speech(tex, Locale::En), english, "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), portuguese, "{tex}");
+    }
+    // a unit the reader does not know keeps the name it was written with
+    assert_eq!(speech(r"\SI{2}{\foo}", Locale::En), "2 foo");
+    // a language without unit names reads the symbols, as before
+    assert_eq!(speech(r"\qty{5}{\kilo\gram}", Locale::Fr), "5 kg");
+    // units written as letters, not as siunitx commands, are not named
+    assert_eq!(speech(r"\si{km}", Locale::En), speech(r"\mathrm{km}", Locale::En));
+}
+
+#[test]
+fn double_struck_letters_are_read_as_number_sets() {
+    for (tex, english, portuguese) in [
+        (r"n \in \mathbb{N}", "n is in the natural numbers", "n pertence aos naturais"),
+        (r"k \notin \mathbb{Z}", "k is not in the integers", "k não pertence aos inteiros"),
+        (r"\mathbb{Q} \subset \mathbb{R}", "the rational numbers is a subset of the real numbers", "os racionais está contido nos reais"),
+        (r"z \in \mathbb{C}", "z is in the complex numbers", "z pertence aos complexos"),
+        (r"\mathbb{H}", "double-struck H", "H duplo"),
+        ("x ∈ ℝ", "x is in the real numbers", "x pertence aos reais"),
+        ("x ∈ 𝔸", "x is in double-struck A", "x pertence a A duplo"),
+    ] {
+        assert_eq!(speech(tex, Locale::En), english, "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), portuguese, "{tex}");
+    }
+    let mathml = r#"<math><mi>x</mi><mo>∈</mo><mi mathvariant="double-struck">R</mi></math>"#;
+    assert_eq!(speech(mathml, Locale::En), "x is in the real numbers");
+    let asciimath = convert("x in RR", &Options { input: mathra::Input::AsciiMath, ..options(Locale::PtBr) }).unwrap();
+    assert_eq!(asciimath.speech, "x pertence aos reais");
+    // a language without the names reads the letter, as before
+    assert_eq!(speech(r"x \in \mathbb{R}", Locale::Fr), "x appartient à R");
+    // only a preposition that ends a word contracts: a variable named a stays
+    assert_eq!(speech(r"a \mathbb{R}", Locale::PtBr), "a os reais");
+}
+
+#[test]
+fn the_dot_between_vectors_is_spoken_dot() {
+    for (tex, english, portuguese) in [
+        (r"\vec{v} \cdot \vec{w}", "vector v dot vector w", "vetor v escalar vetor w"),
+        (r"\overrightarrow{AB} \cdot \overrightarrow{CD}", "vector A B dot vector C D", "vetor A B escalar vetor C D"),
+        (r"\mathbf{u} \cdot \mathbf{v} = 0", "u dot v equals 0", "u escalar v é igual a 0"),
+        (r"\boldsymbol{u} \cdot \boldsymbol{v}", "u dot v", "u escalar v"),
+        (r"\vb{a} \vdot \vb{b}", "a dot b", "a escalar b"),
+        (r"\vec{v}_1 \cdot \vec{v}_2", "vector v sub 1 dot vector v sub 2", "vetor v índice 1 escalar vetor v índice 2"),
+        // a scalar on either side: the dot is a product of numbers
+        (r"a \cdot b", "a times b", "a vezes b"),
+        (r"2 \cdot \vec{v}", "2 times vector v", "2 vezes vetor v"),
+        (r"\vec{a} \cdot \vec{b} + 2 \cdot 3", "vector a dot vector b plus 2 times 3", "vetor a escalar vetor b mais 2 vezes 3"),
+    ] {
+        assert_eq!(speech(tex, Locale::En), english, "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), portuguese, "{tex}");
+    }
+    let asciimath = convert("vec u * vec v", &Options { input: mathra::Input::AsciiMath, ..options(Locale::En) }).unwrap();
+    assert_eq!(asciimath.speech, "vector u dot vector v");
+    // a language without the word keeps "times"
+    assert_eq!(speech(r"\vec{v} \cdot \vec{w}", Locale::De), "Vektor v mal Vektor w");
 }

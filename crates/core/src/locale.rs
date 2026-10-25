@@ -68,9 +68,52 @@ struct Data {
     #[serde(default)]
     written: HashMap<String, String>,
     speech: HashMap<String, String>,
+    /// Phrases a language may have, with no English fallback: without one, the general reading
+    /// stays (`dot_product`, L-OPR-1: "dot" instead of "times")
+    #[serde(default)]
+    optional: HashMap<String, String>,
     /// Fractions read the way they are at school: "três quartos", "three quarters"
     #[serde(default)]
     fractions: Option<Fractions>,
+    /// L-UNI-3: the names siunitx units are spoken by
+    #[serde(default)]
+    units: Option<Units>,
+    /// L-LET-2: how double-struck letters are read: the number sets by name, the rest as letters
+    #[serde(default)]
+    double_struck: Option<DoubleStruck>,
+}
+
+/// Unit names, by the siunitx command names: `names.meter` is `["meter", "meters"]`, `prefixes.kilo`
+/// is "kilo", and `compounds` holds the prefixed names that are not a plain concatenation
+/// (pt-BR "quilômetro", "milissegundo").
+#[derive(Debug, Deserialize)]
+struct Units {
+    per: String,
+    /// When the unit after a value is singular: `one` (1 meter, 1.5 meters) or `below_two`
+    /// (1,5 metro, 2 metros).
+    singular: Singular,
+    prefixes: HashMap<String, String>,
+    names: HashMap<String, (String, String)>,
+    #[serde(default)]
+    compounds: HashMap<String, (String, String)>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Singular {
+    One,
+    BelowTwo,
+}
+
+/// `letter` is the template of any double-struck letter ("double-struck {0}"); `sets` names the
+/// number sets by their letter; `contractions` joins a preposition with the article a set name
+/// starts with (pt-BR "pertence a" + "os reais" → "pertence aos reais").
+#[derive(Debug, Deserialize)]
+struct DoubleStruck {
+    letter: String,
+    sets: HashMap<String, String>,
+    #[serde(default)]
+    contractions: HashMap<String, String>,
 }
 
 /// Numerals 0–10 and the denominators 0–10, singular and plural. Index 0 and 1 of the
@@ -188,6 +231,55 @@ impl Locale {
 
     pub(crate) fn fractions(self) -> Option<&'static Fractions> {
         self.data().fractions.as_ref()
+    }
+
+    /// L-UNI-3: "per" between units, in the languages that name the units.
+    pub(crate) fn unit_per(self) -> Option<&'static str> {
+        self.data().units.as_ref().map(|u| u.per.as_str())
+    }
+
+    /// L-UNI-3: does a unit after this value (canonical, with a point) take the plural?
+    pub(crate) fn unit_plural(self, value: &str) -> bool {
+        let Some(u) = &self.data().units else { return true };
+        let Ok(v) = value.parse::<f64>() else { return true };
+        match u.singular {
+            Singular::One => v != 1.0,
+            Singular::BelowTwo => v.abs() >= 2.0,
+        }
+    }
+
+    /// L-UNI-3: the spoken name of a unit with its prefix: "kilograms", "quilômetro".
+    pub(crate) fn unit_name(self, prefix: Option<&str>, name: &str, plural: bool) -> Option<String> {
+        let u = self.data().units.as_ref()?;
+        let pick = |pair: &(String, String)| if plural { pair.1.clone() } else { pair.0.clone() };
+        match prefix {
+            None => u.names.get(name).map(pick),
+            Some(p) => u.compounds.get(&format!("{p}{name}")).map(pick).or_else(|| Some(format!("{}{}", u.prefixes.get(p)?, pick(u.names.get(name)?)))),
+        }
+    }
+
+    /// L-LET-2: a double-struck letter as it is read: "the real numbers", "double-struck P"; `None`
+    /// in the languages without the names, which read the letter alone.
+    pub(crate) fn double_struck(self, letter: &str) -> Option<String> {
+        let d = self.data().double_struck.as_ref()?;
+        Some(d.sets.get(letter).cloned().unwrap_or_else(|| d.letter.replace("{0}", letter)))
+    }
+
+    /// L-LET-2: the preposition `before` joined with the article that starts `name`, when the
+    /// language contracts them: `("pertence a", "os reais")` → `("pertence aos", "reais")`.
+    pub(crate) fn contract(self, before: &str, name: &str) -> Option<(String, String)> {
+        let d = self.data().double_struck.as_ref()?;
+        d.contractions.iter().find_map(|(pair, joined)| {
+            let (preposition, article) = pair.split_once(' ')?;
+            let rest = name.strip_prefix(article)?.strip_prefix(' ')?;
+            let head = before.strip_suffix(preposition).filter(|h| h.ends_with(' '))?;
+            Some((format!("{head}{joined}"), rest.to_string()))
+        })
+    }
+
+    /// A phrase of `optional`, only in this language: `None` keeps the general reading.
+    pub(crate) fn own_phrase(self, key: &str) -> Option<&'static str> {
+        self.data().optional.get(key).map(String::as_str)
     }
 
     fn lookup(self, key: &str) -> Option<&'static str> {

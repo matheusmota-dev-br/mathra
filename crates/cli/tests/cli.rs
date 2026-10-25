@@ -193,7 +193,7 @@ fn huge_argument() {
 fn input_formats() {
     let o = mathra(&["sum_(i=1)^n i", "--from", "asciimath", "--text"], None);
     assert!(o.status.success(), "{}", stderr(&o));
-    assert_eq!(stdout(&o).trim(), "∑_(i = 1)^ni");
+    assert_eq!(stdout(&o).trim(), "∑_(i = 1)^n i");
     let o = mathra(&["-f", "mathml", "--speech"], Some(b"<math><msqrt><mi>x</mi></msqrt></math>"));
     assert_eq!(stdout(&o).trim(), "square root of x");
     // MathML passed as LaTeX is recognized

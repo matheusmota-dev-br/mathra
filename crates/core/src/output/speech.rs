@@ -29,6 +29,18 @@ impl Speaker {
         }
     }
 
+    /// A phrase that may join the word before it: "pertence a" + "os reais" → "pertence aos reais".
+    fn say_contracted(&mut self, phrase: String) {
+        if let Some(last) = self.words.last_mut() {
+            if let Some((joined, rest)) = self.loc.contract(last, &phrase) {
+                *last = joined;
+                self.say(rest);
+                return;
+            }
+        }
+        self.say(phrase);
+    }
+
     fn spoken(&self, node: &Node) -> String {
         speak(node, self.loc)
     }
@@ -39,10 +51,13 @@ impl Speaker {
                 let n = super::written_number(value, *thousands, self.loc);
                 self.say(n);
             }
-            Node::Identifier { name, .. } => {
-                let l = letter(name, self.loc);
-                self.say(l);
-            }
+            Node::Identifier { name, variant } => match double_struck(name, *variant).and_then(|l| self.loc.double_struck(&l)) {
+                Some(phrase) => self.say_contracted(phrase),
+                None => {
+                    let l = letter(name, self.loc);
+                    self.say(l);
+                }
+            },
             Node::Function { name, .. } => {
                 let f = self.loc.speak_function(name);
                 self.say(f);
@@ -58,8 +73,14 @@ impl Speaker {
             Node::Row { children } => {
                 let children = &pair_bars(children);
                 let cl = classes(children, self.loc, None, false);
-                for (child, class) in children.iter().zip(cl) {
+                for (i, (child, class)) in children.iter().zip(cl).enumerate() {
                     match (child, class) {
+                        // L-OPR-1: between two vectors, the dot is the dot product: "v dot w"
+                        (Node::Operator { symbol: '·', .. }, Some(Class::Bin))
+                            if i > 0 && children.get(i + 1).is_some_and(is_vector) && is_vector(&children[i - 1]) && self.loc.own_phrase("dot_product").is_some() =>
+                        {
+                            self.say(self.loc.own_phrase("dot_product").unwrap_or_default());
+                        }
                         (Node::Operator { symbol, .. }, Some(c)) => {
                             let o = operator(*symbol, c, self.loc);
                             self.say(o);
@@ -112,6 +133,13 @@ impl Speaker {
                     let phrase = self.t(if is_simple(inner) { short } else { long }, &[&x]);
                     self.say(phrase);
                     return;
+                }
+                // \binom: the parentheses are part of "n choose k"
+                if let ((Some('('), Some(')')), [p]) = ((open, close), parts.as_slice()) {
+                    if let binomial @ Node::Fraction { rule: false, .. } = p.single() {
+                        self.node(binomial);
+                        return;
+                    }
                 }
                 if let Some(a) = open {
                     let o = operator(*a, Class::Open, self.loc);
@@ -184,8 +212,11 @@ impl Speaker {
                     Frame::Fill => self.say(b),
                 }
             }
-            Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } => self.node(base),
-            Node::Quantity { unit, .. } => self.node(unit),
+            Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => self.node(base),
+            Node::Quantity { value, unit } => {
+                let named = units_by_name(unit, value.as_deref(), self.loc);
+                self.node(&named);
+            }
             Node::Arrow { symbol, above, below } => {
                 // a labeled arrow is a function or a reaction, not a limit: it is not read as "tends to"
                 let o = match symbol {
@@ -367,6 +398,72 @@ fn pair_bars(children: &[Node]) -> Vec<Node> {
 }
 
 /// A single token: number, letter, or the same thing with a simple subscript.
+/// L-UNI-3: a quantity's units by their names, in the languages that have them ("9.81 meters per
+/// second squared"): each unit becomes the text of its name, `/` becomes "per", and the grouping of
+/// the denominator goes. The last unit before "per" agrees in number with the value. A unit the
+/// language does not name keeps its symbol; a language without unit names reads the symbols.
+fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
+    let Some(per) = loc.unit_per() else {
+        return unit.clone();
+    };
+    let plural = value.is_none_or(|v| loc.unit_plural(v));
+    let name = |node: &Node, plural: bool| -> Node {
+        let named = |n: &Node| match n {
+            Node::Unit { prefix, name, .. } => loc.unit_name(prefix.as_deref(), name, plural).map(|t| Node::Text { parts: vec![TextPart::Text(t)] }),
+            _ => None,
+        };
+        match node {
+            Node::Scripts { base, sup, sub } => match named(base) {
+                Some(b) => Node::Scripts { base: Box::new(b), sup: sup.clone(), sub: sub.clone() },
+                None => node.clone(),
+            },
+            other => named(other).unwrap_or_else(|| other.clone()),
+        }
+    };
+    let is_unit = |n: &Node| matches!(n, Node::Unit { .. }) || matches!(n, Node::Scripts { base, .. } if matches!(base.as_ref(), Node::Unit { .. }));
+    let words = |children: &[Node]| -> Vec<Node> {
+        let slash = children.iter().position(|c| matches!(c, Node::Operator { symbol: '/', .. }));
+        let numerator = slash.unwrap_or(children.len());
+        let last = children[..numerator].iter().rposition(is_unit);
+        let mut out = Vec::new();
+        for (i, c) in children.iter().enumerate() {
+            match c {
+                // 1/s: "per second"
+                Node::Number { .. } if slash == Some(1) && i == 0 => {}
+                Node::Operator { symbol: '/', .. } => out.push(Node::Text { parts: vec![TextPart::Text(per.to_string())] }),
+                Node::Operator { symbol: '(' | ')' | '·', .. } if slash.is_some_and(|s| i > s) => {}
+                c if is_unit(c) => out.push(name(c, plural && Some(i) == last)),
+                c => out.push(c.clone()),
+            }
+        }
+        out
+    };
+    match unit {
+        Node::Row { children } => Node::row(
+            children
+                .iter()
+                .map(|c| match c {
+                    Node::Row { children: inner } if inner.iter().any(is_unit) => Node::row(words(inner)),
+                    other => other.clone(),
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// L-OPR-1: a vector by its notation: an arrow over it (`\vec`, `\overrightarrow`) or a bold letter
+/// (`\mathbf`, `\boldsymbol`, `\vb`), also with an index (`\vec{v}_1`).
+fn is_vector(node: &Node) -> bool {
+    match node {
+        Node::Accent { accent: '⃗' | '→', .. } => true,
+        Node::Identifier { variant: Variant::Bold | Variant::BoldItalic, .. } => true,
+        Node::Row { children } => children.len() == 1 && is_vector(&children[0]),
+        Node::Scripts { base, sup: None, .. } => is_vector(base),
+        _ => false,
+    }
+}
+
 fn is_simple(node: &Node) -> bool {
     match node {
         Node::Number { .. } | Node::Identifier { .. } | Node::Operator { .. } => true,
@@ -407,6 +504,26 @@ fn large_operator(c: char, loc: Locale) -> String {
         _ => "big.other".into(),
     };
     loc.phrase(&key).to_string()
+}
+
+/// L-LET-2: the Latin capital of a double-struck letter, written with `\mathbb` or as the Unicode
+/// character (ℝ, 𝔸).
+fn double_struck(name: &str, variant: Variant) -> Option<String> {
+    let mut chars = name.chars();
+    let (c, None) = (chars.next()?, chars.next()) else { return None };
+    let capital = match c {
+        'A'..='Z' if variant == Variant::DoubleStruck => c,
+        'ℂ' => 'C',
+        'ℍ' => 'H',
+        'ℕ' => 'N',
+        'ℙ' => 'P',
+        'ℚ' => 'Q',
+        'ℝ' => 'R',
+        'ℤ' => 'Z',
+        '\u{1D538}'..='\u{1D551}' => char::from_u32('A' as u32 + (c as u32 - 0x1D538))?,
+        _ => return None,
+    };
+    Some(capital.to_string())
 }
 
 fn letter(name: &str, loc: Locale) -> String {

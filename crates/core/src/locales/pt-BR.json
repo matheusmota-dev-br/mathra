@@ -215,5 +215,341 @@
   "greek.χ": "qui",
   "greek.ψ": "psi",
   "greek.ω": "ômega"
+ },
+ "units": {
+  "per": "por",
+  "singular": "below_two",
+  "prefixes": {
+   "yotta": "iota",
+   "zetta": "zeta",
+   "exa": "exa",
+   "peta": "peta",
+   "tera": "tera",
+   "giga": "giga",
+   "mega": "mega",
+   "kilo": "quilo",
+   "hecto": "hecto",
+   "deca": "deca",
+   "deci": "deci",
+   "centi": "centi",
+   "milli": "mili",
+   "micro": "micro",
+   "nano": "nano",
+   "pico": "pico",
+   "femto": "femto",
+   "atto": "ato",
+   "zepto": "zepto",
+   "yocto": "iocto"
+  },
+  "names": {
+   "meter": [
+    "metro",
+    "metros"
+   ],
+   "second": [
+    "segundo",
+    "segundos"
+   ],
+   "gram": [
+    "grama",
+    "gramas"
+   ],
+   "kilogram": [
+    "quilograma",
+    "quilogramas"
+   ],
+   "ampere": [
+    "ampere",
+    "amperes"
+   ],
+   "kelvin": [
+    "kelvin",
+    "kelvins"
+   ],
+   "mole": [
+    "mol",
+    "mols"
+   ],
+   "candela": [
+    "candela",
+    "candelas"
+   ],
+   "newton": [
+    "newton",
+    "newtons"
+   ],
+   "joule": [
+    "joule",
+    "joules"
+   ],
+   "watt": [
+    "watt",
+    "watts"
+   ],
+   "pascal": [
+    "pascal",
+    "pascals"
+   ],
+   "hertz": [
+    "hertz",
+    "hertz"
+   ],
+   "coulomb": [
+    "coulomb",
+    "coulombs"
+   ],
+   "volt": [
+    "volt",
+    "volts"
+   ],
+   "ohm": [
+    "ohm",
+    "ohms"
+   ],
+   "farad": [
+    "farad",
+    "farads"
+   ],
+   "tesla": [
+    "tesla",
+    "teslas"
+   ],
+   "weber": [
+    "weber",
+    "webers"
+   ],
+   "henry": [
+    "henry",
+    "henrys"
+   ],
+   "siemens": [
+    "siemens",
+    "siemens"
+   ],
+   "liter": [
+    "litro",
+    "litros"
+   ],
+   "hour": [
+    "hora",
+    "horas"
+   ],
+   "minute": [
+    "minuto",
+    "minutos"
+   ],
+   "day": [
+    "dia",
+    "dias"
+   ],
+   "degreeCelsius": [
+    "grau Celsius",
+    "graus Celsius"
+   ],
+   "degree": [
+    "grau",
+    "graus"
+   ],
+   "electronvolt": [
+    "elétron-volt",
+    "elétrons-volt"
+   ],
+   "calorie": [
+    "caloria",
+    "calorias"
+   ],
+   "bar": [
+    "bar",
+    "bars"
+   ],
+   "atm": [
+    "atmosfera",
+    "atmosferas"
+   ],
+   "percent": [
+    "por cento",
+    "por cento"
+   ],
+   "mmHg": [
+    "milímetro de mercúrio",
+    "milímetros de mercúrio"
+   ],
+   "hectare": [
+    "hectare",
+    "hectares"
+   ],
+   "tonne": [
+    "tonelada",
+    "toneladas"
+   ],
+   "angstrom": [
+    "angstrom",
+    "angstroms"
+   ],
+   "radian": [
+    "radiano",
+    "radianos"
+   ],
+   "steradian": [
+    "esferorradiano",
+    "esferorradianos"
+   ],
+   "lumen": [
+    "lúmen",
+    "lumens"
+   ],
+   "lux": [
+    "lux",
+    "lux"
+   ],
+   "becquerel": [
+    "becquerel",
+    "becquerels"
+   ],
+   "gray": [
+    "gray",
+    "grays"
+   ],
+   "sievert": [
+    "sievert",
+    "sieverts"
+   ],
+   "katal": [
+    "katal",
+    "katals"
+   ],
+   "dalton": [
+    "dalton",
+    "daltons"
+   ],
+   "atomicmassunit": [
+    "unidade de massa atômica",
+    "unidades de massa atômica"
+   ],
+   "astronomicalunit": [
+    "unidade astronômica",
+    "unidades astronômicas"
+   ],
+   "arcminute": [
+    "minuto de arco",
+    "minutos de arco"
+   ],
+   "arcsecond": [
+    "segundo de arco",
+    "segundos de arco"
+   ],
+   "bel": [
+    "bel",
+    "bels"
+   ],
+   "neper": [
+    "neper",
+    "nepers"
+   ],
+   "barn": [
+    "barn",
+    "barns"
+   ],
+   "knot": [
+    "nó",
+    "nós"
+   ],
+   "nauticalmile": [
+    "milha náutica",
+    "milhas náuticas"
+   ],
+   "bit": [
+    "bit",
+    "bits"
+   ],
+   "byte": [
+    "byte",
+    "bytes"
+   ],
+   "molar": [
+    "molar",
+    "molares"
+   ],
+   "torr": [
+    "torr",
+    "torr"
+   ]
+  },
+  "compounds": {
+   "kilometer": [
+    "quilômetro",
+    "quilômetros"
+   ],
+   "hectometer": [
+    "hectômetro",
+    "hectômetros"
+   ],
+   "decameter": [
+    "decâmetro",
+    "decâmetros"
+   ],
+   "decimeter": [
+    "decímetro",
+    "decímetros"
+   ],
+   "centimeter": [
+    "centímetro",
+    "centímetros"
+   ],
+   "millimeter": [
+    "milímetro",
+    "milímetros"
+   ],
+   "micrometer": [
+    "micrômetro",
+    "micrômetros"
+   ],
+   "nanometer": [
+    "nanômetro",
+    "nanômetros"
+   ],
+   "picometer": [
+    "picômetro",
+    "picômetros"
+   ],
+   "millisecond": [
+    "milissegundo",
+    "milissegundos"
+   ],
+   "microsecond": [
+    "microssegundo",
+    "microssegundos"
+   ],
+   "nanosecond": [
+    "nanossegundo",
+    "nanossegundos"
+   ],
+   "picosecond": [
+    "picossegundo",
+    "picossegundos"
+   ],
+   "femtosecond": [
+    "femtossegundo",
+    "femtossegundos"
+   ]
+  }
+ },
+ "double_struck": {
+  "letter": "{0} duplo",
+  "sets": {
+   "N": "os naturais",
+   "Z": "os inteiros",
+   "Q": "os racionais",
+   "R": "os reais",
+   "C": "os complexos"
+  },
+  "contractions": {
+   "a os": "aos",
+   "de os": "dos",
+   "em os": "nos"
+  }
+ },
+ "optional": {
+  "dot_product": "escalar"
  }
 }

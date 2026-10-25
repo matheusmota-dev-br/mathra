@@ -191,7 +191,7 @@ fn qty_of_physics_and_of_siunitx() {
 fn siunitx_ranges_lists_and_products() {
     let r = en(r"\SIrange{1}{10}{\kilo\gram}");
     assert_eq!(r.text, "1 kg – 10 kg");
-    assert_eq!(r.speech, "1 kg to 10 kg");
+    assert_eq!(r.speech, "1 kilogram to 10 kilograms");
     assert_eq!(en(r"\qtyrange{1}{10}{m}").text, "1 m – 10 m");
     assert_eq!(en(r"\numrange{1}{10}").text, "1 – 10");
     assert_eq!(en(r"\numlist{1;2;3}").text, "1, 2 and 3");
@@ -203,7 +203,7 @@ fn siunitx_ranges_lists_and_products() {
     assert_eq!(en(r"\angrange{10}{20}").text, "10° – 20°");
     // the list word and the range word follow the locale
     assert_eq!(pt(r"\numlist{1;2;3}").text, "1, 2 e 3");
-    assert_eq!(pt(r"\SIrange{1,5}{2,5}{\meter}").speech, "1,5 m a 2,5 m");
+    assert_eq!(pt(r"\SIrange{1,5}{2,5}{\meter}").speech, "1,5 metro a 2,5 metros");
 }
 
 #[test]

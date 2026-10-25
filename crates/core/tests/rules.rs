@@ -193,6 +193,34 @@ fn l_che_1_labeled_arrow_in_chemistry() {
 }
 
 #[test]
+fn l_ent_3_size_commands_and_packages_are_ignored() {
+    for tex in [r"\Large x", r"\usepackage{amsmath} x", r"\usepackage[utf8]{inputenc} x", r"\require{mhchem} x"] {
+        let r = en(tex);
+        assert_eq!(r.text, "x", "{tex}");
+        assert!(rules(&r).contains(&"L-ENT-3"), "{tex}");
+        assert!(r.warnings.is_empty(), "{tex}: {:?}", r.warnings);
+    }
+}
+
+#[test]
+fn l_uni_3_units_are_spoken_by_name() {
+    let r = en(r"\SI{9.81}{\meter\per\second\squared}");
+    assert_eq!(r.speech, "9.81 meters per second squared");
+    assert_eq!(r.text, "9.81 m/s^2");
+    assert!(rules(&r).contains(&"L-UNI-3"));
+    assert_eq!(pt(r"\SI{9,81}{\meter\per\second\squared}").speech, "9,81 metros por segundo ao quadrado");
+}
+
+#[test]
+fn l_let_2_double_struck_letters_name_the_number_sets() {
+    assert_eq!(en(r"x \in \mathbb{R}").speech, "x is in the real numbers");
+    assert_eq!(pt(r"x \in \mathbb{R}").speech, "x pertence aos reais");
+    assert_eq!(en(r"\mathbb{P}").speech, "double-struck P");
+    // the drawing and the text keep the letter
+    assert_eq!(en(r"\mathbb{R}").text, "ℝ");
+}
+
+#[test]
 fn l_ent_4_mathml_pasted_as_latex_is_read_as_mathml() {
     let r = en("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
     assert_eq!(r.text, "x^2");
@@ -204,4 +232,11 @@ fn s_svg_9_braille_in_metadata() {
     let r = pt(r"\sqrt{x}");
     assert!(r.svg.contains(r#"<mathra:braille code="cmu">⠫⠱⠭</mathra:braille>"#), "{}", r.svg);
     assert!(en(r"\sqrt{x}").svg.contains(r#"<mathra:braille code="nemeth">⠜⠭⠻</mathra:braille>"#));
+}
+
+#[test]
+fn l_opr_1_the_dot_between_vectors_is_the_dot_product() {
+    assert_eq!(en(r"\vec{v} \cdot \vec{w}").speech, "vector v dot vector w");
+    assert_eq!(pt(r"\mathbf{u} \cdot \mathbf{v}").speech, "u escalar v");
+    assert_eq!(en(r"2 \cdot 3").speech, "2 times 3");
 }

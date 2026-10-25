@@ -11,6 +11,7 @@ pub const L_ESP_2: &str = "L-ESP-2";
 pub const L_INT_1: &str = "L-INT-1";
 pub const L_UNI_1: &str = "L-UNI-1";
 pub const L_UNI_2: &str = "L-UNI-2";
+pub const L_UNI_3: &str = "L-UNI-3";
 pub const L_CHE_1: &str = "L-CHE-1";
 pub const L_ENT_1: &str = "L-ENT-1";
 pub const L_ENT_2: &str = "L-ENT-2";

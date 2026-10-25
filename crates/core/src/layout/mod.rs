@@ -252,7 +252,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         Node::Table { shape: kind, rows, columns, verticals, horizontals, between, intertexts } => {
             table::compose(*kind, rows, columns, verticals, horizontals, between, intertexts, e, ctx)
         }
-        Node::Multicolumn { base, .. } => compose(base, e, ctx),
+        Node::Multicolumn { base, .. } | Node::Unit { base, .. } => compose(base, e, ctx),
         Node::Raised { em: amount, base } => {
             let mut math_box = compose(base, e, ctx)?;
             math_box.shift_vertical(em(e, *amount));
@@ -383,7 +383,7 @@ pub fn class_of(node: &Node) -> Option<Class> {
         Node::Operator { class, .. } | Node::FixedDelimiter { class, .. } | Node::ForcedClass { class, .. } => *class,
         Node::Fraction { .. } | Node::Delimited { .. } => Class::Inner,
         Node::Table { shape: kind, .. } if !matches!(kind, TableKind::Array | TableKind::Aligned | TableKind::Centered | TableKind::Substack | TableKind::Diagram) => Class::Inner,
-        Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } => return class_of(base),
+        Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } | Node::Unit { base, .. } => return class_of(base),
         Node::Scripts { base, .. } => return class_of(base),
         Node::Arrow { .. } => Class::Rel,
         Node::Colored { base, .. } | Node::Style { base, .. } => match base.as_ref() {
@@ -862,21 +862,22 @@ fn compose_brace(base: &Node, above: bool, label: Option<&Node>, bracket: bool, 
     let brace = stretch::horizontal(symbol, b.width, e)?;
     let r = label.map(|n| compose(n, e.sup(), ctx)).transpose()?;
     let width = b.width.max(brace.width).max(r.as_ref().map_or(0.0, |r| r.width));
-    let gap = k(e, |c| c.overbar_vertical_gap());
-    let label_gap = k(e, |c| c.stretch_stack_gap_above_min());
+    // the brace keeps the bar's gap from its content and the label keeps a limit's gap from the
+    // brace (TeX: \overbrace is a \mathop with the label as \limits), measured on the ink
+    let (bottom, top) = stretch::ink(&brace, e);
     let mut math_box = MathBox::space(width);
     math_box.place(&b, (width - b.width) / 2.0, 0.0);
     if above {
-        let y = b.height + gap + brace.depth;
+        let y = b.height + k(e, |c| c.overbar_vertical_gap()) - bottom;
         math_box.place(&brace, (width - brace.width) / 2.0, y);
         if let Some(r) = &r {
-            math_box.place(r, (width - r.width) / 2.0, y + brace.height + label_gap + r.depth);
+            math_box.place(r, (width - r.width) / 2.0, y + top + k(e, |c| c.upper_limit_gap_min()) + r.depth);
         }
     } else {
-        let y = -(b.depth + gap + brace.height);
+        let y = -(b.depth + k(e, |c| c.underbar_vertical_gap())) - top;
         math_box.place(&brace, (width - brace.width) / 2.0, y);
         if let Some(r) = &r {
-            math_box.place(r, (width - r.width) / 2.0, y - brace.depth - label_gap - r.height);
+            math_box.place(r, (width - r.width) / 2.0, y + bottom - k(e, |c| c.lower_limit_gap_min()) - r.height);
         }
     }
     Ok(math_box)
