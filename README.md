@@ -250,6 +250,10 @@ The tests cover 97.4% of the lines of the core, the CLI and the Python module (1
 
 The banner above is drawn by mathra itself (`cargo run -p mathra --example banner`); `tests/banner.rs` fails if it goes stale.
 
+## Sponsor
+
+mathra is free and open source. If it is useful to you, you can support its work on [GitHub Sponsors](https://github.com/sponsors/matheusmota-dev-br).
+
 ## Licenses
 
 Code: your choice of [MIT](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`). With the `latin-modern` feature, also Latin Modern Math, GUST Font License (`crates/core/fonts/GUST-FONT-LICENSE-LatinModernMath.txt`).
