@@ -42,7 +42,10 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             s.push(' ');
         }
         Node::Operator { symbol, .. } | Node::FixedDelimiter { symbol, .. } => s.push(*symbol),
-        Node::LargeOperator { symbol, .. } => s.push(*symbol),
+        Node::LargeOperator { symbol, .. } => {
+            s.push(*symbol);
+            s.push(' ');
+        }
         Node::Row { children } => {
             let cl = classes(children, loc, None, false);
             for (child, class) in children.iter().zip(cl) {
@@ -87,11 +90,13 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             group(radicand, loc, s);
         }
         Node::Scripts { base, sup, sub } => {
-            // sin²x, log₂x: the scripts stick to the function name, and the space goes after them
-            let function = if let Node::Function { name, .. } = base.as_ref() { Some(name) } else { None };
-            match function {
-                Some(name) => s.push_str(&loc.function_name(name)),
-                None => write_node(base, loc, s),
+            // sin²x, log₂x, ∑_(i = 1)^n i: the scripts stick to the function name or the large
+            // operator, and the space goes after them
+            let spaced = matches!(base.as_ref(), Node::Function { .. } | Node::LargeOperator { .. });
+            match base.as_ref() {
+                Node::Function { name, .. } => s.push_str(&loc.function_name(name)),
+                Node::LargeOperator { symbol, .. } => s.push(*symbol),
+                other => write_node(other, loc, s),
             }
             if let Some(b) = sub {
                 s.push('_');
@@ -115,7 +120,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
                     }
                 }
             }
-            if function.is_some() {
+            if spaced {
                 s.push(' ');
             }
         }

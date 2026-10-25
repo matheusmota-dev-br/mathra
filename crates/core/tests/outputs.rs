@@ -299,3 +299,19 @@ fn binomials_say_their_parentheses_once() {
     assert_eq!(text(r"{n \brack k}", Locale::En), "[n ¦ k]");
     assert!(speech(r"{n \brack k}", Locale::En).starts_with("open bracket"));
 }
+
+#[test]
+fn large_operators_are_spaced_from_their_operand() {
+    // like sin^2 x: the limits stick to the operator, and a space separates it from what it applies to
+    for (tex, expected) in [
+        (r"\int_0^1 x^2\,dx", "∫_0^1 x^2 dx"),
+        (r"\sum_{i=1}^n i", "∑_(i = 1)^n i"),
+        (r"\iint_D f\,dA", "∬_D f dA"),
+        (r"\oint_C F", "∮_C F"),
+        (r"\prod_{k} a_k", "∏_k a_k"),
+        (r"\bigcup_{i} A_i", "⋃_i A_i"),
+        (r"\int f\,dx", "∫ f dx"),
+    ] {
+        assert_eq!(text(tex, Locale::En), expected, "{tex}");
+    }
+}
