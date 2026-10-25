@@ -32,6 +32,7 @@ Homepage = "https://matheusmota-dev-br.github.io/mathra/"
 Repository = "https://github.com/matheusmota-dev-br/mathra"
 Issues = "https://github.com/matheusmota-dev-br/mathra/issues"
 Documentation = "https://github.com/matheusmota-dev-br/mathra#install-and-use"
+Funding = "https://github.com/sponsors/matheusmota-dev-br"
 
 [tool.maturin]
 python-source = "python"
