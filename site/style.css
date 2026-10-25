@@ -36,6 +36,7 @@
   .bar nav a { text-decoration: none; color: var(--muted); }
   .bar nav a:hover { color: var(--ink); }
   .bar nav a[aria-current="page"] { color: var(--ink); font-weight: 500; }
+  .more-docs { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; color: var(--muted); }
   /* on a phone the menu goes under the name, whole, and wraps if it must */
   @media (max-width: 560px) { .bar nav { margin-left: 0; width: 100%; gap: 6px 16px; } .bar .theme { margin-left: auto; } }
   .theme { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; width: 34px; height: 34px; cursor: pointer; font-size: 15px; line-height: 1; }
