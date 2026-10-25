@@ -113,6 +113,13 @@ impl Speaker {
                     self.say(phrase);
                     return;
                 }
+                // \binom: the parentheses are part of "n choose k"
+                if let ((Some('('), Some(')')), [p]) = ((open, close), parts.as_slice()) {
+                    if let binomial @ Node::Fraction { rule: false, .. } = p.single() {
+                        self.node(binomial);
+                        return;
+                    }
+                }
                 if let Some(a) = open {
                     let o = operator(*a, Class::Open, self.loc);
                     self.say(o);

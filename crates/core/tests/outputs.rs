@@ -284,3 +284,18 @@ fn physics_nabla_angles_and_integrals() {
     assert_eq!(speech(r"\iiiint f", Locale::En), "integral f");
     assert_eq!(text(r"\overbracket{a}^{n}", Locale::En), "a [n]");
 }
+
+#[test]
+fn binomials_say_their_parentheses_once() {
+    // the parentheses are part of the binomial: "n choose k" and (n ¦ k), with no second pair
+    for tex in [r"\binom{n}{k}", r"\dbinom{n}{k}", r"\tbinom{n}{k}", r"{n \choose k}", r"\left( n \atop k \right)"] {
+        assert_eq!(speech(tex, Locale::En), "n choose k", "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), "n escolhe k", "{tex}");
+        assert_eq!(text(tex, Locale::En), "(n ¦ k)", "{tex}");
+    }
+    let mathml = r#"<math><mrow><mo>(</mo><mfrac linethickness="0"><mi>n</mi><mi>k</mi></mfrac><mo>)</mo></mrow></math>"#;
+    assert_eq!(speech(mathml, Locale::En), "n choose k");
+    // other brackets around a fraction without a rule keep their own words and symbols
+    assert_eq!(text(r"{n \brack k}", Locale::En), "[n ¦ k]");
+    assert!(speech(r"{n \brack k}", Locale::En).starts_with("open bracket"));
+}

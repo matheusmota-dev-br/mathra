@@ -123,6 +123,18 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             if let Some(a) = open {
                 s.push(*a);
             }
+            // \binom is a fraction without a rule inside parentheses: (n ¦ k), not ((n ¦ k))
+            if let [p] = parts.as_slice() {
+                if let Node::Fraction { num, den, rule: false, .. } = p.single() {
+                    write_node(num, loc, s);
+                    s.push_str(" ¦ ");
+                    write_node(den, loc, s);
+                    if let Some(f) = close {
+                        s.push(*f);
+                    }
+                    return;
+                }
+            }
             for (i, p) in parts.iter().enumerate() {
                 if i > 0 {
                     s.push(' ');

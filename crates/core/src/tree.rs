@@ -371,6 +371,14 @@ impl Node {
         Node::Row { children }
     }
 
+    /// The node inside one-child rows, borrowed: what `simplify` would return.
+    pub fn single(&self) -> &Node {
+        match self {
+            Node::Row { children } if children.len() == 1 => children[0].single(),
+            other => other,
+        }
+    }
+
     /// A single node, without the surrounding Row when it has only one child.
     pub fn simplify(self) -> Node {
         match self {
