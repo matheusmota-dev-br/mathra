@@ -246,7 +246,7 @@ Every pull request runs the same checks (`.github/workflows/ci.yml`): fmt, clipp
 
 To change behavior, write the rule in `spec/`, cite its id in the code and add a test with the same id.
 
-The tests cover 100% of the lines of the core, the CLI and the Python module. [docs/tests.md](https://github.com/matheusmota-dev-br/mathra/blob/main/docs/tests.md) explains how to run each suite (including wasm on Node and pytest), what each file checks, the coverage per file and the problem inputs already tested.
+The tests cover 97.4% of the lines of the core, the CLI and the Python module (100% of the CLI, the Python module, the LaTeX layout and the SVG); the gaps are in the MathML and AsciiMath readers and the braille codes. [docs/tests.md](https://github.com/matheusmota-dev-br/mathra/blob/main/docs/tests.md) explains how to run each suite (including wasm on Node and pytest), what each file checks, the coverage per file and the problem inputs already tested.
 
 The banner above is drawn by mathra itself (`cargo run -p mathra --example banner`); `tests/banner.rs` fails if it goes stale.
 

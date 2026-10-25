@@ -6,6 +6,7 @@ Every case here is an invented equation, written to exercise a construction or a
 
 ```sh
 cargo test --workspace --exclude mathra-python              # core, CLI and wasm (native)
+cargo test -p mathra --features latin-modern                # also the second font (tests/fonts.rs)
 cargo test -p mathra-wasm --target wasm32-unknown-unknown   # wasm on Node (needs wasm-bindgen-cli)
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -21,7 +22,7 @@ Coverage with [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov), with 
 ```sh
 eval "$(cargo llvm-cov show-env --export-prefix)"
 cargo llvm-cov clean --workspace
-cargo test --workspace --exclude mathra-python
+cargo test --workspace --exclude mathra-python --features mathra/latin-modern
 (cd crates/python && maturin develop && python -m pytest tests)
 cargo llvm-cov report --summary-only        # or --html
 ```
@@ -48,6 +49,7 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/asciimath.rs` | 8 | AsciiMath input (`spec/input.md`): the same speech and text as the LaTeX of each equation, brackets removed from fractions and scripts, intervals, matrices and cases, commands, unpaired brackets (E-REC-5). |
 | `crates/core/tests/braille.rs` | 17 | Braille (`spec/braille.md`): the examples of the Nemeth code (BANA 2022) and of the CMU (MEC 2006), each cited by section or example number; the code chosen by the locale; braille in the SVG and the JSON; S-BRL-1; the whole corpus in both codes; the signs settled by the review against MathCAT (`docs/braille-review.md`). |
 | `crates/core/tests/reference.rs` | 5 | The reference page (`site/reference.html`, data in `corpus/reference.json`): every row converts in strict mode with no warning, each AsciiMath and MathML row has the same speech as its LaTeX column, every row has braille in both codes. |
+| `crates/core/tests/fonts.rs` | 4 | The font an equation is set in: STIX Two Math by default; with the `latin-modern` feature, Latin Modern Math with its own metrics and its own word space (a third of an em). |
 | `crates/core/tests/banner.rs` | 1 | The README banner (`examples/banner.rs`) is deterministic and matches `docs/banner.svg`. |
 | `crates/core/tests/examples.rs` | 2 | The README gallery: every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. |
 | `crates/core/src/input/asciimath.rs` (unit) | 1 | Every AsciiMath symbol's LaTeX spelling is valid LaTeX in strict mode. |
@@ -60,33 +62,40 @@ cargo llvm-cov report --summary-only        # or --html
 
 ## Coverage
 
-Measured with the procedure above (core, CLI, native wasm and pytest together).
+Measured with the procedure above (core with the `latin-modern` feature, CLI, native wasm and pytest together), on version 1.2.0.
 
 | File | Lines | Regions | Functions |
 |---|---:|---:|---:|
-| `cli/src/main.rs` | 100% | 99.5% | 100% |
-| `core/src/font.rs` | 100% | 99.2% | 100% |
-| `core/src/input/latex.rs` | 100% | 97.1% | 100% |
-| `core/src/input/symbols.rs` | 100% | 61.5% | 100% |
+| `cli/src/main.rs` | 100% | 98.7% | 100% |
+| `core/src/font.rs` | 100% | 99.6% | 100% |
+| `core/src/input/asciimath.rs` | 92.7% | 91.5% | 95.7% |
+| `core/src/input/latex.rs` | 99.2% | 96.1% | 100% |
+| `core/src/input/mathml.rs` | 92.9% | 85.0% | 96.0% |
+| `core/src/input/symbols.rs` | 100% | 87.1% | 100% |
 | `core/src/layout/alphabet.rs` | 100% | 100% | 100% |
 | `core/src/layout/arithmetic.rs` | 100% | 96.0% | 100% |
 | `core/src/layout/math_box.rs` | 100% | 97.9% | 100% |
-| `core/src/layout/mod.rs` | 100% | 97.9% | 100% |
-| `core/src/layout/stretch.rs` | 100% | 98.6% | 100% |
-| `core/src/layout/table.rs` | 100% | 98.5% | 100% |
-| `core/src/lib.rs` | 100% | 99.0% | 100% |
-| `core/src/locale.rs` | 100% | 80.2% | 100% |
+| `core/src/layout/mod.rs` | 99.9% | 97.9% | 100% |
+| `core/src/layout/stretch.rs` | 100% | 98.7% | 100% |
+| `core/src/layout/table.rs` | 100% | 98.4% | 100% |
+| `core/src/lib.rs` | 100% | 99.5% | 100% |
+| `core/src/locale.rs` | 98.1% | 97.7% | 93.1% |
+| `core/src/output/braille/cmu.rs` | 91.8% | 92.0% | 100% |
+| `core/src/output/braille/mod.rs` | 100% | 100% | 100% |
+| `core/src/output/braille/nemeth.rs` | 94.0% | 94.5% | 96.7% |
 | `core/src/output/mod.rs` | 100% | 100% | 100% |
-| `core/src/output/speech.rs` | 100% | 96.2% | 100% |
+| `core/src/output/speech.rs` | 99.2% | 99.4% | 100% |
 | `core/src/output/svg.rs` | 100% | 100% | 100% |
-| `core/src/output/text.rs` | 100% | 99.2% | 100% |
+| `core/src/output/text.rs` | 100% | 100% | 100% |
 | `core/src/rules.rs` | 100% | 100% | 100% |
 | `core/src/tree.rs` | 100% | 100% | 100% |
-| `python/src/lib.rs` | 100% | 90.4% | 100% |
-| `wasm/src/lib.rs` | 85.7% | 88.6% | 71.4% |
+| `python/src/lib.rs` | 100% | 90.5% | 100% |
+| `wasm/src/lib.rs` | 74.3% | 78.6% | 66.7% |
+| **Total** | **97.4%** | **94.7%** | **98.3%** |
 
 About what is missing:
 
+- **Lines below 100%** are in the readers added in 1.1.0 (`mathml.rs`, `asciimath.rs`) and in the braille codes (`cmu.rs`, `nemeth.rs`): branches no test reaches yet, mostly rare elements, attributes and sign combinations. `cargo llvm-cov report --html` shows each one.
 - **Regions below 100%** are mostly arms of symbol tables (`symbols.rs`, `locale.rs`) that share a line with others: the line counts as covered when any arm on it runs. Every command in those tables has at least one test; not every combination of symbol and locale does.
 - **`wasm/src/lib.rs`**: the missing lines are the code `#[wasm_bindgen]` generates for the JavaScript boundary. It only runs inside wasm, and `cargo-llvm-cov` does not instrument wasm. That path is tested in `tests/web.rs`, on Node, just without measurement.
 
