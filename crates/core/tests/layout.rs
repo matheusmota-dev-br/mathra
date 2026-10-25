@@ -458,6 +458,39 @@ fn braces_with_label() {
     consistent(&long, "overbrace longo");
 }
 
+/// Lowest and highest ink of some glyphs of a box, from the font's outlines.
+fn ink(items: &[Item]) -> (f32, f32) {
+    let f = mathra::font::font();
+    items.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), item| match item {
+        Item::Glyph { id, y, scale, .. } => {
+            let (_, y0, _, y1) = f.limits(*id);
+            (lo.min(y + y0 * scale), hi.max(y + y1 * scale))
+        }
+        _ => (lo, hi),
+    })
+}
+
+#[test]
+fn overbrace_mirrors_underbrace() {
+    // ⏞ floats above the baseline in the font and ⏟ below it: the gaps are measured on the ink,
+    // so both braces sit as far from their content, and their labels as far from the brace
+    for content in ["a+b", "x", "1+2+\\cdots+n"] {
+        let base = math_box(content);
+        let (base_lo, base_hi) = ink(&base.items);
+        let n = base.items.len();
+        let top = math_box(&format!(r"\overbrace{{{content}}}^{{k}}"));
+        let low = math_box(&format!(r"\underbrace{{{content}}}_{{k}}"));
+        let (top_brace, top_label) = (ink(&top.items[n..top.items.len() - 1]), ink(&top.items[top.items.len() - 1..]));
+        let (low_brace, low_label) = (ink(&low.items[n..low.items.len() - 1]), ink(&low.items[low.items.len() - 1..]));
+        let gap_above = top_brace.0 - base_hi;
+        let gap_below = base_lo - low_brace.1;
+        assert!(gap_above > 100.0 && (gap_above - gap_below).abs() < 1.0, "{content}: brace {gap_above} above, {gap_below} below");
+        let label_above = top_label.0 - top_brace.1;
+        let label_below = low_brace.0 - low_label.1;
+        assert!(label_above > 100.0 && label_below > 100.0, "{content}: label {label_above} above, {label_below} below");
+    }
+}
+
 #[test]
 fn labeled_arrows() {
     let top = math_box(r"\xrightarrow{\text{heat}}");

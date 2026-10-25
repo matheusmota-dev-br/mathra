@@ -53,6 +53,25 @@ pub fn horizontal(c: char, target: f32, e: Style) -> R<MathBox> {
     Ok(variants.last().map_or(glyph_id(id, s, f), |(v, _)| glyph_id(*v, s, f)))
 }
 
+/// Lowest and highest ink of the glyphs in a box, from their outlines. A box's height and depth
+/// never go below zero, so they hide where a glyph that floats above (⏞) or below (⏟) the baseline
+/// really is.
+pub fn ink(math_box: &MathBox, e: Style) -> (f32, f32) {
+    let f = e.font();
+    let mut bounds = (f32::INFINITY, f32::NEG_INFINITY);
+    for item in &math_box.items {
+        if let Item::Glyph { id, y, scale, .. } = item {
+            let (_, y0, _, y1) = f.limits(*id);
+            bounds = (bounds.0.min(y + y0 * scale), bounds.1.max(y + y1 * scale));
+        }
+    }
+    if bounds.0 > bounds.1 {
+        (-math_box.depth, math_box.height)
+    } else {
+        bounds
+    }
+}
+
 /// Delimiter centered on the math axis, covering `target` of total height.
 pub fn delimiter(c: char, target: f32, e: Style) -> R<MathBox> {
     let mut math_box = vertical(c, target, e)?;
