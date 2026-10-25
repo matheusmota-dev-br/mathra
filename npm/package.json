@@ -1,6 +1,6 @@
 {
   "name": "@mathlabs/mathra",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Math LaTeX to accessible SVG, without a TeX install. Speech for screen readers in 16 languages. Runs on WebAssembly in Node, bundlers and browsers.",
   "keywords": ["latex", "math", "equations", "svg", "accessibility", "screen-reader", "typesetting", "webassembly", "i18n", "localization", "katex-alternative", "mathjax-alternative", "rust", "python", "cli", "javascript", "typescript"],
   "homepage": "https://matheusmota-dev-br.github.io/mathra/",
