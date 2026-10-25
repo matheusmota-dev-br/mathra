@@ -60,7 +60,7 @@ Each SVG carries the equation as speech in its `<title>`:
 
 ## Broken LaTeX
 
-By default mathra draws what it can and returns **warnings** for what it had to fix (`E-REC-1` to `E-REC-9`, in `spec/tolerance.md`): unknown commands, unbalanced braces, double scripts, leftover JSON escapes such as `\n` or `\u00b2`. Warnings show up in `--explain`, on stderr, in `Output::warnings` and in the SVG's `<metadata>`. With `--strict`, mathra refuses invalid input instead, like TeX.
+By default mathra draws what it can and returns **warnings** for what it had to fix (`E-REC-1` to `E-REC-10`, in `spec/tolerance.md`): unknown commands, unbalanced braces, double scripts, leftover JSON escapes such as `\n` or `\u00b2`, unknown MathML elements. Warnings show up in `--explain`, on stderr, in `Output::warnings` and in the SVG's `<metadata>`. With `--strict`, mathra refuses invalid input instead, like TeX.
 
 ```console
 $ mathra '\vertA\vert = C_{16,2}' --text
