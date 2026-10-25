@@ -341,3 +341,27 @@ fn units_are_spoken_by_name() {
     // units written as letters, not as siunitx commands, are not named
     assert_eq!(speech(r"\si{km}", Locale::En), speech(r"\mathrm{km}", Locale::En));
 }
+
+#[test]
+fn double_struck_letters_are_read_as_number_sets() {
+    for (tex, english, portuguese) in [
+        (r"n \in \mathbb{N}", "n is in the natural numbers", "n pertence aos naturais"),
+        (r"k \notin \mathbb{Z}", "k is not in the integers", "k não pertence aos inteiros"),
+        (r"\mathbb{Q} \subset \mathbb{R}", "the rational numbers is a subset of the real numbers", "os racionais está contido nos reais"),
+        (r"z \in \mathbb{C}", "z is in the complex numbers", "z pertence aos complexos"),
+        (r"\mathbb{H}", "double-struck H", "H duplo"),
+        ("x ∈ ℝ", "x is in the real numbers", "x pertence aos reais"),
+        ("x ∈ 𝔸", "x is in double-struck A", "x pertence a A duplo"),
+    ] {
+        assert_eq!(speech(tex, Locale::En), english, "{tex}");
+        assert_eq!(speech(tex, Locale::PtBr), portuguese, "{tex}");
+    }
+    let mathml = r#"<math><mi>x</mi><mo>∈</mo><mi mathvariant="double-struck">R</mi></math>"#;
+    assert_eq!(speech(mathml, Locale::En), "x is in the real numbers");
+    let asciimath = convert("x in RR", &Options { input: mathra::Input::AsciiMath, ..options(Locale::PtBr) }).unwrap();
+    assert_eq!(asciimath.speech, "x pertence aos reais");
+    // a language without the names reads the letter, as before
+    assert_eq!(speech(r"x \in \mathbb{R}", Locale::Fr), "x appartient à R");
+    // only a preposition that ends a word contracts: a variable named a stays
+    assert_eq!(speech(r"a \mathbb{R}", Locale::PtBr), "a os reais");
+}

@@ -533,5 +533,20 @@
     "femtossegundos"
    ]
   }
+ },
+ "double_struck": {
+  "letter": "{0} duplo",
+  "sets": {
+   "N": "os naturais",
+   "Z": "os inteiros",
+   "Q": "os racionais",
+   "R": "os reais",
+   "C": "os complexos"
+  },
+  "contractions": {
+   "a os": "aos",
+   "de os": "dos",
+   "em os": "nos"
+  }
  }
 }

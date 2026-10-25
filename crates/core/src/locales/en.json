@@ -422,5 +422,15 @@
     "torr"
    ]
   }
+ },
+ "double_struck": {
+  "letter": "double-struck {0}",
+  "sets": {
+   "N": "the natural numbers",
+   "Z": "the integers",
+   "Q": "the rational numbers",
+   "R": "the real numbers",
+   "C": "the complex numbers"
+  }
  }
 }

@@ -29,6 +29,18 @@ impl Speaker {
         }
     }
 
+    /// A phrase that may join the word before it: "pertence a" + "os reais" → "pertence aos reais".
+    fn say_contracted(&mut self, phrase: String) {
+        if let Some(last) = self.words.last_mut() {
+            if let Some((joined, rest)) = self.loc.contract(last, &phrase) {
+                *last = joined;
+                self.say(rest);
+                return;
+            }
+        }
+        self.say(phrase);
+    }
+
     fn spoken(&self, node: &Node) -> String {
         speak(node, self.loc)
     }
@@ -39,10 +51,13 @@ impl Speaker {
                 let n = super::written_number(value, *thousands, self.loc);
                 self.say(n);
             }
-            Node::Identifier { name, .. } => {
-                let l = letter(name, self.loc);
-                self.say(l);
-            }
+            Node::Identifier { name, variant } => match double_struck(name, *variant).and_then(|l| self.loc.double_struck(&l)) {
+                Some(phrase) => self.say_contracted(phrase),
+                None => {
+                    let l = letter(name, self.loc);
+                    self.say(l);
+                }
+            },
             Node::Function { name, .. } => {
                 let f = self.loc.speak_function(name);
                 self.say(f);
@@ -471,6 +486,26 @@ fn large_operator(c: char, loc: Locale) -> String {
         _ => "big.other".into(),
     };
     loc.phrase(&key).to_string()
+}
+
+/// L-LET-2: the Latin capital of a double-struck letter, written with `\mathbb` or as the Unicode
+/// character (ℝ, 𝔸).
+fn double_struck(name: &str, variant: Variant) -> Option<String> {
+    let mut chars = name.chars();
+    let (c, None) = (chars.next()?, chars.next()) else { return None };
+    let capital = match c {
+        'A'..='Z' if variant == Variant::DoubleStruck => c,
+        'ℂ' => 'C',
+        'ℍ' => 'H',
+        'ℕ' => 'N',
+        'ℙ' => 'P',
+        'ℚ' => 'Q',
+        'ℝ' => 'R',
+        'ℤ' => 'Z',
+        '\u{1D538}'..='\u{1D551}' => char::from_u32('A' as u32 + (c as u32 - 0x1D538))?,
+        _ => return None,
+    };
+    Some(capital.to_string())
 }
 
 fn letter(name: &str, loc: Locale) -> String {

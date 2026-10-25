@@ -212,6 +212,15 @@ fn l_uni_3_units_are_spoken_by_name() {
 }
 
 #[test]
+fn l_let_2_double_struck_letters_name_the_number_sets() {
+    assert_eq!(en(r"x \in \mathbb{R}").speech, "x is in the real numbers");
+    assert_eq!(pt(r"x \in \mathbb{R}").speech, "x pertence aos reais");
+    assert_eq!(en(r"\mathbb{P}").speech, "double-struck P");
+    // the drawing and the text keep the letter
+    assert_eq!(en(r"\mathbb{R}").text, "ℝ");
+}
+
+#[test]
 fn l_ent_4_mathml_pasted_as_latex_is_read_as_mathml() {
     let r = en("<math><msup><mi>x</mi><mn>2</mn></msup></math>");
     assert_eq!(r.text, "x^2");

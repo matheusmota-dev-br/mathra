@@ -74,6 +74,9 @@ struct Data {
     /// L-UNI-3: the names siunitx units are spoken by
     #[serde(default)]
     units: Option<Units>,
+    /// L-LET-2: how double-struck letters are read: the number sets by name, the rest as letters
+    #[serde(default)]
+    double_struck: Option<DoubleStruck>,
 }
 
 /// Unit names, by the siunitx command names: `names.meter` is `["meter", "meters"]`, `prefixes.kilo`
@@ -96,6 +99,17 @@ struct Units {
 enum Singular {
     One,
     BelowTwo,
+}
+
+/// `letter` is the template of any double-struck letter ("double-struck {0}"); `sets` names the
+/// number sets by their letter; `contractions` joins a preposition with the article a set name
+/// starts with (pt-BR "pertence a" + "os reais" → "pertence aos reais").
+#[derive(Debug, Deserialize)]
+struct DoubleStruck {
+    letter: String,
+    sets: HashMap<String, String>,
+    #[serde(default)]
+    contractions: HashMap<String, String>,
 }
 
 /// Numerals 0–10 and the denominators 0–10, singular and plural. Index 0 and 1 of the
@@ -238,6 +252,25 @@ impl Locale {
             None => u.names.get(name).map(pick),
             Some(p) => u.compounds.get(&format!("{p}{name}")).map(pick).or_else(|| Some(format!("{}{}", u.prefixes.get(p)?, pick(u.names.get(name)?)))),
         }
+    }
+
+    /// L-LET-2: a double-struck letter as it is read: "the real numbers", "double-struck P"; `None`
+    /// in the languages without the names, which read the letter alone.
+    pub(crate) fn double_struck(self, letter: &str) -> Option<String> {
+        let d = self.data().double_struck.as_ref()?;
+        Some(d.sets.get(letter).cloned().unwrap_or_else(|| d.letter.replace("{0}", letter)))
+    }
+
+    /// L-LET-2: the preposition `before` joined with the article that starts `name`, when the
+    /// language contracts them: `("pertence a", "os reais")` → `("pertence aos", "reais")`.
+    pub(crate) fn contract(self, before: &str, name: &str) -> Option<(String, String)> {
+        let d = self.data().double_struck.as_ref()?;
+        d.contractions.iter().find_map(|(pair, joined)| {
+            let (preposition, article) = pair.split_once(' ')?;
+            let rest = name.strip_prefix(article)?.strip_prefix(' ')?;
+            let head = before.strip_suffix(preposition).filter(|h| h.ends_with(' '))?;
+            Some((format!("{head}{joined}"), rest.to_string()))
+        })
     }
 
     fn lookup(self, key: &str) -> Option<&'static str> {
