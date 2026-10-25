@@ -36,17 +36,17 @@
 
   <div class="ref-tools">
     <div class="tabs" role="tablist" aria-label="Notation">
-      <button role="tab" data-group="asciimath" aria-selected="true">AsciiMath</button>
-      <button role="tab" data-group="latex" aria-selected="false">LaTeX</button>
+      <button role="tab" data-group="latex" aria-selected="true">LaTeX</button>
       <button role="tab" data-group="science" aria-selected="false">Science</button>
       <button role="tab" data-group="mathml" aria-selected="false">MathML</button>
-      <button role="tab" data-group="braille" aria-selected="false">Braille</button>
+      <button role="tab" data-group="asciimath" aria-selected="false">AsciiMath</button>
+      <button role="tab" data-group="braille" aria-selected="false">About the braille</button>
     </div>
     <div class="controls">
       <label class="lang">Language
         <select id="locale"><option value="en">English</option></select>
       </label>
-      <label class="lang">Braille
+      <label class="lang">Braille code
         <select id="braille">
           <option value="">by language</option>
           <option value="cmu">CMU</option>
@@ -168,7 +168,7 @@ S ::= v | lEr | uS | bSS             simple expression
 I ::= S_S | S^S | S_S^S | S          intermediate expression
 E ::= IE | I/I                       expression`;
 
-  let render = null, group = "asciimath", locale = "en";
+  let render = null, group = "latex", locale = "en";
 
   function convert(src, input) {
     try {
@@ -223,7 +223,7 @@ E ::= IE | I/I                       expression`;
   }
 
   function select(g) {
-    group = GROUPS[g] ? g : "asciimath";
+    group = GROUPS[g] ? g : "latex";
     for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.group === group));
     if (location.hash.slice(1) !== group) history.replaceState(null, "", `#${group}`);
     if (render) draw();
