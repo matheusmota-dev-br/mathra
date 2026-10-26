@@ -13,6 +13,18 @@ fn stix_two_is_the_default() {
     assert!(a.contains("<mathra:font>STIX Two Math</mathra:font>"));
 }
 
+#[test]
+fn scripts_are_drawn_in_the_fonts_script_forms() {
+    // the `ssty` forms, as TeX draws a script in cmr7 and a script of a script in cmr5
+    let f = MathFont::StixTwo.get();
+    let one = f.glyph('1').unwrap();
+    let (st, sts) = (f.script_form(one, 1), f.script_form(one, 2));
+    assert!(st != one && sts != one && st != sts && f.script_form(one, 0) == one);
+    let drawn = |tex: &str, id| mathra::typeset(tex, &Options::default()).unwrap().0.items.iter().any(|i| matches!(i, mathra::layout::Item::Glyph { id: g, .. } if *g == id));
+    assert!(drawn("x_1", st) && !drawn("x_1", one));
+    assert!(drawn("x_{y_1}", sts));
+}
+
 #[cfg(feature = "latin-modern")]
 mod latin_modern {
     use super::*;
@@ -43,6 +55,44 @@ mod latin_modern {
         let stix = convert(r"\left( \frac{a}{b} \right)", &Options::default()).unwrap().svg;
         assert_ne!(svg, stix);
         assert_eq!(MathFont::LatinModern.get().units_per_em(), 1000.0);
+    }
+
+    #[test]
+    fn scripts_go_where_pdftex_puts_them() {
+        // cmsy10's sub1 (0.15 em) for a subscript alone, sub2 (its MATH table's 0.247 em) under a
+        // superscript; sup1 (0.413 em) for a superscript in display
+        let depth = |t: &str| typeset_in_font(t, &Options { display: false, ..Default::default() }, MathFont::LatinModern).unwrap().0.depth;
+        assert!(depth("x_i") < 170.0 + depth("x") && depth("x_i^2") > 240.0, "{} {}", depth("x_i"), depth("x_i^2"));
+        let height = |t: &str, display| typeset_in_font(t, &Options { display, ..Default::default() }, MathFont::LatinModern).unwrap().0.height;
+        assert!((height("x^2", true) - height("x^2", false) - 50.0).abs() < 1.0, "{} {}", height("x^2", true), height("x^2", false));
+    }
+
+    #[test]
+    fn limits_have_room_above_and_below_as_in_tex() {
+        // big_op_spacing5: 0.1 em between the box's edge and the ink of an upper or lower limit
+        let f = MathFont::LatinModern.get();
+        let b = typeset_in_font(r"\sum_{i=0}^N x", &Options::default(), MathFont::LatinModern).unwrap().0;
+        let (mut top, mut bottom) = (f32::MIN, f32::MAX);
+        for item in &b.items {
+            if let mathra::layout::Item::Glyph { id, y, scale, .. } = item {
+                let (_, y0, _, y1) = f.limits(*id);
+                (top, bottom) = (top.max(y + y1 * scale), bottom.min(y + y0 * scale));
+            }
+        }
+        assert!((b.height - top - 100.0).abs() < 1.0 && (b.depth + bottom - 100.0).abs() < 1.0, "{} {top} {} {bottom}", b.height, b.depth);
+    }
+
+    #[test]
+    fn moustaches_are_built_from_brace_halves() {
+        // Latin Modern Math has no ⎰ ⎱: they are made of the braces' halves, as cmex makes them,
+        // at least the two halves tall and growing with what they enclose
+        let options = Options { display: false, ..Default::default() };
+        for d in [r"\lmoustache", r"\rmoustache"] {
+            let (b, w) = typeset_in_font(&format!(r"\left{d} x \right."), &options, MathFont::LatinModern).unwrap();
+            assert!(w.is_empty() && b.height + b.depth >= 1480.0, "{d}: {w:?} {}", b.height + b.depth);
+            let (tall, _) = typeset_in_font(&format!(r"\left{d} \rule{{0pt}}{{5em}} \right."), &options, MathFont::LatinModern).unwrap();
+            assert!(tall.height + tall.depth > 4500.0, "{d}");
+        }
     }
 }
 
@@ -83,8 +133,10 @@ mod subsets {
         let dir = env!("CARGO_MANIFEST_DIR");
         let original = std::fs::read(format!("{dir}/../../tools/fonts/{file}")).unwrap();
         let embedded = std::fs::read(format!("{dir}/fonts/{}", file.replace(".otf", "-subset.otf"))).unwrap();
-        assert!(embedded.len() < original.len(), "{file} is not a subset: run tools/fonts/subset.sh");
         let (a, b) = (Face::parse(&original, 0).unwrap(), Face::parse(&embedded, 0).unwrap());
+        // (not a smaller file: with its outlines desubroutinized and the script forms kept, Latin
+        // Modern's subset is larger than the original)
+        assert!(a.tables().gpos.is_some() && b.tables().gpos.is_none(), "{file} is not a subset: run tools/fonts/subset.sh");
         // --retain-gids keeps every ID in place, though it may drop unused glyphs at the very end
         assert!(b.number_of_glyphs() <= a.number_of_glyphs());
         let (ma, mb) = (a.tables().math.unwrap(), b.tables().math.unwrap());

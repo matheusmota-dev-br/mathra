@@ -66,6 +66,15 @@ impl Style {
         }
     }
 
+    /// 0 in text and display, 1 in scripts, 2 in scripts of scripts: the `ssty` form to draw.
+    pub fn script_level(self) -> usize {
+        match self.level {
+            Level::Display | Level::Text => 0,
+            Level::Script => 1,
+            Level::ScriptScript => 2,
+        }
+    }
+
     pub fn is_script(self) -> bool {
         matches!(self.level, Level::Script | Level::ScriptScript)
     }
@@ -127,7 +136,23 @@ fn em(e: Style, amount: f32) -> f32 {
 pub(crate) fn glyph(c: char, e: Style) -> R<MathBox> {
     let f = e.font();
     let id = f.glyph(c).or_else(|| equivalent(c).and_then(|x| f.glyph(x))).ok_or(Error::MissingGlyph { character: c })?;
-    Ok(glyph_id(id, e.scale(), f))
+    // in a script, the font's form for that size (`ssty`), as TeX draws cmr7 rather than cmr10
+    Ok(glyph_id(f.script_form(id, e.script_level()), e.scale(), f))
+}
+
+/// `\ldots` and `\cdots` as TeX sets them: `\mathinner{\ldotp\ldotp\ldotp}`, three dots with a
+/// thin space between them (punctuation's, so none in scripts), each in the script's own form.
+fn dots(dot: char, e: Style) -> R<MathBox> {
+    let g = glyph(dot, e)?;
+    let mut math_box = g.clone();
+    for _ in 0..2 {
+        if !e.is_script() {
+            math_box.append(&MathBox::space(em(e, 3.0 / 18.0)));
+        }
+        math_box.append(&g);
+    }
+    math_box.single_glyph = false;
+    Ok(math_box)
 }
 
 /// Characters the font lacks, drawn with an equivalent it has.
@@ -239,6 +264,8 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             }
             upright_text(&local, e, ctx)
         }
+        Node::Operator { symbol: '…', .. } => dots('.', e),
+        Node::Operator { symbol: '⋯', .. } => dots('⋅', e),
         Node::Operator { symbol, .. } => glyph(*symbol, e),
         Node::FixedDelimiter { symbol, size, .. } => {
             let total = [1.2, 1.8, 2.4, 3.0][(*size as usize).clamp(1, 4) - 1];
@@ -655,12 +682,19 @@ fn compose_scripts(base: &Node, sup: Option<&Node>, sub: Option<&Node>, e: Style
     let mut u = 0.0;
     let mut v = 0.0;
     if let Some(s) = &s {
-        let rise = if e.cramped { k(e, |c| c.superscript_shift_up_cramped()) } else { k(e, |c| c.superscript_shift_up()) };
+        let rise = match e.font.display_superscript_shift() {
+            Some(shift) if e.level == Level::Display && !e.cramped => em(e, shift),
+            _ if e.cramped => k(e, |c| c.superscript_shift_up_cramped()),
+            _ => k(e, |c| c.superscript_shift_up()),
+        };
         let drop = if is_simple { 0.0 } else { b.height - k(e, |c| c.superscript_baseline_drop_max()) };
         u = rise.max(drop).max(s.depth + k(e, |c| c.superscript_bottom_min()));
     }
     if let Some(d) = &d {
-        let descent = k(e, |c| c.subscript_shift_down());
+        let descent = match e.font.lone_subscript_shift() {
+            Some(shift) if s.is_none() => em(e, shift),
+            _ => k(e, |c| c.subscript_shift_down()),
+        };
         let drop = if is_simple { 0.0 } else { b.depth + k(e, |c| c.subscript_baseline_drop_min()) };
         v = descent.max(drop).max(d.height - k(e, |c| c.subscript_top_max()));
     }
@@ -725,6 +759,14 @@ fn limits(b: MathBox, above: Option<&Node>, below: Option<&Node>, e: Style, ctx:
         let gap = k(e, |c| c.lower_limit_gap_min()).max(k(e, |c| c.lower_limit_baseline_drop_min()) - d.height);
         math_box.place(d, (width - d.width - delta) / 2.0, -(b.depth + gap + d.height));
     }
+    if let Some(padding) = e.font.limit_padding() {
+        if s.is_some() {
+            math_box.height += em(e, padding);
+        }
+        if d.is_some() {
+            math_box.depth += em(e, padding);
+        }
+    }
     Ok(math_box)
 }
 
@@ -741,7 +783,7 @@ fn large_operator(c: char, e: Style) -> R<MathBox> {
             }
         }
     }
-    let mut math_box = glyph_id(chosen, e.scale(), f);
+    let mut math_box = glyph_id(f.script_form(chosen, e.script_level()), e.scale(), f);
     // centered on the math axis
     let axis = k(e, |c| c.axis_height());
     let offset = axis - (math_box.height - math_box.depth) / 2.0;

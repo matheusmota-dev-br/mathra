@@ -46,6 +46,39 @@ impl MathFont {
         }
     }
 
+    /// How far a subscript without a superscript goes down, in em, where the font says otherwise
+    /// than its MATH table: Latin Modern Math, which stands for Computer Modern, takes cmsy10's `sub1`
+    /// (0.15 em) as pdfTeX does; its MATH table has only `sub2` (0.247 em), meant for a subscript
+    /// under a superscript.
+    pub fn lone_subscript_shift(self) -> Option<f32> {
+        match self {
+            MathFont::StixTwo => None,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => Some(0.15),
+        }
+    }
+
+    /// How far a superscript goes up in display style, in em, where the font says otherwise than its
+    /// MATH table: Latin Modern Math takes cmsy10's `sup1` (0.413 em), as pdfTeX does in display.
+    pub fn display_superscript_shift(self) -> Option<f32> {
+        match self {
+            MathFont::StixTwo => None,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => Some(0.413),
+        }
+    }
+
+    /// The room TeX leaves above an upper limit and below a lower one (`big_op_spacing5`), in em,
+    /// for the font that stands for Computer Modern: cmex10's 0.1 em. The MATH table has no such
+    /// constant.
+    pub fn limit_padding(self) -> Option<f32> {
+        match self {
+            MathFont::StixTwo => None,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => Some(0.1),
+        }
+    }
+
     /// The font, parsed once.
     pub fn get(self) -> &'static Font {
         match self {
@@ -64,6 +97,9 @@ impl MathFont {
 
 pub struct Font {
     face: Face<'static>,
+    /// The `ssty` alternates of a glyph: its forms for scripts and for scripts of scripts, drawn for
+    /// those sizes as TeX draws its 7pt and 5pt designs (wider and bolder than the 10pt one scaled)
+    script_forms: std::collections::HashMap<GlyphId, Vec<GlyphId>>,
 }
 
 /// The default font (STIX Two Math).
@@ -83,7 +119,18 @@ pub struct Part {
 
 impl Font {
     fn parse(data: &'static [u8]) -> Font {
-        Font { face: Face::parse(data, 0).expect("valid embedded font") }
+        let face = Face::parse(data, 0).expect("valid embedded font");
+        let script_forms = script_forms(&face);
+        Font { face, script_forms }
+    }
+
+    /// The glyph to draw at a script level (1: script, 2: script of script): its `ssty` form for
+    /// that level, the last one there is for deeper levels, or the glyph itself.
+    pub fn script_form(&self, id: GlyphId, level: usize) -> GlyphId {
+        if level == 0 {
+            return id;
+        }
+        self.script_forms.get(&id).and_then(|forms| forms.get(level - 1).or(forms.last())).copied().unwrap_or(id)
     }
 
     pub fn units_per_em(&self) -> f32 {
@@ -180,6 +227,39 @@ impl Font {
                 })
                 .collect(),
         )
+    }
+}
+
+/// The alternates of the GSUB `ssty` feature, by glyph.
+fn script_forms(face: &Face<'static>) -> std::collections::HashMap<GlyphId, Vec<GlyphId>> {
+    use ttf_parser::gsub::SubstitutionSubtable;
+    let mut forms = std::collections::HashMap::new();
+    let Some(gsub) = face.tables().gsub else { return forms };
+    for feature in gsub.features.into_iter().filter(|f| f.tag == ttf_parser::Tag::from_bytes(b"ssty")) {
+        for index in feature.lookup_indices {
+            let Some(lookup) = gsub.lookups.get(index) else { continue };
+            for subtable in lookup.subtables.into_iter::<SubstitutionSubtable>() {
+                let SubstitutionSubtable::Alternate(alternate) = subtable else { continue };
+                for (i, set) in alternate.alternate_sets.into_iter().enumerate() {
+                    if let Some(glyph) = coverage_glyph(&alternate.coverage, i as u16) {
+                        forms.entry(glyph).or_insert_with(|| set.alternates.into_iter().collect());
+                    }
+                }
+            }
+        }
+    }
+    forms
+}
+
+/// The glyph a coverage table lists at `index`.
+fn coverage_glyph(coverage: &ttf_parser::opentype_layout::Coverage, index: u16) -> Option<GlyphId> {
+    use ttf_parser::opentype_layout::Coverage;
+    match coverage {
+        Coverage::Format1 { glyphs } => glyphs.get(index),
+        Coverage::Format2 { records } => records.into_iter().find_map(|r| {
+            let first = r.value;
+            (index >= first && index - first <= r.end.0 - r.start.0).then(|| GlyphId(r.start.0 + index - first))
+        }),
     }
 }
 
