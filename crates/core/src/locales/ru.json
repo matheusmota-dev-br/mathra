@@ -72,6 +72,7 @@
   "determinant": "определитель",
   "cases": "случаи",
   "diagram": "диаграмма",
+  "diagram_arrow": "стрелка от {0} к {1}",
   "capital": "заглавная {0}",
   "negative": "минус",
   "open_interval": "начало открытого интервала",

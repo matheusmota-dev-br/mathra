@@ -1351,6 +1351,36 @@
    ]
   },
   {
+   "id": "diagrams",
+   "title": "Commutative diagrams (amscd, tikz-cd, xymatrix)",
+   "rows": [
+    {
+     "tex": "\\begin{CD} A @>f>> B \\\\ @VgVV @VVhV \\\\ C @>k>> D \\end{CD}"
+    },
+    {
+     "tex": "\\begin{tikzcd} A \\arrow[r, \"f\"] \\arrow[d, \"g\"'] \\arrow[dr, \"h\" description] & B \\arrow[d, \"k\"] \\\\ C \\arrow[r, \"\\ell\"'] & D \\end{tikzcd}"
+    },
+    {
+     "tex": "\\begin{tikzcd} X \\arrow[r, bend left, \"f\"] \\arrow[r, bend right, \"g\"'] & Y \\end{tikzcd}"
+    },
+    {
+     "tex": "\\begin{tikzcd} 0 \\arrow[r] & A \\arrow[r, hook] & B \\arrow[r, two heads] & C \\arrow[r] & 0 \\end{tikzcd}"
+    },
+    {
+     "tex": "\\begin{tikzcd} P \\arrow[r] \\arrow[d] \\arrow[dr, phantom, \"\\lrcorner\" very near start] & X \\arrow[d] \\\\ Y \\arrow[r] & Z \\end{tikzcd}"
+    },
+    {
+     "tex": "\\begin{tikzcd} A \\arrow[r, dashed] & B \\arrow[r, dotted] & C \\arrow[r, Rightarrow] & D \\arrow[r, mapsto] & E \\end{tikzcd}"
+    },
+    {
+     "tex": "\\xymatrix{ A \\ar[r]^f \\ar[d]_g & B \\ar[d]^h \\\\ C \\ar[r]_k & D }"
+    },
+    {
+     "tex": "\\xymatrix{ A \\ar@{^{(}->}[r] \\ar@/^/[rr]^{\\phi} & B \\ar@{->>}[r] & C }"
+    }
+   ]
+  },
+  {
    "id": "school",
    "title": "School arithmetic (mathra)",
    "rows": [

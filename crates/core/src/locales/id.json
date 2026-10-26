@@ -64,6 +64,7 @@
   "determinant": "determinan",
   "cases": "kasus",
   "diagram": "diagram",
+  "diagram_arrow": "panah dari {0} ke {1}",
   "capital": "{0} kapital",
   "negative": "negatif",
   "open_interval": "buka interval",

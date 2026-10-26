@@ -111,6 +111,7 @@
   "determinant": "determinante",
   "cases": "casos",
   "diagram": "diagrama",
+  "diagram_arrow": "flecha de {0} a {1}",
   "capital": "{0} mayúscula",
   "negative": "menos",
   "open_interval": "abre intervalo",

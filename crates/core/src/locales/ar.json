@@ -64,6 +64,7 @@
   "determinant": "المحدد",
   "cases": "حالات",
   "diagram": "مخطط",
+  "diagram_arrow": "سهم من {0} إلى {1}",
   "capital": "{0} كبيرة",
   "negative": "سالب",
   "open_interval": "بداية فترة مفتوحة",

@@ -1,6 +1,6 @@
 //! Substitution macros (L-MAC-1), package commands and the boundary of what mathra does not do (spec/boundary.md).
 
-use mathra::tree::{Node, TableKind};
+use mathra::tree::{ArrowHead, ArrowLine, ArrowTail, LabelSide, Node, TableKind};
 use mathra::{convert, Locale, Options};
 
 fn pt(tex: &str) -> mathra::Output {
@@ -62,6 +62,72 @@ fn amscd_commutative_diagram() {
 }
 
 #[test]
+fn tikzcd_arrows_between_any_two_cells() {
+    let r = en(r#"\begin{tikzcd} A \arrow[r, "f"] \arrow[d, "g"'] \arrow[dr, "h" description] & B \arrow[d, "k"] \\ C \arrow[r, "\ell"', dashed] & D \end{tikzcd}"#);
+    let Node::ArrowDiagram { cells, arrows } = &r.tree.children()[0] else { panic!("{:?}", r.tree) };
+    assert_eq!((cells.len(), cells[0].len()), (2, 2));
+    let ends: Vec<_> = arrows.iter().map(|a| (a.from, a.to)).collect();
+    assert_eq!(ends, [((0, 0), (0, 1)), ((0, 0), (1, 0)), ((0, 0), (1, 1)), ((0, 1), (1, 1)), ((1, 0), (1, 1))]);
+    let sides: Vec<_> = arrows.iter().map(|a| a.labels[0].side).collect();
+    assert_eq!(sides, [LabelSide::Left, LabelSide::Right, LabelSide::On, LabelSide::Left, LabelSide::Right]);
+    assert_eq!(arrows[4].line, ArrowLine::Dashed);
+    assert_eq!(r.text, "A, B; C, D; A →[f] B; A →[g] C; A →[h] D; B →[k] D; C →[ℓ] D");
+    assert!(r.speech.ends_with("arrow from A to D (h); arrow from B to D (k); arrow from C to D (ℓ)"), "{}", r.speech);
+    assert!(pt(r"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}").speech.ends_with("seta de A para B"));
+}
+
+#[test]
+fn tikzcd_arrow_styles() {
+    let arrow = |options: &str| {
+        let r = en(&format!(r"\begin{{tikzcd}} A \arrow[{options}] & B \\ C & D \end{{tikzcd}}"));
+        let Node::ArrowDiagram { arrows, .. } = &r.tree.children()[0] else { panic!() };
+        arrows[0].clone()
+    };
+    assert_eq!(arrow("r, hook").tail, ArrowTail::Hook);
+    assert_eq!(arrow("r, hook'").tail, ArrowTail::HookRight);
+    assert_eq!(arrow("r, mapsto").tail, ArrowTail::Bar);
+    assert_eq!(arrow("r, tail").tail, ArrowTail::Tail);
+    assert_eq!(arrow("r, two heads").head, ArrowHead::TwoHeads);
+    assert_eq!(arrow("r, no head").head, ArrowHead::None);
+    assert_eq!(arrow("r, dotted").line, ArrowLine::Dotted);
+    assert_eq!(arrow("r, squiggly").line, ArrowLine::Squiggly);
+    let equal = arrow("r, equal");
+    assert_eq!((equal.line, equal.head), (ArrowLine::Double, ArrowHead::None));
+    assert_eq!(arrow("r, Rightarrow").line, ArrowLine::Double);
+    assert_eq!(arrow("r, leftrightarrow").tail, ArrowTail::Head);
+    assert_eq!(arrow("r, bend left").bend, 30);
+    assert_eq!(arrow("r, bend right=50").bend, -50);
+    assert!(arrow("r, shift left").shift > 0.0 && arrow("r, shift right=2").shift < 0.0);
+    assert_eq!(arrow("dr").to, (1, 1));
+    assert_eq!(arrow("to=2-2").to, (1, 1));
+    assert_eq!(arrow(r#"r, "f" near start"#).labels[0].position, 0.25);
+    assert_eq!(arrow(r#"r, "f", very near end"#).labels[0].position, 0.875);
+    let phantom = arrow(r#"dr, phantom, "\lrcorner" very near start"#);
+    assert_eq!((phantom.line, phantom.labels[0].side), (ArrowLine::None, LabelSide::On));
+    // layout tweaks are read and ignored; the environment's own options too
+    en(r#"\begin{tikzcd}[column sep=large, row sep=2em] A \arrow[r, crossing over, red, "{f,g}" swap] & B \end{tikzcd}"#);
+}
+
+#[test]
+fn xymatrix_arrows_and_labels() {
+    let r = en(r"\xymatrix@C=3em@R=2pc{ A \ar[r]^f \ar[d]_g \ar[dr]|h & B \ar[d]^{k} \\ C \ar[r]_\ell & D }");
+    let Node::ArrowDiagram { cells, arrows } = &r.tree.children()[0] else { panic!("{:?}", r.tree) };
+    assert_eq!(cells.len(), 2);
+    let sides: Vec<_> = arrows.iter().map(|a| a.labels[0].side).collect();
+    assert_eq!(sides, [LabelSide::Left, LabelSide::Right, LabelSide::On, LabelSide::Left, LabelSide::Right]);
+    assert_eq!(r.text, "A, B; C, D; A →[f] B; A →[g] C; A →[h] D; B →[k] D; C →[ℓ] D");
+    let r = en(r"\xymatrix{ A \ar@{^{(}->}[r] \ar@/^/[rr]^<{\phi} & B \ar@{->>}[r] & C \ar@{-->}[d] \ar@{=}[r] & E \\ & & D \ar@{|->}[u] }");
+    let Node::ArrowDiagram { arrows, .. } = &r.tree.children()[0] else { panic!() };
+    assert_eq!(arrows[0].tail, ArrowTail::Hook);
+    assert!(arrows[1].bend > 0 && arrows[1].labels[0].position < 0.5);
+    assert_eq!(arrows[2].head, ArrowHead::TwoHeads);
+    assert_eq!(arrows[3].line, ArrowLine::Dashed);
+    assert_eq!((arrows[4].line, arrows[4].head), (ArrowLine::Double, ArrowHead::None));
+    assert_eq!((arrows[5].tail, arrows[5].to), (ArrowTail::Bar, (0, 2)));
+    assert_eq!(en(r#"\xymatrix{ A \ar"2,2" & \\ & B }"#).text, "A, ; , B; A → B");
+}
+
+#[test]
 fn substack_multicolumn_and_intertext() {
     pt(r"\sum_{\substack{0 \le i \le m \\ 0 < j < n}} P(i, j)");
     let r = pt(r"\begin{array}{|c|c|} \hline \multicolumn{2}{|c|}{\text{Total}} \\ \hline 1 & 2 \\ \hline \end{array}");
@@ -95,15 +161,8 @@ fn latex_boxes_and_spaces() {
 }
 
 #[test]
-fn boundary_tex_programming_and_diagrams_stay_out() {
-    for (tex, reason) in [
-        (r"\def\a{1}\ifx\a\a sim\fi", r"\ifx"),
-        (r"\catcode`\@=11 x", r"\catcode"),
-        (r"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}", "tikzcd"),
-        (r"\xymatrix{A \ar[r] & B}", r"\xymatrix"),
-        (r"\tikz \draw (0,0)--(1,1);", r"\tikz"),
-        (r"\chemfig{H-C}", r"\chemfig"),
-    ] {
+fn boundary_tex_programming_and_drawings_stay_out() {
+    for (tex, reason) in [(r"\def\a{1}\ifx\a\a sim\fi", r"\ifx"), (r"\catcode`\@=11 x", r"\catcode"), (r"\tikz \draw (0,0)--(1,1);", r"\tikz"), (r"\chemfig{H-C}", r"\chemfig")] {
         assert!(error(tex).contains(reason), "{tex}");
     }
 }

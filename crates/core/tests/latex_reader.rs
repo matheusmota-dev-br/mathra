@@ -686,6 +686,25 @@ fn commutative_diagram() {
     has(&recovers(r"\begin{CD} A @>>> B", "E-REC-5"), &["Diagram"]);
 }
 
+#[test]
+fn arrow_diagrams_recover() {
+    has(&recovers(r"\begin{tikzcd} A \arrow[r, wobbly] & B \end{tikzcd}", "E-REC-1"), &["ArrowDiagram"]);
+    has(&recovers(r#"\begin{tikzcd} A \arrow["f"] & B \end{tikzcd}"#, "E-REC-7"), &["arrows: []"]);
+    has(&recovers(r"\begin{tikzcd} A \arrow[rr] & B \end{tikzcd}", "E-REC-7"), &["arrows: []"]);
+    has(&recovers(r"\begin{tikzcd} A \arrow[u] \end{tikzcd}", "E-REC-7"), &["arrows: []"]);
+    has(&recovers(r#"\begin{tikzcd} A \arrow[r, "f] & B \end{tikzcd}"#, "E-REC-4"), &["ArrowDiagram"]);
+    has(&recovers(r"\begin{tikzcd} A \arrow[to=x] & B \end{tikzcd}", "E-REC-1"), &["ArrowDiagram"]);
+    has(&recovers(r"\begin{tikzcd} A \arrow[r] & B", "E-REC-5"), &["ArrowDiagram"]);
+    has(&recovers(r"\xymatrix{ A \ar & B }", "E-REC-7"), &["arrows: []"]);
+    has(&recovers(r"\xymatrix{ A \ar[x] & B }", "E-REC-1"), &["arrows: []"]);
+    has(&recovers(r#"\xymatrix{ A \ar"0,1" & B }"#, "E-REC-1"), &["arrows: []"]);
+    has(&recovers(r"\xymatrix{ A \ar[l] & B }", "E-REC-7"), &["arrows: []"]);
+    has(&recovers(r#"\xymatrix{ A \ar"1,1" & B }"#, "E-REC-7"), &["arrows: []"]);
+    // a cell can hold \arccos and other commands that start like \ar
+    has(&tree(r"\begin{tikzcd} \arccos x \arrow[r] & \arg z \end{tikzcd}"), &["arccos", "arg"]);
+    has(&tree(r"\xymatrix{ \arccos x \ar[r] & \{ y \} }"), &["arccos"]);
+}
+
 // ---------- text ----------
 
 #[test]

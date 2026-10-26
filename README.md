@@ -36,17 +36,36 @@ Every image below is an SVG written by mathra; the LaTeX for each one is in [`cr
 <tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/schrodinger.svg" alt="Schrödinger equation"><br><sub>Schrödinger equation</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/einstein.svg" alt="Einstein field equations"><br><sub>Einstein field equations</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/cauchy.svg" alt="Cauchy's integral formula"><br><sub>Cauchy's integral formula</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/fourier.svg" alt="Fourier transform"><br><sub>Fourier transform</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/bayes.svg" alt="Bayes' theorem"><br><sub>Bayes' theorem</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/navierstokes.svg" alt="Navier–Stokes equations (incompressible)"><br><sub>Navier–Stokes equations (incompressible)</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/stokes.svg" alt="Stokes' theorem"><br><sub>Stokes' theorem</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/eulerlagrange.svg" alt="Euler–Lagrange equation"><br><sub>Euler–Lagrange equation</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/zeta.svg" alt="Riemann zeta as an Euler product"><br><sub>Riemann zeta as an Euler product</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/dirac.svg" alt="Dirac equation"><br><sub>Dirac equation</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/planck.svg" alt="Planck's law"><br><sub>Planck's law</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/ramanujan.svg" alt="Ramanujan's series for 1/π"><br><sub>Ramanujan's series for 1/π</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/blackscholes.svg" alt="Black–Scholes equation"><br><sub>Black–Scholes equation</sub></td></tr>
+</table>
+
+### Big equations
+
+Systems, long derivations and dense tensor notation, each in one call, in strict mode:
+
+<table>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/navierstokes3d.svg" alt="Navier–Stokes in Cartesian components, with continuity"><br><sub>Navier–Stokes in Cartesian components, with continuity</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/compressible.svg" alt="Compressible Navier–Stokes, with the viscous stress tensor"><br><sub>Compressible Navier–Stokes, with the viscous stress tensor</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/riemann.svg" alt="Riemann curvature tensor and Christoffel symbols"><br><sub>Riemann curvature tensor and Christoffel symbols</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/qed.svg" alt="Lagrangian of quantum electrodynamics"><br><sub>Lagrangian of quantum electrodynamics</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/gaussproof.svg" alt="The Gaussian integral, step by step in polar coordinates"><br><sub>The Gaussian integral, step by step in polar coordinates</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/vandermonde.svg" alt="Vandermonde determinant"><br><sub>Vandermonde determinant</sub></td></tr>
 </table>
 
 ### Beyond the basics
 
-Continued fractions, matrices with dots, `cases`, binomials, labeled braces, chemistry (`\ce`), units (`\SI`), commutative diagrams, the pt-BR locale and computed long division:
+Continued fractions, matrices with dots, `cases`, binomials, labeled braces, chemistry (`\ce`), units (`\SI`), commutative diagrams (amscd, tikz-cd, xymatrix), the pt-BR locale and computed long division:
 
 <table>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/golden.svg" alt="Golden ratio as a continued fraction"><br><sub>Golden ratio as a continued fraction</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/matrix.svg" alt="m × n matrix with dots"><br><sub>m × n matrix with dots</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/piecewise.svg" alt="Piecewise definition"><br><sub>Piecewise definition</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/binomial.svg" alt="Binomial theorem"><br><sub>Binomial theorem</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/braces.svg" alt="Labeled brace"><br><sub>Labeled brace</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/chemistry.svg" alt="Chemical equation (mhchem)"><br><sub>Chemical equation (mhchem)</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/units.svg" alt="Quantity with units (siunitx)"><br><sub>Quantity with units (siunitx)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/diagram.svg" alt="Commutative diagram (amscd)"><br><sub>Commutative diagram (amscd)</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/tikzcd.svg" alt="Pullback with bent arrows (tikz-cd)"><br><sub>Pullback with bent arrows (tikz-cd)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/xymatrix.svg" alt="Short exact sequence (xymatrix)"><br><sub>Short exact sequence (xymatrix)</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/ptbr.svg" alt="pt-BR locale: sen, decimal comma, open interval"><br><sub>pt-BR locale: sen, decimal comma, open interval</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/division.svg" alt="Long division, computed (pt-BR)"><br><sub>Long division, computed (pt-BR)</sub></td></tr>
 </table>
 
@@ -174,10 +193,10 @@ Modern Math, the OpenType Computer Modern of TeX's own documents (about 700 KB m
 - mhchem (`\ce`, `\pu`): formulas, charges, radicals, isotopes, hydrates, bonds, decimal and fractional coefficients, arrows with labels (`->[\Delta]`, `<=>[K_w]`), `\frac` with formulas
 - Substitution macros: `\newcommand`, `\renewcommand`, `\def`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment`
 - Packages: physics (derivatives, `\dd`, `\eval`, `\expval`, `\mel`, `\comm`, `\grad`, `\curl`, `\laplacian`, `\vb`, `\vu`, `\order`, `\Tr`, `\qty`), braket (`\ket`, `\braket`, `\Set`), tensor (`\tensor`, `\indices`), mathtools (`\prescript`, `rcases`, `\overbracket`), xfrac, units, `\genfrac`, `\substack`, `\sideset`, `\smash`, `\mathclap`, `\multicolumn`, `\intertext`, `\hdotsfor`, `\raisebox`, `\scalebox`, `\rule`, `\verb`; old syntax `\cases`, `\matrix`, `\eqalign`
-- amscd commutative diagrams (`\begin{CD}`)
+- commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ, `tikz-cd`, `xymatrix`, `\chemfig` and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ, `\chemfig` and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
 
 ## Benchmark
 
@@ -186,14 +205,14 @@ Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ,
 | Measure | Value |
 |---|---|
 | Constructions | 116 |
-| Strict: converted | 109 (94.0%) |
-| Tolerant: no warning | 109 (94.0%) |
-| Tolerant: with warnings | 7 (6.0%) |
+| Strict: converted | 111 (95.7%) |
+| Tolerant: no warning | 111 (95.7%) |
+| Tolerant: with warnings | 5 (4.3%) |
 | Tolerant: error | 0 (0.0%) |
 | Time per equation, mean | 17.9 µs |
 | Time per equation, p95 | 46.5 µs |
 
-Times vary by a few microseconds between runs. The 7 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and diagrams (`tikz-cd`, `xymatrix`, `\tikz`, `\chemfig`). Tolerant mode draws them as text with a warning.
+Times vary by a few microseconds between runs. The 5 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and drawings with coordinates (`\tikz`, `\chemfig`). Tolerant mode draws them as text with a warning.
 
 ### Compared with KaTeX and MathJax
 
@@ -203,7 +222,7 @@ Times vary by a few microseconds between runs. The 7 that strict mode refuses ar
 |---|---|---|---|
 | Gallery, 18 equations: clean | 18 | 15 | 15 |
 | Gallery: time per equation, mean | 121 µs | 643 µs | 69 µs |
-| Corpus, 116 constructions: clean | 109 | 70 | 62 |
+| Corpus, 116 constructions: clean | 111 | 70 | 62 |
 | Output per equation, gzip | 2.32 KB | 2.43 KB | 0.95 KB + CSS and fonts |
 | Download to render in a browser, gzip | 926 KB | 660 KB | 77 KB + up to 254 KB of fonts |
 

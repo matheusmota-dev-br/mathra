@@ -112,6 +112,7 @@
   "determinant": "déterminant",
   "cases": "cas",
   "diagram": "diagramme",
+  "diagram_arrow": "flèche de {0} vers {1}",
   "capital": "{0} majuscule",
   "negative": "moins",
   "open_interval": "ouvre l'intervalle",

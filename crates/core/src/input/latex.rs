@@ -8,6 +8,8 @@ use crate::Error;
 
 use super::symbols::{self, Symbol};
 
+mod diagram;
+
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
     read_with(tex, locale, registry, true)
 }
@@ -1170,6 +1172,7 @@ impl Reader<'_> {
                 let unit_node = self.sub_reader(&mhchem_unit(&unit), Variant::Upright)?;
                 self.quantity_node(value, unit_node, col)?
             }
+            "xymatrix" => self.xymatrix(col)?,
             "divchave" => {
                 let dividend = self.raw_text()?.trim().to_string();
                 let divisor = self.raw_text()?.trim().to_string();
@@ -1551,6 +1554,10 @@ impl Reader<'_> {
             "CD" => {
                 let raw = self.environment_body("CD", col)?;
                 return self.cd_diagram(&raw, col);
+            }
+            "tikzcd" => {
+                let raw = self.environment_body("tikzcd", col)?;
+                return self.tikzcd(&raw, col);
             }
             "subequations" => {
                 let (items, stop) = self.list()?;

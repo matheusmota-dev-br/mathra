@@ -67,6 +67,7 @@
   "determinant": "determinant",
   "cases": "gevallen",
   "diagram": "diagram",
+  "diagram_arrow": "pijl van {0} naar {1}",
   "capital": "hoofdletter {0}",
   "negative": "min",
   "open_interval": "begin open interval",

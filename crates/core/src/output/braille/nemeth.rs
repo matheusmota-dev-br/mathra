@@ -288,6 +288,11 @@ impl Writer {
             | Node::Quantity { unit: base, .. } => self.node(base, ctx),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(ctx, *symbol),
+            Node::ArrowDiagram { cells, arrows } => {
+                // each arrow is one more line, after the rows of cells
+                let lines: Vec<Vec<Node>> = cells.iter().cloned().chain(arrows.iter().map(|a| vec![a.as_row(cells)])).collect();
+                self.table(TableKind::Diagram, &lines, ctx);
+            }
             Node::LongDivision { dividend, divisor } => {
                 self.number(dividend, ctx);
                 self.put_dots(ctx, "46 34", Kind::Other);
