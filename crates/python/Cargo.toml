@@ -1,8 +1,8 @@
 [package]
 name = "mathra-python"
 # the Python package has its own version, published by py-v* tags (.github/workflows/pypi.yml)
-version = "1.3.0"
-description = "Python bindings of mathra: math LaTeX to accessible SVG"
+version = "1.4.0"
+description = "Python bindings of mathra: math LaTeX, chemistry and diagrams to accessible SVG"
 edition.workspace = true
 license.workspace = true
 publish = false

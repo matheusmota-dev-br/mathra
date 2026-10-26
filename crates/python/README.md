@@ -2,7 +2,7 @@
 
 # mathra
 
-Math LaTeX to accessible SVG, without a TeX install. Every SVG carries the phrase a screen reader says, in 16 languages, and draws with the STIX Two Math font embedded, so it looks the same everywhere. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**.
+Math LaTeX to accessible SVG, without a TeX install, chemistry (chemfig structures, reaction schemes, mechanisms) and commutative diagrams (tikz-cd, xymatrix) included. Every SVG carries the phrase a screen reader says, in 16 languages, and draws with the STIX Two Math font embedded, so it looks the same everywhere. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**.
 
 ```sh
 pip install mathra
@@ -25,6 +25,7 @@ r["warnings"]      # [] — broken LaTeX is drawn anyway and reported here (E-RE
 mathra.tex_to_svg(r"\sum_{n=1}^{\infty} \frac{1}{n^2}", display=False)   # inline style
 mathra.tex_to_svg(r"\vertA\vert", strict=True)                           # ValueError, like TeX
 mathra.render("sqrt(x)/2", input="asciimath")["speech"]                   # also input="mathml"
+mathra.render(r"\chemfig{H_3C-*6(=-=-=-)}")["speech"]                     # 'structure of C7 H8, with 1 aromatic ring'
 ```
 
 | | |
@@ -45,7 +46,13 @@ Every image below is an SVG written by mathra, on a white card so it reads well 
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/matrix.svg" alt="m × n matrix with dots"><br><sub>Matrix with dots</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/piecewise.svg" alt="Piecewise definition"><br><sub>Piecewise definition</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/chemistry.svg" alt="Chemical equation (mhchem)"><br><sub>Chemistry (<code>\ce</code>)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/units.svg" alt="Quantity with units (siunitx)"><br><sub>Units (<code>\SI</code>)</sub></td></tr>
 <tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/maxwell.svg" alt="Maxwell's equations"><br><sub>Maxwell's equations</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/caffeine.svg" alt="Caffeine: fused rings (chemfig)"><br><sub>Caffeine (<code>\chemfig</code>)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/tikzcd.svg" alt="Pullback with bent arrows (tikz-cd)"><br><sub>Commutative diagram (tikz-cd)</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/nitration.svg" alt="Nitration of benzene: structures, mhchem and conditions on the arrow"><br><sub>Reaction scheme (<code>\schemestart</code>)</sub></td></tr>
 </table>
+
+## Chemistry and diagrams
+
+chemfig works inside any equation: structures (rings, wedges, Lewis marks), reaction schemes (`\schemestart … \arrow{->[above][below]} … \schemestop`) and mechanism arrows (`\chemmove`). The speech gives each structure's molecular formula, counted from the drawing. Commutative diagrams come in amscd, tikz-cd and xymatrix. Every construction, drawn live, is in the [gallery](https://matheusmota-dev-br.github.io/mathra/gallery.html) and the [reference](https://matheusmota-dev-br.github.io/mathra/reference.html).
 
 ## What the SVG carries
 

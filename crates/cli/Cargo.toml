@@ -1,6 +1,6 @@
 [package]
 name = "mathra-cli"
-description = "mathra command line: SVG equations without a TeX install."
+description = "mathra command line: accessible SVG equations, chemistry and diagrams, without a TeX install."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
