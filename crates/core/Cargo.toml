@@ -19,7 +19,7 @@ default = ["chem"]
 # structural chemistry (chemfig structures, reaction schemes, mechanisms): spec/chemistry.md
 chem = []
 # Latin Modern Math (the OpenType Computer Modern, GUST Font License) as a second font,
-# chosen with `Options::font`: some 700 KB more in the binary
+# chosen with `convert_in_font` and `typeset_in_font`: some 430 KB more in the binary
 latin-modern = []
 
 [dependencies]
@@ -28,3 +28,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # MathML input: a small XML parser with no dependencies of its own
 roxmltree = "0.20"
+
+[dev-dependencies]
+# tests/fonts.rs reads the original fonts in tools/fonts to check the embedded subsets against them
+ttf-parser = "0.25"

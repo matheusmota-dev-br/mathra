@@ -5,8 +5,8 @@ set -e
 cd "$(dirname "$0")/.."
 # the npm package has its own version (npm/package.json); `version` in the API is the one of mathra's core
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-cargo build -p mathra-wasm --release --target wasm32-unknown-unknown
-wasm=target/wasm32-unknown-unknown/release/mathra_wasm.wasm
+cargo build -p mathra-wasm --profile wasm --target wasm32-unknown-unknown
+wasm=target/wasm32-unknown-unknown/wasm/mathra_wasm.wasm
 out=npm/pkg
 tmp=$(mktemp -d)
 rm -rf "$out"

@@ -141,7 +141,7 @@
       <div class="card feature">
         <div class="eq"><span class="braille-sample" data-braille="\frac{3}{4} + \sqrt{x}" data-locale="pt-BR"></span><small>CMU</small></div>
         <h3>It writes braille</h3>
-        <p>Every equation also comes out in braille: the CMU for Portuguese and Spanish, Nemeth for English, following their official documents and compared with MathCAT. <a href="reference.html#braille">How far to trust it</a>.</p>
+        <p>Every equation also comes out in braille: the CMU for Portuguese and Spanish, Nemeth for the other languages, following their official documents and compared with MathCAT. <a href="reference.html#braille">How far to trust it</a>.</p>
       </div>
       <div class="card feature">
         <div class="eq" data-tex="\chemfig{H_3C-*6(=-=-=-)}"></div>
@@ -176,7 +176,7 @@
       <div class="bench-live-head">
         <div>
           <h3>Run it in your browser</h3>
-          <p>Loads KaTeX 0.16.22 and MathJax 3.2.2 from jsDelivr and times the three libraries on the 18 gallery equations, on your machine.</p>
+          <p>Loads KaTeX 0.16.22 and MathJax 3.2.2 from jsDelivr and times the three libraries on the playground's 18 examples, on your machine.</p>
         </div>
         <button class="button solid" id="bench-run" type="button">Run benchmark</button>
       </div>
@@ -187,11 +187,11 @@
       <h3>Reading the numbers</h3>
       <ul>
         <li><strong>KaTeX is faster and lighter to ship.</strong> It writes HTML that depends on its stylesheet and web fonts, so its output is not a standalone image: it cannot go into an email, a README, a slide or a PDF as is. That is why its output looks smallest.</li>
-        <li><strong>MathJax's SVG output is the closest equivalent</strong> to mathra's: one standalone SVG per equation. Here mathra is about 5× faster, with output of similar size.</li>
-        <li><strong>mathra's download is mostly its font</strong>: 628 of the 1155 KB are STIX Two Math, embedded so the output never depends on what is installed; the 16 languages add 35 KB and structural chemistry about 70 KB. Outside the browser (CLI, Rust, Python) nothing is downloaded at all, and a native conversion takes <strong>17.9 µs</strong> on average.</li>
-        <li><strong>The corpus favors mathra</strong>: its 116 constructions were written while building it, and include pt-BR and mathra-only commands. The 18 gallery equations are standard LaTeX except three that only mathra reads (<code>\SI</code>, <code>\sen</code>, <code>\divchave</code>).</li>
+        <li><strong>MathJax's SVG output is the closest equivalent</strong> to mathra's: one standalone SVG per equation. Here mathra is about 4× faster, with output of similar size.</li>
+        <li><strong>Almost half of mathra's download is its font</strong>: 356 of the 782 KB are STIX Two Math, embedded so the output never depends on what is installed, and cut down to the glyphs mathra draws; the 16 languages add 35 KB and structural chemistry about 50 KB. Outside the browser (CLI, Rust, Python) nothing is downloaded at all, and a native conversion takes <strong>17.9 µs</strong> on average.</li>
+        <li><strong>The corpus favors mathra</strong>: its 116 constructions were written while building it, and include pt-BR and mathra-only commands. The playground's 18 examples are standard LaTeX except three that only mathra reads (<code>\SI</code>, <code>\sen</code>, <code>\divchave</code>).</li>
         <li>“Converted cleanly” means no error and no command drawn in red. MathJax runs with all its TeX packages except <code>noundefined</code>; KaTeX with <code>throwOnError</code> and mhchem.</li>
-        <li>Snapshot: Node 24, Apple M5, 50 conversions per equation after a warm-up; the times are from the 1.3.0 run, the counts and sizes from the current code. The script is in <a href="https://github.com/matheusmota-dev-br/mathra/tree/main/bench"><code>bench/</code></a>: <code>cd bench &amp;&amp; npm install &amp;&amp; npm run compare</code>.</li>
+        <li>Snapshot: Node 24, Apple M5, 50 conversions per equation after a warm-up; times, counts and sizes from one run of the current code. The script is in <a href="https://github.com/matheusmota-dev-br/mathra/tree/main/bench"><code>bench/</code></a>: <code>cd bench &amp;&amp; npm install &amp;&amp; npm run compare</code>.</li>
       </ul>
     </div>
   </section>
@@ -297,7 +297,7 @@ println!("{}", r.speech);</pre>
   </mfrac>
 </math>`, "mathml"],
   ];
-  // the benchmark keeps the 18 gallery equations it was published with (bench/famous.json): LaTeX only
+  // the benchmark keeps the 18 examples it was published with (bench/famous.json): LaTeX only
   const BENCH = EXAMPLES.slice(0, 18);
   const WIDE = ["Schrödinger equation", "Reaction scheme"];
   // the tiles on this page; the gallery page (gallery.html, corpus/gallery.json) has every example, by group
@@ -520,11 +520,11 @@ println!("{}", r.speech);</pre>
   // measured with bench/compare.mjs (Node 24, Apple M5); see "Reading the numbers"
   const LIBS = ["mathra", "MathJax (SVG)", "KaTeX (HTML)"];
   const SNAPSHOT = {
-    time: [120.9, 643.4, 68.5],
+    time: [135.5, 577.6, 65.1],
     famous: [18, 15, 15],
     corpus: [112, 70, 62],
     out: [2.42, 2.43, 0.95],
-    ship: [1155, 660, 331],
+    ship: [782, 660, 331],
   };
 
   function bars(title, note, values, format, max) {
@@ -541,8 +541,8 @@ println!("{}", r.speech);</pre>
 
   function drawBench() {
     $("bench-static").innerHTML =
-      bars("Time per equation", "Mean over the 18 gallery equations.", SNAPSHOT.time, us) +
-      bars("Converted cleanly", "Gallery equations, out of 18.", SNAPSHOT.famous, (v) => `${v} / 18`, 18) +
+      bars("Time per equation", "Mean over the playground's 18 examples.", SNAPSHOT.time, us) +
+      bars("Converted cleanly", "Playground examples, out of 18.", SNAPSHOT.famous, (v) => `${v} / 18`, 18) +
       bars("Converted cleanly, corpus", "Hand-written constructions, out of 116. Written for mathra.", SNAPSHOT.corpus, (v) => `${v} / 116`, 116) +
       bars("Output per equation", "Mean gzip size. KaTeX's needs its CSS and fonts to display.", SNAPSHOT.out, (v) => `${v.toFixed(2)} KB`) +
       bars("Download to render in a browser", "gzip. KaTeX: 77 KB of script and CSS plus up to 254 KB of fonts, loaded on demand.", SNAPSHOT.ship, (v) => `${v} KB`);
@@ -595,8 +595,8 @@ println!("{}", r.speech);</pre>
         clean.push(ok);
       }
       out.innerHTML =
-        bars("Time per equation, in your browser", "Mean over the 18 gallery equations.", time, us) +
-        bars("Converted cleanly, in your browser", "Gallery equations, out of 18.", clean, (v) => `${v} / 18`, 18);
+        bars("Time per equation, in your browser", "Mean over the playground's 18 examples.", time, us) +
+        bars("Converted cleanly, in your browser", "Playground examples, out of 18.", clean, (v) => `${v} / 18`, 18);
     } catch (e) {
       out.innerHTML = `<p class="empty">${escape(String(e.message ?? e))}</p>`;
     }
