@@ -44,6 +44,19 @@ mod latin_modern {
         assert_ne!(svg, stix);
         assert_eq!(MathFont::LatinModern.get().units_per_em(), 1000.0);
     }
+
+    #[test]
+    fn moustaches_are_built_from_brace_halves() {
+        // Latin Modern Math has no ⎰ ⎱: they are made of the braces' halves, as cmex makes them,
+        // at least the two halves tall and growing with what they enclose
+        let options = Options { display: false, ..Default::default() };
+        for d in [r"\lmoustache", r"\rmoustache"] {
+            let (b, w) = typeset_in_font(&format!(r"\left{d} x \right."), &options, MathFont::LatinModern).unwrap();
+            assert!(w.is_empty() && b.height + b.depth >= 1480.0, "{d}: {w:?} {}", b.height + b.depth);
+            let (tall, _) = typeset_in_font(&format!(r"\left{d} \rule{{0pt}}{{5em}} \right."), &options, MathFont::LatinModern).unwrap();
+            assert!(tall.height + tall.depth > 4500.0, "{d}");
+        }
+    }
 }
 
 /// The embedded fonts are subsets of the originals in tools/fonts (tools/fonts/subset.sh): every

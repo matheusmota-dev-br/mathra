@@ -12,6 +12,13 @@ type R<T> = Result<T, Error>;
 pub fn vertical(c: char, target: f32, e: Style) -> R<MathBox> {
     let f = e.font();
     let s = e.scale();
+    if f.glyph(c).is_none() {
+        if let Some(parts) = moustache(c, f) {
+            // as cmex draws it: the two halves at least, joined by extenders as tall as needed
+            let least: f32 = parts.iter().filter(|p| !p.extender).map(|p| p.advance).sum::<f32>() - f.min_overlap();
+            return Ok(assemble(&parts, (target / s).max(least), s, true, f));
+        }
+    }
     let id = f.glyph(c).ok_or(Error::MissingGlyph { character: c })?;
     let base = glyph_id(id, s, f);
     if base.total() >= target {
@@ -27,6 +34,25 @@ pub fn vertical(c: char, target: f32, e: Style) -> R<MathBox> {
         return Ok(assemble(&parts, target / s, s, true, f));
     }
     Ok(variants.last().map_or(base, |(v, _)| glyph_id(*v, s, f)))
+}
+
+/// `\lmoustache` (⎰) and `\rmoustache` (⎱) in a font without them (Latin Modern Math): built as
+/// TeX's cmex builds them, from the halves of the braces and their extender, bottom to top. The
+/// connectors are the ones the braces' own assemblies give these parts.
+fn moustache(c: char, f: &Font) -> Option<Vec<Part>> {
+    let (bottom, top) = match c {
+        '⎰' => ('⎭', '⎧'),
+        '⎱' => ('⎩', '⎫'),
+        _ => return None,
+    };
+    let known: Vec<Part> = ['{', '}'].iter().filter_map(|b| f.glyph(*b).and_then(|id| f.assembly(id, true))).flatten().collect();
+    let part = |c: char| {
+        let id = f.glyph(c)?;
+        known.iter().find(|p| p.id == id).copied()
+    };
+    // (the braces' extender is a glyph of their own, its stem where the halves have theirs)
+    let extender = known.iter().find(|p| p.extender).copied()?;
+    Some(vec![part(bottom)?, extender, part(top)?])
 }
 
 /// Horizontal glyph with a width of at least `target`.
