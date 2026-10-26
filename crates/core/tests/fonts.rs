@@ -68,6 +68,21 @@ mod latin_modern {
     }
 
     #[test]
+    fn limits_have_room_above_and_below_as_in_tex() {
+        // big_op_spacing5: 0.1 em between the box's edge and the ink of an upper or lower limit
+        let f = MathFont::LatinModern.get();
+        let b = typeset_in_font(r"\sum_{i=0}^N x", &Options::default(), MathFont::LatinModern).unwrap().0;
+        let (mut top, mut bottom) = (f32::MIN, f32::MAX);
+        for item in &b.items {
+            if let mathra::layout::Item::Glyph { id, y, scale, .. } = item {
+                let (_, y0, _, y1) = f.limits(*id);
+                (top, bottom) = (top.max(y + y1 * scale), bottom.min(y + y0 * scale));
+            }
+        }
+        assert!((b.height - top - 100.0).abs() < 1.0 && (b.depth + bottom - 100.0).abs() < 1.0, "{} {top} {} {bottom}", b.height, b.depth);
+    }
+
+    #[test]
     fn moustaches_are_built_from_brace_halves() {
         // Latin Modern Math has no ⎰ ⎱: they are made of the braces' halves, as cmex makes them,
         // at least the two halves tall and growing with what they enclose

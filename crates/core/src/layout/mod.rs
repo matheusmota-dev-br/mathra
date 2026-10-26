@@ -759,6 +759,14 @@ fn limits(b: MathBox, above: Option<&Node>, below: Option<&Node>, e: Style, ctx:
         let gap = k(e, |c| c.lower_limit_gap_min()).max(k(e, |c| c.lower_limit_baseline_drop_min()) - d.height);
         math_box.place(d, (width - d.width - delta) / 2.0, -(b.depth + gap + d.height));
     }
+    if let Some(padding) = e.font.limit_padding() {
+        if s.is_some() {
+            math_box.height += em(e, padding);
+        }
+        if d.is_some() {
+            math_box.depth += em(e, padding);
+        }
+    }
     Ok(math_box)
 }
 

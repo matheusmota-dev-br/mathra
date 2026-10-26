@@ -68,6 +68,17 @@ impl MathFont {
         }
     }
 
+    /// The room TeX leaves above an upper limit and below a lower one (`big_op_spacing5`), in em,
+    /// for the font that stands for Computer Modern: cmex10's 0.1 em. The MATH table has no such
+    /// constant.
+    pub fn limit_padding(self) -> Option<f32> {
+        match self {
+            MathFont::StixTwo => None,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => Some(0.1),
+        }
+    }
+
     /// The font, parsed once.
     pub fn get(self) -> &'static Font {
         match self {
