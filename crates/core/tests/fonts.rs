@@ -45,3 +45,93 @@ mod latin_modern {
         assert_eq!(MathFont::LatinModern.get().units_per_em(), 1000.0);
     }
 }
+
+/// The embedded fonts are subsets of the originals in tools/fonts (tools/fonts/subset.sh): every
+/// character keeps its glyph ID, outline and metrics, and so do the glyphs the MATH table reaches
+/// from it (size variants, assembly parts). Glyph IDs name the paths in the SVG.
+mod subsets {
+    use std::collections::BTreeSet;
+    use ttf_parser::{Face, GlyphId, OutlineBuilder};
+
+    struct Path(String);
+
+    impl OutlineBuilder for Path {
+        fn move_to(&mut self, x: f32, y: f32) {
+            self.0 += &format!("M{x} {y}");
+        }
+        fn line_to(&mut self, x: f32, y: f32) {
+            self.0 += &format!("L{x} {y}");
+        }
+        fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+            self.0 += &format!("Q{x1} {y1} {x} {y}");
+        }
+        fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+            self.0 += &format!("C{x1} {y1} {x2} {y2} {x} {y}");
+        }
+        fn close(&mut self) {
+            self.0 += "Z";
+        }
+    }
+
+    fn outline(face: &Face, id: GlyphId) -> String {
+        let mut p = Path(String::new());
+        face.outline_glyph(id, &mut p);
+        p.0
+    }
+
+    fn check(file: &str) {
+        let dir = env!("CARGO_MANIFEST_DIR");
+        let original = std::fs::read(format!("{dir}/../../tools/fonts/{file}")).unwrap();
+        let embedded = std::fs::read(format!("{dir}/fonts/{}", file.replace(".otf", "-subset.otf"))).unwrap();
+        assert!(embedded.len() < original.len(), "{file} is not a subset: run tools/fonts/subset.sh");
+        let (a, b) = (Face::parse(&original, 0).unwrap(), Face::parse(&embedded, 0).unwrap());
+        // --retain-gids keeps every ID in place, though it may drop unused glyphs at the very end
+        assert!(b.number_of_glyphs() <= a.number_of_glyphs());
+        let (ma, mb) = (a.tables().math.unwrap(), b.tables().math.unwrap());
+
+        let mut reached = BTreeSet::new();
+        for subtable in a.tables().cmap.unwrap().subtables {
+            if !subtable.is_unicode() {
+                continue;
+            }
+            subtable.codepoints(|c| {
+                let Some(c) = char::from_u32(c) else { return };
+                // a character the original maps to .notdef is missing in the subset, as in any font
+                if let Some(id) = a.glyph_index(c).filter(|id| id.0 != 0) {
+                    assert_eq!(b.glyph_index(c), Some(id), "{file}: {c:?} lost its glyph");
+                    reached.insert(id);
+                }
+            });
+        }
+        for id in reached.clone() {
+            for coverage in [ma.variants.unwrap().vertical_constructions, ma.variants.unwrap().horizontal_constructions] {
+                if let Some(construction) = coverage.get(id) {
+                    reached.extend(construction.variants.into_iter().map(|v| v.variant_glyph));
+                    if let Some(assembly) = construction.assembly {
+                        reached.extend(assembly.parts.into_iter().map(|p| p.glyph_id));
+                    }
+                }
+            }
+        }
+        let info = |m: ttf_parser::math::Table<'_>, id| {
+            let g = m.glyph_info.unwrap();
+            (g.italic_corrections.and_then(|c| c.get(id)).map(|v| v.value), g.top_accent_attachments.and_then(|c| c.get(id)).map(|v| v.value))
+        };
+        for &id in &reached {
+            assert_eq!(outline(&a, id), outline(&b, id), "{file}: glyph {} changed its outline", id.0);
+            assert_eq!(a.glyph_hor_advance(id), b.glyph_hor_advance(id), "{file}: glyph {} changed its advance", id.0);
+            assert_eq!(info(ma, id), info(mb, id), "{file}: glyph {} changed its MATH info", id.0);
+        }
+        assert!(reached.len() > 2500, "{file}: only {} glyphs reached", reached.len());
+    }
+
+    #[test]
+    fn stix_two_keeps_every_glyph_it_draws() {
+        check("STIXTwoMath-Regular.otf");
+    }
+
+    #[test]
+    fn latin_modern_keeps_every_glyph_it_draws() {
+        check("latinmodern-math.otf");
+    }
+}

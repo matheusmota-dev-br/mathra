@@ -1,4 +1,5 @@
 //! Math font embedded in the binary. Nothing is read from the user's system.
+//! The embedded files are subsets of the originals in tools/fonts, written by tools/fonts/subset.sh.
 
 use std::fmt::Write;
 use std::sync::OnceLock;
@@ -7,9 +8,9 @@ use ttf_parser::math::{Constants, MathValue};
 pub use ttf_parser::GlyphId;
 use ttf_parser::{Face, OutlineBuilder};
 
-static STIX_TWO: &[u8] = include_bytes!("../fonts/STIXTwoMath-Regular.otf");
+static STIX_TWO: &[u8] = include_bytes!("../fonts/STIXTwoMath-Regular-subset.otf");
 #[cfg(feature = "latin-modern")]
-static LATIN_MODERN: &[u8] = include_bytes!("../fonts/latinmodern-math.otf");
+static LATIN_MODERN: &[u8] = include_bytes!("../fonts/latinmodern-math-subset.otf");
 /// The name of the default font.
 pub const NAME: &str = "STIX Two Math";
 
