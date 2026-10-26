@@ -156,7 +156,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
       <div class="num">9</div>
       <div>
         <h2>One core, no runtime</h2>
-        <p>The core is plain Rust, with three small dependencies: one to read the font and two for JSON. The npm, Python, CLI and Rust packages are thin wrappers around the same code, compiled to native code or to WebAssembly, so a server, a notebook and a browser produce the same equation, byte for byte. No TeX distribution and no headless browser; outside JavaScript, not even Node: 17.9 µs per equation natively.</p>
+        <p>The core is plain Rust, with four small dependencies: one to read the font, two for JSON and one for the XML of MathML input. The npm, Python, CLI and Rust packages are thin wrappers around the same code, compiled to native code or to WebAssembly, so a server, a notebook and a browser produce the same equation, byte for byte. No TeX distribution and no headless browser; outside JavaScript, not even Node: 17.9 µs per equation natively.</p>
       </div>
     </div>
 
