@@ -44,9 +44,24 @@ pub const EXAMPLES: &[Example] = &[
         caption: "Navier–Stokes equations (incompressible)",
         tex: r"\rho \left( \frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u} \cdot \nabla) \mathbf{u} \right) = -\nabla p + \mu \nabla^2 \mathbf{u} + \rho \mathbf{g}, \qquad \nabla \cdot \mathbf{u} = 0",
     },
-    Example { name: "stokes", locale: Locale::En, caption: "Stokes' theorem", tex: r"\oint_{\partial \Sigma} \vec{F} \cdot d\vec{r} = \iint_{\Sigma} \left( \nabla \times \vec{F} \right) \cdot d\vec{S}" },
-    Example { name: "eulerlagrange", locale: Locale::En, caption: "Euler–Lagrange equation", tex: r"\frac{d}{dt} \frac{\partial L}{\partial \dot{q}} - \frac{\partial L}{\partial q} = 0" },
-    Example { name: "zeta", locale: Locale::En, caption: "Riemann zeta as an Euler product", tex: r"\zeta(s) = \sum_{n=1}^{\infty} \frac{1}{n^s} = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}" },
+    Example {
+        name: "stokes",
+        locale: Locale::En,
+        caption: "Stokes' theorem",
+        tex: r"\oint_{\partial \Sigma} \vec{F} \cdot d\vec{r} = \iint_{\Sigma} \left( \nabla \times \vec{F} \right) \cdot d\vec{S}",
+    },
+    Example {
+        name: "eulerlagrange",
+        locale: Locale::En,
+        caption: "Euler–Lagrange equation",
+        tex: r"\frac{d}{dt} \frac{\partial L}{\partial \dot{q}} - \frac{\partial L}{\partial q} = 0",
+    },
+    Example {
+        name: "zeta",
+        locale: Locale::En,
+        caption: "Riemann zeta as an Euler product",
+        tex: r"\zeta(s) = \sum_{n=1}^{\infty} \frac{1}{n^s} = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}",
+    },
     Example { name: "dirac", locale: Locale::En, caption: "Dirac equation", tex: r"\left( i\hbar \gamma^\mu \partial_\mu - mc \right) \psi = 0" },
     Example { name: "planck", locale: Locale::En, caption: "Planck's law", tex: r"B_\nu(T) = \frac{2 h \nu^3}{c^2} \, \frac{1}{e^{h\nu / k_B T} - 1}" },
     Example {
