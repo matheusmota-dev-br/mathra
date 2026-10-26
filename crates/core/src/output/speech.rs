@@ -258,6 +258,8 @@ impl Speaker {
                     self.say(format!("({r})"));
                 }
             }
+            #[cfg(feature = "chem")]
+            Node::Chemistry { scheme } => self.say(crate::chem::speech::speak(scheme, self.loc)),
             Node::ArrowDiagram { cells, arrows } => {
                 self.table(TableKind::Diagram, cells);
                 let name = |this: &mut Self, (r, c): (usize, usize)| -> String {

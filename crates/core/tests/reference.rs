@@ -41,6 +41,10 @@ fn latex_and_science_rows_convert_cleanly() {
     let data = reference();
     for group in ["latex", "science"] {
         for (section, row) in rows(&data, group) {
+            // the chemfig section needs the `chem` feature (on by default, as on the site)
+            if section == "structures" && !cfg!(feature = "chem") {
+                continue;
+            }
             let tex = row["tex"].as_str().unwrap();
             let r = strict(tex, Input::Latex);
             assert!(!r.speech.is_empty(), "{section}: {tex}");

@@ -69,6 +69,16 @@ Continued fractions, matrices with dots, `cases`, binomials, labeled braces, che
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/ptbr.svg" alt="pt-BR locale: sen, decimal comma, open interval"><br><sub>pt-BR locale: sen, decimal comma, open interval</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/division.svg" alt="Long division, computed (pt-BR)"><br><sub>Long division, computed (pt-BR)</sub></td></tr>
 </table>
 
+### Structural chemistry
+
+Structures, reaction schemes and mechanisms in chemfig's language, inside any equation, read aloud by the molecular formula mathra counts from each structure (`spec/chemistry.md`):
+
+<table>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/caffeine.svg" alt="Caffeine: fused rings (chemfig)"><br><sub>Caffeine: fused rings (chemfig)</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/sn2.svg" alt="SN2 mechanism: lone pairs and curved arrows"><br><sub>SN2 mechanism: lone pairs and curved arrows</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/nitration.svg" alt="Nitration of benzene: structures, mhchem and conditions on the arrow"><br><sub>Nitration of benzene: structures, mhchem and conditions on the arrow</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/esterification.svg" alt="Esterification and reduction: equilibrium, a reagent drawn over a vertical arrow (pt-BR)"><br><sub>Esterification and reduction: equilibrium, a reagent drawn over a vertical arrow (pt-BR)</sub></td></tr>
+</table>
+
 ### What a screen reader hears
 
 Each SVG carries the equation as speech in its `<title>`:
@@ -175,6 +185,8 @@ println!("{}", r.svg);
 println!("{}", r.speech);
 ```
 
+Structural chemistry is the `chem` feature, on by default; `mathra = { version = "…", default-features = false }` leaves it out of a build that only needs equations.
+
 ## What it converts
 
 Layout follows the parameters of the embedded font's MATH table. The font is STIX Two Math; with the
@@ -190,13 +202,14 @@ Modern Math, the OpenType Computer Modern of TeX's own documents (about 700 KB m
 - `\text` with `$…$` and old-style accents (`\'e`, `\c{c}`), `\textsc`, alphabets (`\mathbb`, `\mathcal`, `\mathfrak`, `\mathbf`, `\boldsymbol`, `\mathsf`, `\mathtt`), old `\bf`/`\rm`/`\tt`
 - `\cancel`, `\boxed`, `\textcircled`, `\color`, `\colorbox`, `\fcolorbox`, `\phantom`, `\pmod`, `\operatorname`, spaces (`\,` `\quad` `\hspace`)
 - siunitx (`\SI`, `\qty`, `\si`, `\num`, `\ang` with minutes and seconds, ranges, lists and products), HTML entities coming from editors
+- structural chemistry (chemfig, the `chem` feature, on by default): `\chemfig{…}` with labels split into atoms, single, double and triple bonds, wedges and hashes, angles (`[2]`, `[:30]`, `[::60]`), branches, rings (aromatic, fused), distant bonds (`?`), Lewis marks (`\lewis`); reaction schemes (`\schemestart`, `\arrow{->[above][below]}` with every chemfig arrow and any angle, `\+`, `\chemname`); mechanisms (`\chemmove` with curved arrows and fishhooks between `@{hooks}`). Speech and text give each structure's molecular formula, counted from the graph with its implicit hydrogens
 - mhchem (`\ce`, `\pu`): formulas, charges, radicals, isotopes, hydrates, bonds, decimal and fractional coefficients, arrows with labels (`->[\Delta]`, `<=>[K_w]`), `\frac` with formulas
 - Substitution macros: `\newcommand`, `\renewcommand`, `\def`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment`
 - Packages: physics (derivatives, `\dd`, `\eval`, `\expval`, `\mel`, `\comm`, `\grad`, `\curl`, `\laplacian`, `\vb`, `\vu`, `\order`, `\Tr`, `\qty`), braket (`\ket`, `\braket`, `\Set`), tensor (`\tensor`, `\indices`), mathtools (`\prescript`, `rcases`, `\overbracket`), xfrac, units, `\genfrac`, `\substack`, `\sideset`, `\smash`, `\mathclap`, `\multicolumn`, `\intertext`, `\hdotsfor`, `\raisebox`, `\scalebox`, `\rule`, `\verb`; old syntax `\cases`, `\matrix`, `\eqalign`
 - commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ, `\chemfig` and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
 
 ## Benchmark
 
@@ -205,14 +218,14 @@ Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ,
 | Measure | Value |
 |---|---|
 | Constructions | 116 |
-| Strict: converted | 111 (95.7%) |
-| Tolerant: no warning | 111 (95.7%) |
-| Tolerant: with warnings | 5 (4.3%) |
+| Strict: converted | 112 (96.6%) |
+| Tolerant: no warning | 112 (96.6%) |
+| Tolerant: with warnings | 4 (3.4%) |
 | Tolerant: error | 0 (0.0%) |
 | Time per equation, mean | 17.9 µs |
 | Time per equation, p95 | 46.5 µs |
 
-Times vary by a few microseconds between runs. The 5 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and drawings with coordinates (`\tikz`, `\chemfig`). Tolerant mode draws them as text with a warning.
+Times vary by a few microseconds between runs. The 4 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and a drawing with coordinates (`\tikz`). Tolerant mode draws them as text with a warning.
 
 ### Compared with KaTeX and MathJax
 
@@ -222,7 +235,7 @@ Times vary by a few microseconds between runs. The 5 that strict mode refuses ar
 |---|---|---|---|
 | Gallery, 18 equations: clean | 18 | 15 | 15 |
 | Gallery: time per equation, mean | 121 µs | 643 µs | 69 µs |
-| Corpus, 116 constructions: clean | 111 | 70 | 62 |
+| Corpus, 116 constructions: clean | 112 | 70 | 62 |
 | Output per equation, gzip | 2.32 KB | 2.43 KB | 0.95 KB + CSS and fonts |
 | Download to render in a browser, gzip | 926 KB | 660 KB | 77 KB + up to 254 KB of fonts |
 
@@ -235,6 +248,7 @@ crates/core          tree, rules, layout, embedded fonts, outputs
 crates/core/src/input     readers: LaTeX, MathML, AsciiMath (spec/input.md)
 crates/core/src/output    SVG, speech, text and braille (CMU and Nemeth, spec/braille.md)
 crates/core/src/locales   the 16 languages, one JSON file each (spec/locales.md)
+crates/core/src/chem      structural chemistry: chemfig, schemes, mechanisms (spec/chemistry.md, `chem` feature)
 crates/core/examples bench (the benchmark above) and banner (the image above)
 crates/cli           `mathra` binary
 crates/python        Python module (PyO3 + maturin)

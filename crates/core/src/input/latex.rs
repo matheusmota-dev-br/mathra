@@ -8,6 +8,8 @@ use crate::Error;
 
 use super::symbols::{self, Symbol};
 
+#[cfg(feature = "chem")]
+mod chemistry;
 mod diagram;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
@@ -1173,6 +1175,8 @@ impl Reader<'_> {
                 self.quantity_node(value, unit_node, col)?
             }
             "xymatrix" => self.xymatrix(col)?,
+            #[cfg(feature = "chem")]
+            "chemfig" | "schemestart" | "chemname" => self.chem_construction(name, col)?,
             "divchave" => {
                 let dividend = self.raw_text()?.trim().to_string();
                 let divisor = self.raw_text()?.trim().to_string();

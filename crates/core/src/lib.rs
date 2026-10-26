@@ -5,6 +5,8 @@
 //! assert!(svg.contains("-speech\">3.14</title>"));
 //! ```
 
+#[cfg(feature = "chem")]
+pub mod chem;
 pub mod font;
 pub mod input;
 pub mod layout;
