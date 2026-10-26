@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "mathra"
-description = "Math LaTeX to accessible SVG, without a TeX install. Speech for screen readers in 16 languages."
+description = "Math LaTeX to accessible SVG, without a TeX install: equations, chemistry (chemfig) and commutative diagrams. Speech for screen readers in 16 languages and braille."
 readme = "README.md"
 requires-python = ">=3.9"
 dynamic = ["version"]
@@ -12,7 +12,7 @@ license = "(MIT OR Apache-2.0) AND OFL-1.1"
 # copies of the repository root files: the OFL requires its text next to the embedded font
 license-files = ["licenses/*"]
 authors = [{ name = "Matheus Mota" }]
-keywords = ["latex", "math", "equations", "svg", "accessibility", "screen-reader", "typesetting", "webassembly", "i18n", "localization", "katex-alternative", "mathjax-alternative", "rust", "python", "cli", "javascript", "typescript"]
+keywords = ["latex", "math", "equations", "svg", "accessibility", "screen-reader", "typesetting", "webassembly", "i18n", "localization", "chemistry", "chemfig", "mhchem", "tikz-cd", "braille", "katex-alternative", "mathjax-alternative", "rust", "python", "cli", "javascript", "typescript"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",

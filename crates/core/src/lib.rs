@@ -1,9 +1,25 @@
 //! mathra: equations as a tree of meaning, drawn with explicit rules.
 //!
+//! It reads math LaTeX (and MathML and AsciiMath), commutative diagrams (amscd, tikz-cd, xymatrix)
+//! and chemistry (mhchem formulas, chemfig structures, reaction schemes and mechanism arrows), and
+//! writes an SVG that carries its speech in 16 languages, its braille and its source.
+//!
 //! ```
 //! let svg = mathra::tex_to_svg("3.14").unwrap();
 //! assert!(svg.contains("-speech\">3.14</title>"));
+//!
+//! # #[cfg(feature = "chem")] {
+//! let r = mathra::convert(r"\chemfig{H_3C-*6(=-=-=-)}", &mathra::Options::default()).unwrap();
+//! assert_eq!(r.speech, "structure of C7 H8, with 1 aromatic ring");
+//! # }
 //! ```
+//!
+//! # Features
+//!
+//! - `chem` (default): structural chemistry, the `chem` module (`spec/chemistry.md`). Without it,
+//!   `\chemfig` and `\schemestart` are unsupported commands.
+//! - `latin-modern`: Latin Modern Math as a second font, chosen with [`convert_in_font`]; some 700 KB
+//!   more in the binary.
 
 #[cfg(feature = "chem")]
 pub mod chem;
