@@ -1059,3 +1059,18 @@ fn identifier_without_glyph_in_any_form() {
     let calculation = Node::ColumnArithmetic { operation: '+', terms: vec!["1".into(), "x".into()] };
     assert!(compose_node(&calculation, Style::display(), true).is_err());
 }
+
+#[test]
+fn dots_are_three_dots_set_as_tex_sets_them() {
+    // \mathinner{\ldotp\ldotp\ldotp}: a thin space between the dots, none in a script
+    let f = mathra::font::font();
+    let period = f.glyph('.').unwrap();
+    let thin = f.units_per_em() / 6.0;
+    let text = inline_box(r"\ldots");
+    assert!((text.width - (3.0 * f.advance(period) + 2.0 * thin)).abs() < 0.5, "{}", text.width);
+    let glyphs = |b: &MathBox, id| b.items.iter().filter(|i| matches!(i, Item::Glyph { id: g, .. } if *g == id)).count();
+    assert_eq!(glyphs(&text, period), 3);
+    let script = f.script_form(period, 1);
+    assert_eq!(glyphs(&inline_box(r"x_{\ldots}"), script), 3);
+    assert_eq!(glyphs(&inline_box(r"\cdots"), f.glyph('⋅').unwrap()), 3);
+}

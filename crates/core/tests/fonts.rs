@@ -13,6 +13,18 @@ fn stix_two_is_the_default() {
     assert!(a.contains("<mathra:font>STIX Two Math</mathra:font>"));
 }
 
+#[test]
+fn scripts_are_drawn_in_the_fonts_script_forms() {
+    // the `ssty` forms, as TeX draws a script in cmr7 and a script of a script in cmr5
+    let f = MathFont::StixTwo.get();
+    let one = f.glyph('1').unwrap();
+    let (st, sts) = (f.script_form(one, 1), f.script_form(one, 2));
+    assert!(st != one && sts != one && st != sts && f.script_form(one, 0) == one);
+    let drawn = |tex: &str, id| mathra::typeset(tex, &Options::default()).unwrap().0.items.iter().any(|i| matches!(i, mathra::layout::Item::Glyph { id: g, .. } if *g == id));
+    assert!(drawn("x_1", st) && !drawn("x_1", one));
+    assert!(drawn("x_{y_1}", sts));
+}
+
 #[cfg(feature = "latin-modern")]
 mod latin_modern {
     use super::*;
@@ -96,8 +108,10 @@ mod subsets {
         let dir = env!("CARGO_MANIFEST_DIR");
         let original = std::fs::read(format!("{dir}/../../tools/fonts/{file}")).unwrap();
         let embedded = std::fs::read(format!("{dir}/fonts/{}", file.replace(".otf", "-subset.otf"))).unwrap();
-        assert!(embedded.len() < original.len(), "{file} is not a subset: run tools/fonts/subset.sh");
         let (a, b) = (Face::parse(&original, 0).unwrap(), Face::parse(&embedded, 0).unwrap());
+        // (not a smaller file: with its outlines desubroutinized and the script forms kept, Latin
+        // Modern's subset is larger than the original)
+        assert!(a.tables().gpos.is_some() && b.tables().gpos.is_none(), "{file} is not a subset: run tools/fonts/subset.sh");
         // --retain-gids keeps every ID in place, though it may drop unused glyphs at the very end
         assert!(b.number_of_glyphs() <= a.number_of_glyphs());
         let (ma, mb) = (a.tables().math.unwrap(), b.tables().math.unwrap());
