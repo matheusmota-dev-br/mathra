@@ -22,6 +22,7 @@
     <a class="name" href="#">mathra</a>
     <nav aria-label="Site">
       <a href="#playground">Playground</a>
+      <a href="gallery.html">Gallery</a>
       <a href="docs.html">Docs</a>
       <a href="reference.html">Reference</a>
       <a href="philosophy.html">Philosophy</a>
@@ -37,7 +38,7 @@
     <div class="cta">
       <a class="button solid" href="#playground">Try it now</a>
       <a class="button" href="#demo">Watch the demo</a>
-      <a class="button" href="#gallery">See the gallery</a>
+      <a class="button" href="gallery.html">See the gallery</a>
       <a class="button" href="#benchmark">See the benchmark</a>
     </div>
     <div class="installer" id="installer">
@@ -162,7 +163,7 @@
 
   <section id="gallery">
     <h2>Gallery</h2>
-    <p class="lead">Drawn live on this page. Click one to open it in the playground.</p>
+    <p class="lead">A few of them, drawn live on this page. Click one to open it in the playground; the <a href="gallery.html">gallery</a> has them all, by group.</p>
     <div class="gallery" id="tiles"></div>
   </section>
 
@@ -298,7 +299,9 @@ println!("{}", r.speech);</pre>
   ];
   // the benchmark keeps the 18 gallery equations it was published with (bench/famous.json): LaTeX only
   const BENCH = EXAMPLES.slice(0, 18);
-  const WIDE = ["Schrödinger equation", "Reaction scheme", "Mechanism (SN2)", "Exact sequence (xymatrix)"];
+  const WIDE = ["Schrödinger equation", "Reaction scheme"];
+  // the tiles on this page; the gallery page (gallery.html, corpus/gallery.json) has every example, by group
+  const FEATURED = ["Quadratic formula", "Maxwell's equations", "Schrödinger equation", "Matrix", "Caffeine (chemfig)", "Reaction scheme", "Diagram (tikz-cd)", "Divisão armada"];
   const CHIPS = ["Quadratic formula", "Maxwell's equations", "Matrix", "Piecewise", "Reaction with a label", "Caffeine (chemfig)", "Diagram (tikz-cd)", "Trigonometry", "Divisão armada", "AsciiMath", "MathML"];
   const INPUT_NAMES = { latex: "LaTeX", mathml: "MathML", asciimath: "AsciiMath" };
   const BRAILLE_NAMES = { cmu: "CMU · Código Matemático Unificado", nemeth: "Nemeth Braille Code" };
@@ -611,7 +614,7 @@ println!("{}", r.speech);</pre>
       el.textContent = convert(el.dataset.braille, el.dataset.locale || "en", true, false).braille;
     }
     const tiles = $("tiles");
-    for (const [caption, loc, src, inp = "latex"] of EXAMPLES) {
+    for (const [caption, loc, src, inp = "latex"] of EXAMPLES.filter((e) => FEATURED.includes(e[0]))) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = WIDE.includes(caption) ? "card tile wide" : "card tile";
@@ -620,6 +623,11 @@ println!("{}", r.speech);</pre>
       b.onclick = () => { load(src, loc, inp); $("playground").scrollIntoView(); tex.focus({ preventScroll: true }); };
       tiles.append(b);
     }
+    const more = document.createElement("a");
+    more.className = "card tile gallery-more";
+    more.href = "gallery.html";
+    more.textContent = "Every example, by group →";
+    tiles.append(more);
   }
 
   // the install command for each platform, in the hero

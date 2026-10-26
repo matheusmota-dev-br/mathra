@@ -185,6 +185,22 @@
   .tile .eq svg { max-width: 100%; height: auto; }
   .tile .cap { font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
   .tile .cap span:last-child { color: var(--accent-ink); }
+  a.tile { text-decoration: none; }
+  .gallery-more { display: flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 500; min-height: 120px; padding: 20px; text-align: center; }
+  .gallery-more:hover { border-color: var(--accent); color: var(--ink); }
+
+  /* gallery page: a card per group, its equations drawn when it opens */
+  .groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+  .group.open { grid-column: 1 / -1; }
+  .group-head { display: grid; gap: 6px; width: 100%; padding: 20px 22px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 14px; }
+  .group-head:hover .group-title { color: var(--accent-ink); }
+  .group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .group-title { font-family: "STIX Two Text", Georgia, serif; font-size: 22px; font-weight: 600; }
+  .group-title::after { content: " →"; color: var(--muted); font-family: Inter, system-ui, sans-serif; font-size: 16px; }
+  .group.open .group-title::after { content: " ↓"; }
+  .group-intro { color: var(--muted); font-size: 14px; }
+  .group-count { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); }
+  .group-body { padding: 0 16px 16px; }
 
   .usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
   .usage > * { min-width: 0; }
