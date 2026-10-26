@@ -288,6 +288,8 @@ impl Writer {
             | Node::Quantity { unit: base, .. } => self.node(base, ctx),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(ctx, *symbol),
+            #[cfg(feature = "chem")]
+            Node::Chemistry { scheme } => self.node(&crate::chem::speech::as_nodes(scheme), ctx),
             Node::ArrowDiagram { cells, arrows } => {
                 // each arrow is one more line, after the rows of cells
                 let lines: Vec<Vec<Node>> = cells.iter().cloned().chain(arrows.iter().map(|a| vec![a.as_row(cells)])).collect();

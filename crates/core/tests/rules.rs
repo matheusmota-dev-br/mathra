@@ -192,6 +192,15 @@ fn l_che_1_labeled_arrow_in_chemistry() {
     assert!(rules(&r).contains(&"L-CHE-1"));
 }
 
+#[cfg(feature = "chem")]
+#[test]
+fn l_che_2_structure_read_by_its_formula() {
+    let r = en(r"\chemfig{H_3C-CH_2-OH}");
+    assert!(rules(&r).contains(&"L-CHE-2"));
+    assert_eq!(r.speech, "structure of C2 H6 O");
+    assert_eq!(r.text, "C₂H₆O");
+}
+
 #[test]
 fn l_ent_3_size_commands_and_packages_are_ignored() {
     for tex in [r"\Large x", r"\usepackage{amsmath} x", r"\usepackage[utf8]{inputenc} x", r"\require{mhchem} x"] {

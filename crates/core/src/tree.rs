@@ -243,6 +243,11 @@ pub enum Node {
         cells: Vec<Vec<Node>>,
         arrows: Vec<DiagramArrow>,
     },
+    /// Structures, reaction schemes and mechanisms (chemfig): L-CHE-2.
+    #[cfg(feature = "chem")]
+    Chemistry {
+        scheme: crate::chem::Scheme,
+    },
     /// Long division, Brazilian school layout. mathra computes the steps.
     LongDivision {
         dividend: String,

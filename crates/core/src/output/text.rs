@@ -247,6 +247,8 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             s.push(*symbol);
             s.push(' ');
         }
+        #[cfg(feature = "chem")]
+        Node::Chemistry { scheme } => s.push_str(&crate::chem::speech::linear(scheme, loc)),
         Node::ArrowDiagram { cells, arrows } => {
             let rows: Vec<String> = cells.iter().map(|l| l.iter().map(|c| linear(c, loc)).collect::<Vec<_>>().join(", ")).collect();
             s.push_str(&rows.join("; "));

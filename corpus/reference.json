@@ -1351,6 +1351,36 @@
    ]
   },
   {
+   "id": "structures",
+   "title": "Structural chemistry (chemfig)",
+   "rows": [
+    {
+     "tex": "\\chemfig{H_3C-CH_2-OH}"
+    },
+    {
+     "tex": "\\chemfig{*6(=-=-=-)} \\quad \\chemfig{**6(------)}"
+    },
+    {
+     "tex": "\\chemfig{*6(-=-*6(-=-=-)=-=)}"
+    },
+    {
+     "tex": "\\chemfig{HO-C(=[1]O)-[7]CH_3}"
+    },
+    {
+     "tex": "\\chemfig{H-C(>[:-30]Cl)(<:[:210]Br)-[2]F}"
+    },
+    {
+     "tex": "\\chemfig{\\lewis{0:2:4:6:,O}}"
+    },
+    {
+     "tex": "\\schemestart \\ce{N2 + 3H2} \\arrow{<=>[Fe][450 °C]} \\ce{2NH3} \\schemestop"
+    },
+    {
+     "tex": "\\schemestart \\chemfig{**6(------)} \\+ \\ce{Br2} \\arrow{->[\\ce{FeBr3}]} \\chemfig{**6(---(-Br)---)} \\+ \\ce{HBr} \\schemestop"
+    }
+   ]
+  },
+  {
    "id": "diagrams",
    "title": "Commutative diagrams (amscd, tikz-cd, xymatrix)",
    "rows": [

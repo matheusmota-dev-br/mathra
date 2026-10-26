@@ -340,6 +340,8 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             compose(base, Style { level, cramped: e.cramped, font: e.font }, ctx)
         }
         Node::ArrowDiagram { cells, arrows } => diagram::compose(cells, arrows, e, ctx),
+        #[cfg(feature = "chem")]
+        Node::Chemistry { scheme } => crate::chem::layout::compose(scheme, e, ctx),
         Node::LongDivision { dividend, divisor } => arithmetic::long_division(dividend, divisor, e),
         Node::ColumnArithmetic { operation, terms } => arithmetic::column_arithmetic(*operation, terms, e),
     }

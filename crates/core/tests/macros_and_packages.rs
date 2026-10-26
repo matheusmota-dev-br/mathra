@@ -162,8 +162,14 @@ fn latex_boxes_and_spaces() {
 
 #[test]
 fn boundary_tex_programming_and_drawings_stay_out() {
-    for (tex, reason) in [(r"\def\a{1}\ifx\a\a sim\fi", r"\ifx"), (r"\catcode`\@=11 x", r"\catcode"), (r"\tikz \draw (0,0)--(1,1);", r"\tikz"), (r"\chemfig{H-C}", r"\chemfig")] {
+    for (tex, reason) in [(r"\def\a{1}\ifx\a\a sim\fi", r"\ifx"), (r"\catcode`\@=11 x", r"\catcode"), (r"\tikz \draw (0,0)--(1,1);", r"\tikz")] {
         assert!(error(tex).contains(reason), "{tex}");
+    }
+    // structural chemistry comes in with the `chem` feature (L-CHE-2); without it, it stays out
+    if cfg!(feature = "chem") {
+        convert(r"\chemfig{H-C}", &Options { strict: true, ..Default::default() }).unwrap();
+    } else {
+        assert!(error(r"\chemfig{H-C}").contains(r"\chemfig"));
     }
 }
 

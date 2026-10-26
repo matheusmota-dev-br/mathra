@@ -15,6 +15,9 @@ categories = ["text-processing", "rendering", "accessibility", "mathematics"]
 include = ["src/**", "fonts/**", "Cargo.toml"]
 
 [features]
+default = ["chem"]
+# structural chemistry (chemfig structures, reaction schemes, mechanisms): spec/chemistry.md
+chem = []
 # Latin Modern Math (the OpenType Computer Modern, GUST Font License) as a second font,
 # chosen with `Options::font`: some 700 KB more in the binary
 latin-modern = []

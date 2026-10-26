@@ -11,7 +11,21 @@ mathra renders **equations**. The goal is to convert 100% of equations; what is 
 | Column arithmetic (`\divchave`, `\contaarmada`), factoring with `array` | — | grid of digits |
 | Commutative diagrams: amscd (`CD`), `tikz-cd`, `xymatrix` | `tikz-cd`'s TikZ keys beyond arrows (`\tikzcdset`, nodes placed by coordinates, `\draw` inside the diagram) | a grid of cells plus arrows between them: each arrow is fixed by its two cells, its bend and its style, so no coordinate comes from the author |
 | Substitution macros: `\newcommand`, `\renewcommand`, `\providecommand`, `\def` with `#1…#9`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment` without arguments | `\ifx`, `\expandafter`, `\catcode`, `\def` with delimited parameters | replacing text is reading; conditionals and category changes are running a program |
-| — | TikZ, pgfplots, `\chemfig`, `circuitikz` | drawing with coordinates; structural chemistry goes to its own library, which uses mathra for the atom labels |
+| — | TikZ, pgfplots, `circuitikz` | drawing with coordinates |
+
+## The exception: chemistry
+
+Chemical equations are equations, and chemists write them with structures as much as with one-line formulas. So structural chemistry comes in, although it is drawn by directions and not on a line or a grid: chemfig structures (rings, wedges, Lewis marks), reaction schemes (`\schemestart`, `\arrow`, `\+`) and mechanism arrows between atoms (`\chemmove`). The exception is narrow:
+
+- it is a graph of atoms and bonds whose geometry comes from chemfig's angles and fixed rules, never from coordinates the author gives;
+- it lives in its own module (`crates/core/src/chem`, spec/chemistry.md), behind the `chem` feature, on by default, so the reader of equations does not grow drawing commands;
+- inside `\chemmove` only `\draw` between two atoms is read: TikZ itself stays out.
+
+| In (`chem`) | Out | Why |
+|---|---|---|
+| Structural formulas, rings, stereo bonds, Lewis marks, charges | 3D models, orbital surfaces | a structure is a graph; a surface is a picture |
+| Reaction schemes with every chemfig arrow and its conditions | lab apparatus (`chemplants`), energy diagrams with axes | a scheme connects compounds; an apparatus or a plot has coordinates |
+| Mechanism arrows between named atoms | any other TikZ inside `\chemmove` | an electron arrow goes from one atom to another |
 
 ## If figures ever come in
 
