@@ -36,6 +36,24 @@ Every image below is an SVG written by mathra; the LaTeX for each one is in [`cr
 <tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/schrodinger.svg" alt="Schrödinger equation"><br><sub>Schrödinger equation</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/einstein.svg" alt="Einstein field equations"><br><sub>Einstein field equations</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/cauchy.svg" alt="Cauchy's integral formula"><br><sub>Cauchy's integral formula</sub></td></tr>
 <tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/fourier.svg" alt="Fourier transform"><br><sub>Fourier transform</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/bayes.svg" alt="Bayes' theorem"><br><sub>Bayes' theorem</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/navierstokes.svg" alt="Navier–Stokes equations (incompressible)"><br><sub>Navier–Stokes equations (incompressible)</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/stokes.svg" alt="Stokes' theorem"><br><sub>Stokes' theorem</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/eulerlagrange.svg" alt="Euler–Lagrange equation"><br><sub>Euler–Lagrange equation</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/zeta.svg" alt="Riemann zeta as an Euler product"><br><sub>Riemann zeta as an Euler product</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/dirac.svg" alt="Dirac equation"><br><sub>Dirac equation</sub></td></tr>
+<tr><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/planck.svg" alt="Planck's law"><br><sub>Planck's law</sub></td><td align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/ramanujan.svg" alt="Ramanujan's series for 1/π"><br><sub>Ramanujan's series for 1/π</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/blackscholes.svg" alt="Black–Scholes equation"><br><sub>Black–Scholes equation</sub></td></tr>
+</table>
+
+### Big equations
+
+Systems, long derivations and dense tensor notation, each in one call, in strict mode:
+
+<table>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/navierstokes3d.svg" alt="Navier–Stokes in Cartesian components, with continuity"><br><sub>Navier–Stokes in Cartesian components, with continuity</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/compressible.svg" alt="Compressible Navier–Stokes, with the viscous stress tensor"><br><sub>Compressible Navier–Stokes, with the viscous stress tensor</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/riemann.svg" alt="Riemann curvature tensor and Christoffel symbols"><br><sub>Riemann curvature tensor and Christoffel symbols</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/qed.svg" alt="Lagrangian of quantum electrodynamics"><br><sub>Lagrangian of quantum electrodynamics</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/gaussproof.svg" alt="The Gaussian integral, step by step in polar coordinates"><br><sub>The Gaussian integral, step by step in polar coordinates</sub></td></tr>
+<tr><td align="center" colspan="2"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/examples/vandermonde.svg" alt="Vandermonde determinant"><br><sub>Vandermonde determinant</sub></td></tr>
 </table>
 
 ### Beyond the basics
