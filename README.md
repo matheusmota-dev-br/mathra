@@ -2,11 +2,11 @@
 
 # mathra
 
-Accessible SVG equations from LaTeX, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**, or **[watch the 60-second demo](https://youtu.be/pXuaCwmWaDg)**.
+Accessible SVG equations from LaTeX, chemistry included, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**, or **[watch the 60-second demo](https://youtu.be/pXuaCwmWaDg)**.
 
 <p align="center"><a href="https://youtu.be/pXuaCwmWaDg"><img src="https://img.youtube.com/vi/pXuaCwmWaDg/maxresdefault.jpg" alt="mathra in 60 seconds: watch the demo on YouTube" width="720"></a></p>
 
-mathra reads math LaTeX, builds a **tree of meaning** (what each piece is) and draws it with **explicit rules**, numbered and tested. Every SVG carries the phrase a screen reader says, in 16 languages, and the locale decides the form: in pt-BR `3,14` is a single number and `\sin` comes out as `sen`. All four packages run the same core, so an equation gives the same SVG, byte for byte, wherever it is converted.
+mathra reads math LaTeX (and chemfig structures, reaction schemes and commutative diagrams), builds a **tree of meaning** (what each piece is) and draws it with **explicit rules**, numbered and tested. Every SVG carries the phrase a screen reader says, in 16 languages, and the locale decides the form: in pt-BR `3,14` is a single number and `\sin` comes out as `sen`. All four packages run the same core, so an equation gives the same SVG, byte for byte, wherever it is converted.
 
 ```console
 $ mathra '3,14' --locale pt-BR --explain
@@ -89,6 +89,9 @@ Each SVG carries the equation as speech in its `<title>`:
 | `\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}` | sum from n equals 1 to infinity of 1 over n squared equals pi squared over 6 |
 | `\lvert a \rvert + \lvert b \rvert \ge \lvert a + b \rvert` | absolute value of a plus absolute value of b is greater than or equal to absolute value of, a plus b, end absolute value |
 | `\divchave{247}{5}` with `--locale pt-BR` | divisão armada de 247 por 5: quociente 49, resto 2 |
+| `\begin{tikzcd} A \arrow[r, "f"] \arrow[d, "g"'] & B \\ C \end{tikzcd}` | diagram: row 1: A, B; row 2: C; arrow from A to B (f); arrow from A to C (g) |
+| `\chemfig{H_3C-*6(=-=-=-)}` | structure of C7 H8, with 1 aromatic ring |
+| `\schemestart \ce{N2 + 3H2} \arrow{<=>[Fe]} \ce{2NH3} \schemestop` | N sub 2 plus 3 H sub 2 in equilibrium with (Fe over the arrow) 2 N H sub 3 |
 
 ## Broken LaTeX
 
@@ -225,7 +228,7 @@ Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ 
 | Time per equation, mean | 17.9 µs |
 | Time per equation, p95 | 46.5 µs |
 
-Times vary by a few microseconds between runs. The 4 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and a drawing with coordinates (`\tikz`). Tolerant mode draws them as text with a warning.
+The times are from the 1.3.0 run and vary by a few microseconds between runs; the counts are from the current corpus. The 4 that strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and a drawing with coordinates (`\tikz`). Tolerant mode draws them as text with a warning.
 
 ### Compared with KaTeX and MathJax
 
@@ -236,10 +239,10 @@ Times vary by a few microseconds between runs. The 4 that strict mode refuses ar
 | Gallery, 18 equations: clean | 18 | 15 | 15 |
 | Gallery: time per equation, mean | 121 µs | 643 µs | 69 µs |
 | Corpus, 116 constructions: clean | 112 | 70 | 62 |
-| Output per equation, gzip | 2.32 KB | 2.43 KB | 0.95 KB + CSS and fonts |
-| Download to render in a browser, gzip | 926 KB | 660 KB | 77 KB + up to 254 KB of fonts |
+| Output per equation, gzip | 2.42 KB | 2.43 KB | 0.95 KB + CSS and fonts |
+| Download to render in a browser, gzip | 1155 KB | 660 KB | 77 KB + up to 254 KB of fonts |
 
-KaTeX is faster and lighter to ship, but its output is HTML that needs its stylesheet and fonts, not a standalone image. Against MathJax's SVG, the closest equivalent, mathra is about 5× faster with output of similar size. Most of mathra's download is the embedded font (628 KB gzip). The corpus was written while building mathra, so it favors it; the three gallery equations the others miss use `\SI`, `\sen` and `\divchave`.
+KaTeX is faster and lighter to ship, but its output is HTML that needs its stylesheet and fonts, not a standalone image. Against MathJax's SVG, the closest equivalent, mathra is about 5× faster with output of similar size. Most of mathra's download is the embedded font (628 KB gzip); structural chemistry adds about 70 KB, and a build without the `chem` feature leaves it out. The corpus was written while building mathra, so it favors it; the three gallery equations the others miss use `\SI`, `\sen` and `\divchave`. The times are from the 1.3.0 snapshot; the counts and sizes are from the current code.
 
 ## Layout
 

@@ -11,3 +11,5 @@ printf 'var MATHRA_WASM_BASE64 = "%s";\n' "$(base64 < site/pkg/mathra_wasm_bg.wa
 # the reference page's tables (corpus/reference.json, checked by crates/core/tests/reference.rs) as a script,
 # so the page also works opened from disk
 printf 'var MATHRA_REFERENCE = %s;\n' "$(cat corpus/reference.json)" > site/pkg/reference_data.js
+# the gallery page's groups (corpus/gallery.json, checked by crates/core/tests/examples.rs), the same way
+printf 'var MATHRA_GALLERY = %s;\n' "$(cat corpus/gallery.json)" > site/pkg/gallery_data.js
