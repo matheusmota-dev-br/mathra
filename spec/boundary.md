@@ -2,16 +2,16 @@
 
 mathra renders **equations**. The goal is to convert 100% of equations; what is not an equation goes to another tool. To keep it from growing into a rewritten TeX, every new construction goes through one rule:
 
-> **The core takes what becomes boxes on a line or in a grid.** Whatever needs coordinates, curves or running a program stays out.
+> **The core takes what becomes boxes on a line or in a grid, and arrows between the cells of a grid.** Whatever needs free coordinates or running a program stays out.
 
 | In | Out | Why |
 |---|---|---|
 | Fractions, scripts, roots, delimiters | — | inline typography |
 | Matrices, `array`, `cases`, alignments, `\multicolumn` | — | grid |
 | Column arithmetic (`\divchave`, `\contaarmada`), factoring with `array` | — | grid of digits |
-| amscd commutative diagram (`CD`) | `tikz-cd`, `xymatrix` | `CD` only has straight arrows between neighboring cells; the others have diagonal and curved arrows, which is geometry |
+| Commutative diagrams: amscd (`CD`), `tikz-cd`, `xymatrix` | `tikz-cd`'s TikZ keys beyond arrows (`\tikzcdset`, nodes placed by coordinates, `\draw` inside the diagram) | a grid of cells plus arrows between them: each arrow is fixed by its two cells, its bend and its style, so no coordinate comes from the author |
 | Substitution macros: `\newcommand`, `\renewcommand`, `\providecommand`, `\def` with `#1…#9`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment` without arguments | `\ifx`, `\expandafter`, `\catcode`, `\def` with delimited parameters | replacing text is reading; conditionals and category changes are running a program |
-| — | TikZ, pgfplots, `\chemfig`, `circuitikz` | drawing with coordinates |
+| — | TikZ, pgfplots, `\chemfig`, `circuitikz` | drawing with coordinates; structural chemistry goes to its own library, which uses mathra for the atom labels |
 
 ## If figures ever come in
 

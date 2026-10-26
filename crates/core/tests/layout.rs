@@ -665,6 +665,67 @@ fn aligned_and_centered_cases() {
     }
 }
 
+/// The strokes of an arrow diagram as segments.
+fn segments(c: &MathBox) -> Vec<(f32, f32, f32, f32)> {
+    c.items.iter().filter_map(|i| if let Item::Line { x1, y1, x2, y2, .. } = i { Some((*x1, *y1, *x2, *y2)) } else { None }).collect()
+}
+
+#[test]
+fn arrow_diagram_geometry() {
+    // one horizontal arrow: every stroke sits between the cells, the shaft level with the math axis
+    let c = math_box(r"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}");
+    consistent(&c, "tikzcd");
+    let shaft = segments(&c).into_iter().max_by(|a, b| (a.2 - a.0).abs().total_cmp(&(b.2 - b.0).abs())).unwrap();
+    assert!((shaft.1 - shaft.3).abs() < 1e-3, "{shaft:?}");
+    assert!(shaft.2 - shaft.0 > 1500.0, "at least 1.5 em long: {shaft:?}");
+    let glyphs: Vec<f32> = c.items.iter().filter_map(|i| if let Item::Glyph { x, .. } = i { Some(*x) } else { None }).collect();
+    assert!(shaft.0 > glyphs[0] && shaft.2 < glyphs[1], "{shaft:?} {glyphs:?}");
+    // centered on the axis, like a matrix
+    assert!((c.height - c.depth - 2.0 * 250.0).abs() < 200.0, "{} {}", c.height, c.depth);
+
+    // a diagonal arrow goes right and down
+    let c = math_box(r"\begin{tikzcd} A \arrow[dr] & \\ & B \end{tikzcd}");
+    let s = segments(&c);
+    let longest = s.iter().max_by(|a, b| ((a.2 - a.0).hypot(a.3 - a.1)).total_cmp(&(b.2 - b.0).hypot(b.3 - b.1))).unwrap();
+    assert!(longest.2 > longest.0 && longest.3 < longest.1, "{longest:?}");
+
+    // a bent arrow rises above the straight one; dashes, dots and double lines cost more strokes
+    let top = |tex: &str| segments(&math_box(tex)).iter().map(|s| s.1.max(s.3)).fold(f32::MIN, f32::max);
+    assert!(top(r"\begin{tikzcd} A \arrow[r, bend left] & B \end{tikzcd}") > top(r"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}") + 100.0);
+    let count = |style: &str| lines(&math_box(&format!(r"\begin{{tikzcd}} A \arrow[r, {style}] & B \end{{tikzcd}}")));
+    let solid = count("rightarrow");
+    for style in ["dashed", "dotted", "Rightarrow", "squiggly", "two heads", "hook", "mapsto", "tail", "leftrightarrow"] {
+        assert!(count(style) > solid, "{style}");
+    }
+    assert!(count("no head") < solid);
+    assert_eq!(count("phantom"), 0);
+
+    // a label beside a horizontal arrow sits above it, and widens the column gap when it is long
+    let short = math_box(r#"\begin{tikzcd} A \arrow[r, "f"] & B \end{tikzcd}"#);
+    let long = math_box(r#"\begin{tikzcd} A \arrow[r, "f \circ g \circ h \circ k"] & B \end{tikzcd}"#);
+    assert!(long.width > short.width + 1000.0);
+    assert!(short.height > c_height(r"\begin{tikzcd} A \arrow[r] & B \end{tikzcd}"));
+    // a description label breaks the line under it
+    let plain = lines(&math_box(r#"\begin{tikzcd} A \arrow[r, "f"] & B \end{tikzcd}"#));
+    let on = math_box(r#"\begin{tikzcd} A \arrow[r, "f" description] & B \end{tikzcd}"#);
+    assert!(lines(&on) > plain, "the line is cut into pieces around the label");
+    for tex in [
+        r"\begin{tikzcd} A \arrow[r, shift left] \arrow[r, shift right] & B \end{tikzcd}",
+        r#"\begin{tikzcd} A \arrow[d, bend right=80, "x"'] \\ B \end{tikzcd}"#,
+        r"\begin{tikzcd} {} \arrow[r] & {} \end{tikzcd}",
+        r#"\begin{tikzcd} A \arrow[dr, phantom, "\lrcorner" very near start] \arrow[r, "f" at end] & B \\ C & D \end{tikzcd}"#,
+        r"\xymatrix{ A \ar@{.>}[r] \ar@{~>}[d] & B \\ C }",
+        r"x_{\xymatrix{ A \ar[r]^f & B }}",
+    ] {
+        consistent(&math_box(tex), tex);
+        svg(tex);
+    }
+}
+
+fn c_height(tex: &str) -> f32 {
+    math_box(tex).height
+}
+
 #[test]
 fn array_with_rules_and_separators() {
     let tex = r"\begin{array}{|l|c|r|} \hline a & b & c \\ \cline{1-2} dd & ee & ff \\ \hline \end{array}";

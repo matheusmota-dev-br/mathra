@@ -64,6 +64,7 @@
   "determinant": "행렬식",
   "cases": "경우",
   "diagram": "도식",
+  "diagram_arrow": "{0}에서 {1}(으)로 가는 화살표",
   "capital": "대문자 {0}",
   "negative": "마이너스",
   "open_interval": "열린 구간 시작",

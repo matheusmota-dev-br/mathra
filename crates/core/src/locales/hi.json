@@ -64,6 +64,7 @@
   "determinant": "सारणिक",
   "cases": "स्थितियाँ",
   "diagram": "आरेख",
+  "diagram_arrow": "{0} से {1} तक तीर",
   "capital": "कैपिटल {0}",
   "negative": "ऋण",
   "open_interval": "खुला अंतराल शुरू",

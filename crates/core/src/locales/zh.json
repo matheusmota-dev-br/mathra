@@ -64,6 +64,7 @@
   "determinant": "行列式",
   "cases": "分段",
   "diagram": "图表",
+  "diagram_arrow": "从 {0} 到 {1} 的箭头",
   "capital": "大写 {0}",
   "negative": "负",
   "open_interval": "开区间开始",

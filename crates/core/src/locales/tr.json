@@ -67,6 +67,7 @@
   "determinant": "determinant",
   "cases": "durumlar",
   "diagram": "diyagram",
+  "diagram_arrow": "{0} öğesinden {1} öğesine ok",
   "capital": "büyük {0}",
   "negative": "eksi",
   "open_interval": "açık aralık başı",

@@ -140,6 +140,11 @@ impl Writer {
             | Node::Quantity { unit: base, .. } => self.node(base),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(*symbol),
+            Node::ArrowDiagram { cells, arrows } => {
+                // each arrow is one more line, after the rows of cells
+                let lines: Vec<Vec<Node>> = cells.iter().cloned().chain(arrows.iter().map(|a| vec![a.as_row(cells)])).collect();
+                self.table(TableKind::Diagram, &lines);
+            }
             Node::LongDivision { dividend, divisor } => {
                 self.number(dividend, false);
                 self.dots("256");

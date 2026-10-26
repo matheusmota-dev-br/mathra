@@ -64,6 +64,7 @@
   "determinant": "determinant",
   "cases": "cases",
   "diagram": "diagram",
+  "diagram_arrow": "arrow from {0} to {1}",
   "capital": "capital {0}",
   "negative": "negative",
   "open_interval": "open interval",

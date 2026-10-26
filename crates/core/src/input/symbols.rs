@@ -372,6 +372,11 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("lVert", '‖', Open),
         ("rVert", '‖', Close),
         ("vert", '|', Ord),
+        // amssymb corners: the pullback and pushout marks of commutative diagrams
+        ("ulcorner", '⌜', Open),
+        ("urcorner", '⌝', Close),
+        ("llcorner", '⌞', Open),
+        ("lrcorner", '⌟', Close),
         ("Vert", '‖', Ord),
         ("|", '‖', Ord),
         ("lbrack", '[', Open),

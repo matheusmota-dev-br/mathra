@@ -70,6 +70,7 @@
   "determinant": "wyznacznik",
   "cases": "przypadki",
   "diagram": "diagram",
+  "diagram_arrow": "strzałka od {0} do {1}",
   "capital": "duża {0}",
   "negative": "minus",
   "open_interval": "początek przedziału otwartego",

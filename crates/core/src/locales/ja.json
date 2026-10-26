@@ -64,6 +64,7 @@
   "determinant": "行列式",
   "cases": "場合分け",
   "diagram": "図式",
+  "diagram_arrow": "{0} から {1} への矢印",
   "capital": "大文字の {0}",
   "negative": "マイナス",
   "open_interval": "開区間の始まり",

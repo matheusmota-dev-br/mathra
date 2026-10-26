@@ -108,6 +108,7 @@
   "determinant": "Determinante",
   "cases": "Fälle",
   "diagram": "Diagramm",
+  "diagram_arrow": "Pfeil von {0} nach {1}",
   "capital": "großes {0}",
   "negative": "minus",
   "open_interval": "offenes Intervall von",

@@ -238,6 +238,11 @@ pub enum Node {
         #[serde(skip_serializing_if = "Option::is_none")]
         right: Option<Box<Node>>,
     },
+    /// Commutative diagram whose arrows go between any two cells, straight or bent (tikz-cd, xymatrix).
+    ArrowDiagram {
+        cells: Vec<Vec<Node>>,
+        arrows: Vec<DiagramArrow>,
+    },
     /// Long division, Brazilian school layout. mathra computes the steps.
     LongDivision {
         dividend: String,
@@ -336,6 +341,147 @@ pub enum Frame {
 impl Frame {
     pub fn is_default(&self) -> bool {
         *self == Frame::Rectangle
+    }
+}
+
+/// An arrow of an [`Node::ArrowDiagram`], between cells given as (row, column), from 0.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DiagramArrow {
+    pub from: (usize, usize),
+    pub to: (usize, usize),
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<ArrowLabel>,
+    #[serde(skip_serializing_if = "ArrowLine::is_default")]
+    pub line: ArrowLine,
+    #[serde(skip_serializing_if = "ArrowHead::is_default")]
+    pub head: ArrowHead,
+    #[serde(skip_serializing_if = "ArrowTail::is_default")]
+    pub tail: ArrowTail,
+    /// Degrees the arrow leaves its straight path by; positive bends to the left of its direction.
+    #[serde(skip_serializing_if = "is_zero_i16")]
+    pub bend: i16,
+    /// Parallel offset in em, positive to the left of its direction (two arrows between the same cells).
+    #[serde(skip_serializing_if = "is_zero_f32")]
+    pub shift: f32,
+}
+
+impl DiagramArrow {
+    /// The arrow as the row `from → to`, its first label above the arrow: how text and braille write it.
+    pub fn as_row(&self, cells: &[Vec<Node>]) -> Node {
+        let cell = |(r, c): (usize, usize)| cells.get(r).and_then(|row| row.get(c)).cloned().unwrap_or_else(|| Node::row(vec![]));
+        let symbol = match (self.line, self.tail) {
+            (ArrowLine::Double, ArrowTail::Head) if self.head == ArrowHead::None => '⇐',
+            (ArrowLine::Double, ArrowTail::Head) => '⇔',
+            (ArrowLine::Double, _) if self.head == ArrowHead::None => '=',
+            (ArrowLine::Double, _) => '⇒',
+            (_, ArrowTail::Head) if self.head == ArrowHead::None => '←',
+            (_, ArrowTail::Head) => '↔',
+            (_, ArrowTail::Bar) => '↦',
+            (_, ArrowTail::Hook | ArrowTail::HookRight) => '↪',
+            (_, ArrowTail::Tail) => '↣',
+            _ if self.head == ArrowHead::TwoHeads => '↠',
+            _ if self.line == ArrowLine::Squiggly => '⇝',
+            _ if self.head == ArrowHead::None => '—',
+            _ => '→',
+        };
+        let above = self.labels.first().map(|l| Box::new(l.node.clone()));
+        Node::row(vec![cell(self.from), Node::Arrow { symbol, above, below: None }, cell(self.to)])
+    }
+}
+
+fn is_zero_i16(v: &i16) -> bool {
+    *v == 0
+}
+
+fn is_zero_f32(v: &f32) -> bool {
+    *v == 0.0
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ArrowLabel {
+    pub node: Node,
+    #[serde(skip_serializing_if = "LabelSide::is_default")]
+    pub side: LabelSide,
+    /// Where along the arrow, from 0 (start) to 1 (end): tikz-cd's `near start`, xymatrix's `^<`.
+    #[serde(skip_serializing_if = "is_middle")]
+    pub position: f32,
+}
+
+fn is_middle(v: &f32) -> bool {
+    *v == 0.5
+}
+
+/// Where a label sits, looking along the arrow: tikz-cd's `"f"` and `"f"'`, xymatrix's `^f` and `_f`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LabelSide {
+    #[default]
+    Left,
+    Right,
+    /// On the line, which is broken around it (`description`, `|f`).
+    On,
+}
+
+impl LabelSide {
+    pub fn is_default(&self) -> bool {
+        *self == LabelSide::Left
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowLine {
+    #[default]
+    Solid,
+    Dashed,
+    Dotted,
+    /// Two parallel lines: `Rightarrow`, `equal`, `@{=>}`.
+    Double,
+    Squiggly,
+    /// Nothing drawn, only the labels (`phantom`, `@{}`).
+    None,
+}
+
+impl ArrowLine {
+    pub fn is_default(&self) -> bool {
+        *self == ArrowLine::Solid
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowHead {
+    #[default]
+    Normal,
+    TwoHeads,
+    None,
+}
+
+impl ArrowHead {
+    pub fn is_default(&self) -> bool {
+        *self == ArrowHead::Normal
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArrowTail {
+    #[default]
+    None,
+    /// `hookrightarrow`: the hook curls to the left of the direction; `HookRight` to the right (`hook'`).
+    Hook,
+    HookRight,
+    /// `mapsto`: a bar across the start.
+    Bar,
+    /// A second head at the start, pointing back: `leftrightarrow`.
+    Head,
+    /// `rightarrowtail`: a reversed head at the start.
+    Tail,
+}
+
+impl ArrowTail {
+    pub fn is_default(&self) -> bool {
+        *self == ArrowTail::None
     }
 }
 

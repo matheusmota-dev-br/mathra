@@ -52,6 +52,18 @@ pub const EXAMPLES: &[Example] = &[
     Example { name: "units", locale: Locale::En, caption: "Quantity with units (siunitx)", tex: r"g = \SI{9.81}{\meter\per\second\squared}" },
     Example { name: "diagram", locale: Locale::En, caption: "Commutative diagram (amscd)", tex: r"\begin{CD} A @>f>> B \\ @VgVV @VVhV \\ C @>k>> D \end{CD}" },
     Example {
+        name: "tikzcd",
+        locale: Locale::En,
+        caption: "Pullback with bent arrows (tikz-cd)",
+        tex: r#"\begin{tikzcd} T \arrow[drr, bend left, "x"] \arrow[ddr, bend right, "y"'] \arrow[dr, dashed, "\exists!" description] & & \\ & P \arrow[r, "q"] \arrow[d, "p"'] \arrow[dr, phantom, "\lrcorner" very near start] & X \arrow[d, "f"] \\ & Y \arrow[r, "g"'] & Z \end{tikzcd}"#,
+    },
+    Example {
+        name: "xymatrix",
+        locale: Locale::En,
+        caption: "Short exact sequence (xymatrix)",
+        tex: r"\xymatrix{ 0 \ar[r] & A \ar@{^{(}->}[r]^{\iota} \ar[d]_{\alpha} & B \ar@{->>}[r]^{\pi} \ar[d]^{\beta} & C \ar[r] \ar@{=}[d] & 0 \\ 0 \ar[r] & A' \ar[r] & B' \ar[r] & C \ar[r] & 0 }",
+    },
+    Example {
         name: "ptbr",
         locale: Locale::PtBr,
         caption: "pt-BR locale: sen, decimal comma, open interval",

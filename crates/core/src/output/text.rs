@@ -247,6 +247,14 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             s.push(*symbol);
             s.push(' ');
         }
+        Node::ArrowDiagram { cells, arrows } => {
+            let rows: Vec<String> = cells.iter().map(|l| l.iter().map(|c| linear(c, loc)).collect::<Vec<_>>().join(", ")).collect();
+            s.push_str(&rows.join("; "));
+            for a in arrows {
+                s.push_str("; ");
+                s.push_str(linear(&a.as_row(cells), loc).trim());
+            }
+        }
         Node::LongDivision { dividend, divisor } => {
             let (q, r) = match (dividend.parse::<u128>(), divisor.parse::<u128>()) {
                 (Ok(a), Ok(b)) if b > 0 => (a / b, a % b),

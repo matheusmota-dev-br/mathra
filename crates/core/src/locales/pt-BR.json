@@ -115,6 +115,7 @@
   "determinant": "determinante",
   "cases": "casos",
   "diagram": "diagrama",
+  "diagram_arrow": "seta de {0} para {1}",
   "capital": "{0} maiúsculo",
   "negative": "menos",
   "open_interval": "abre intervalo",

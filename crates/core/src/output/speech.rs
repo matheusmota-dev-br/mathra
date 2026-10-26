@@ -258,6 +258,26 @@ impl Speaker {
                     self.say(format!("({r})"));
                 }
             }
+            Node::ArrowDiagram { cells, arrows } => {
+                self.table(TableKind::Diagram, cells);
+                let name = |this: &mut Self, (r, c): (usize, usize)| -> String {
+                    let spoken = cells.get(r).and_then(|row| row.get(c)).map(|n| this.spoken(n)).unwrap_or_default();
+                    if spoken.is_empty() {
+                        format!("{} {}", this.t("row", &[&(r + 1).to_string()]), c + 1)
+                    } else {
+                        spoken
+                    }
+                };
+                for a in arrows {
+                    let (from, to) = (name(self, a.from), name(self, a.to));
+                    let mut phrase = format!("; {}", self.t("diagram_arrow", &[&from, &to]));
+                    for l in &a.labels {
+                        let l = self.spoken(&l.node);
+                        phrase.push_str(&format!(" ({l})"));
+                    }
+                    self.say(phrase);
+                }
+            }
             Node::LongDivision { dividend, divisor } => {
                 let (q, r) = divide(dividend, divisor);
                 self.say(self.t("long_division", &[dividend, divisor, &q, &r]));
