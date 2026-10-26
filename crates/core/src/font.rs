@@ -46,6 +46,28 @@ impl MathFont {
         }
     }
 
+    /// How far a subscript without a superscript goes down, in em, where the font says otherwise
+    /// than its MATH table: Latin Modern Math, which stands for Computer Modern, takes cmsy10's `sub1`
+    /// (0.15 em) as pdfTeX does; its MATH table has only `sub2` (0.247 em), meant for a subscript
+    /// under a superscript.
+    pub fn lone_subscript_shift(self) -> Option<f32> {
+        match self {
+            MathFont::StixTwo => None,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => Some(0.15),
+        }
+    }
+
+    /// How far a superscript goes up in display style, in em, where the font says otherwise than its
+    /// MATH table: Latin Modern Math takes cmsy10's `sup1` (0.413 em), as pdfTeX does in display.
+    pub fn display_superscript_shift(self) -> Option<f32> {
+        match self {
+            MathFont::StixTwo => None,
+            #[cfg(feature = "latin-modern")]
+            MathFont::LatinModern => Some(0.413),
+        }
+    }
+
     /// The font, parsed once.
     pub fn get(self) -> &'static Font {
         match self {

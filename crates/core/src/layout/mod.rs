@@ -682,12 +682,19 @@ fn compose_scripts(base: &Node, sup: Option<&Node>, sub: Option<&Node>, e: Style
     let mut u = 0.0;
     let mut v = 0.0;
     if let Some(s) = &s {
-        let rise = if e.cramped { k(e, |c| c.superscript_shift_up_cramped()) } else { k(e, |c| c.superscript_shift_up()) };
+        let rise = match e.font.display_superscript_shift() {
+            Some(shift) if e.level == Level::Display && !e.cramped => em(e, shift),
+            _ if e.cramped => k(e, |c| c.superscript_shift_up_cramped()),
+            _ => k(e, |c| c.superscript_shift_up()),
+        };
         let drop = if is_simple { 0.0 } else { b.height - k(e, |c| c.superscript_baseline_drop_max()) };
         u = rise.max(drop).max(s.depth + k(e, |c| c.superscript_bottom_min()));
     }
     if let Some(d) = &d {
-        let descent = k(e, |c| c.subscript_shift_down());
+        let descent = match e.font.lone_subscript_shift() {
+            Some(shift) if s.is_none() => em(e, shift),
+            _ => k(e, |c| c.subscript_shift_down()),
+        };
         let drop = if is_simple { 0.0 } else { b.depth + k(e, |c| c.subscript_baseline_drop_min()) };
         v = descent.max(drop).max(d.height - k(e, |c| c.subscript_top_max()));
     }

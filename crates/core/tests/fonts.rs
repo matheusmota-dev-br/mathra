@@ -58,6 +58,16 @@ mod latin_modern {
     }
 
     #[test]
+    fn scripts_go_where_pdftex_puts_them() {
+        // cmsy10's sub1 (0.15 em) for a subscript alone, sub2 (its MATH table's 0.247 em) under a
+        // superscript; sup1 (0.413 em) for a superscript in display
+        let depth = |t: &str| typeset_in_font(t, &Options { display: false, ..Default::default() }, MathFont::LatinModern).unwrap().0.depth;
+        assert!(depth("x_i") < 170.0 + depth("x") && depth("x_i^2") > 240.0, "{} {}", depth("x_i"), depth("x_i^2"));
+        let height = |t: &str, display| typeset_in_font(t, &Options { display, ..Default::default() }, MathFont::LatinModern).unwrap().0.height;
+        assert!((height("x^2", true) - height("x^2", false) - 50.0).abs() < 1.0, "{} {}", height("x^2", true), height("x^2", false));
+    }
+
+    #[test]
     fn moustaches_are_built_from_brace_halves() {
         // Latin Modern Math has no ⎰ ⎱: they are made of the braces' halves, as cmex makes them,
         // at least the two halves tall and growing with what they enclose
