@@ -53,7 +53,7 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/reference.rs` | 5 | The reference page (`site/reference.html`, data in `corpus/reference.json`): every row converts in strict mode with no warning, each AsciiMath and MathML row has the same speech as its LaTeX column, every row has braille in both codes. |
 | `crates/core/tests/fonts.rs` | 4 | The font an equation is set in: STIX Two Math by default; with the `latin-modern` feature, Latin Modern Math with its own metrics and its own word space (a third of an em). |
 | `crates/core/tests/banner.rs` | 1 | The README banner (`examples/banner.rs`) is deterministic and matches `docs/banner.svg`. |
-| `crates/core/tests/examples.rs` | 2 | The README gallery (famous equations, big equations, constructions): every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. |
+| `crates/core/tests/examples.rs` | 3 | The README gallery (famous equations, big equations, constructions): every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. The site's gallery page (`corpus/gallery.json`): every README example is on it, as the same equation, and every row converts in strict mode. |
 | `crates/core/src/input/asciimath.rs` (unit) | 1 | Every AsciiMath symbol's LaTeX spelling is valid LaTeX in strict mode. |
 | `crates/core/src/font.rs` (unit) | 2 | A glyph without an outline and a quadratic curve, which the embedded font does not have. |
 | `crates/cli/tests/cli.rs` | 17 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes. |

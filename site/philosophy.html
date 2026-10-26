@@ -50,6 +50,7 @@
     <a class="name" href="index.html">mathra</a>
     <nav aria-label="Site">
       <a href="index.html#playground">Playground</a>
+      <a href="gallery.html">Gallery</a>
       <a href="docs.html">Docs</a>
       <a href="reference.html">Reference</a>
       <a href="philosophy.html" aria-current="page">Philosophy</a>
@@ -68,15 +69,16 @@
       <div>
         <h2>Equations, not TeX</h2>
         <p>The goal is to convert every equation, and nothing that is not one. To keep mathra from slowly growing into a rewritten TeX, every new construction goes through one rule:</p>
-        <blockquote>The core takes what becomes boxes on a line or in a grid. Whatever needs coordinates, curves or running a program stays out.</blockquote>
+        <blockquote>The core takes what becomes boxes on a line or in a grid, and arrows between the cells of a grid. Whatever needs free coordinates or running a program stays out.</blockquote>
         <div class="tablewrap">
           <table>
             <tr><th>In</th><th>Out</th></tr>
-            <tr><td>Fractions, scripts, roots, delimiters, matrices, <code>cases</code>, alignments</td><td>TikZ, pgfplots, <code>\chemfig</code></td></tr>
-            <tr><td>amscd diagrams: straight arrows between neighboring cells</td><td><code>tikz-cd</code>, <code>xymatrix</code>: diagonal and curved arrows are geometry</td></tr>
+            <tr><td>Fractions, scripts, roots, delimiters, matrices, <code>cases</code>, alignments</td><td>TikZ, pgfplots, <code>circuitikz</code>: drawing with coordinates</td></tr>
+            <tr><td>Commutative diagrams (amscd, <code>tikz-cd</code>, <code>xymatrix</code>): each arrow is fixed by its two cells, its bend and its style</td><td>nodes placed by coordinates, <code>\draw</code> inside a diagram</td></tr>
             <tr><td><code>\newcommand</code>, <code>\def</code> with <code>#1…#9</code>, <code>\DeclareMathOperator</code></td><td><code>\ifx</code>, <code>\expandafter</code>, <code>\catcode</code>: conditionals are running a program</td></tr>
           </table>
         </div>
+        <p>Chemistry is the one exception, because chemical equations are equations: chemfig structures, reaction schemes and mechanism arrows come in, although a structure is drawn by directions and not on a grid. The exception is narrow: the geometry comes from chemfig's angles and fixed rules, never from coordinates; it lives in its own module behind a feature; and from TikZ only <code>\draw</code> between two atoms is read.</p>
         <p>Saying no is what keeps the library small, fast and predictable.</p>
       </div>
     </div>
