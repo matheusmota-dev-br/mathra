@@ -955,6 +955,12 @@
     },
     {
      "tex": "\\left\\{ x \\;\\middle|\\; x > 0 \\right\\}"
+    },
+    {
+     "tex": "\\lgroup x \\rgroup \\quad \\lBrace x \\rBrace \\quad \\lparen x \\rparen"
+    },
+    {
+     "tex": "\\left\\lmoustache \\frac{a}{b} \\right\\rmoustache"
     }
    ]
   },
@@ -985,6 +991,12 @@
     },
     {
      "tex": "\\left[\\begin{array}{cc|c} 1 & 2 & 3 \\\\ 4 & 5 & 6 \\end{array}\\right]"
+    },
+    {
+     "tex": "\\def\\arraystretch{1.5} \\begin{array}{c:c:c} a & b & c \\\\ \\hline d & e & f \\\\ \\hdashline g & h & i \\end{array}"
+    },
+    {
+     "tex": "\\begin{array}{|l|r|} \\hline \\text{item} & \\text{cost} \\\\ \\cdashline{1-2} \\text{pen} & 2 \\\\ \\text{book} & 15 \\\\ \\hline \\end{array}"
     }
    ]
   },
@@ -1012,6 +1024,9 @@
     },
     {
      "tex": "\\frac{\\frac{a}{b}}{c}"
+    },
+    {
+     "tex": "{a \\above 1pt b} \\quad \\genfrac{(}{)}{0pt}{}{n}{k}"
     }
    ]
   },
@@ -1063,6 +1078,9 @@
     },
     {
      "tex": "\\sen x + \\tg x"
+    },
+    {
+     "tex": "\\injlim_{i} A_i \\quad \\projlim_{j} B_j \\quad \\varliminf_{n} a_n \\quad \\varlimsup_{n} a_n"
     }
    ]
   },
@@ -1123,6 +1141,9 @@
     },
     {
      "tex": "\\int\\limits_0^1 f"
+    },
+    {
+     "tex": "\\intop_0^1 f(x)\\,dx"
     }
    ]
   },
@@ -1141,6 +1162,12 @@
     },
     {
      "tex": "\\textstyle \\frac{1}{2}"
+    },
+    {
+     "tex": "\\mathchoice{D}{T}{S}{SS} + x_{\\mathchoice{D}{T}{S}{SS}}"
+    },
+    {
+     "tex": "a + \\vcenter{\\frac{\\frac{a}{b}}{c}}"
     }
    ]
   },
@@ -1174,6 +1201,18 @@
     },
     {
      "tex": "\\infty \\partial \\nabla \\hbar \\ell \\aleph"
+    },
+    {
+     "tex": "\\varGamma \\varDelta \\varTheta \\varLambda \\varPi \\varSigma \\varPhi \\varOmega"
+    },
+    {
+     "tex": "a \\coloneqq b \\quad c \\eqqcolon d \\quad e \\Coloneq f \\quad g \\colonapprox h \\quad i \\dblcolon j"
+    },
+    {
+     "tex": "\\backepsilon \\gtreqqless \\lesseqqgtr \\circledcirc \\circledR \\maltese"
+    },
+    {
+     "tex": "A \\xrightleftharpoons[\\text{below}]{\\text{above}} B \\xtwoheadrightarrow{f} C \\xhookleftarrow{g} D"
     }
    ]
   },
@@ -1207,6 +1246,12 @@
     },
     {
      "tex": "\\textsc{Smith}"
+    },
+    {
+     "tex": "\\textbf{bold} \\; \\texttt{typewriter} \\; \\text{\\AE{}sop, \\OE{}uvre, \\H{o}, \\r{a}}"
+    },
+    {
+     "tex": "\\url{https://example.org/a_b}"
     }
    ]
   },
@@ -1237,6 +1282,12 @@
     },
     {
      "tex": "\\colorbox{yellow}{x} \\fcolorbox{red}{yellow}{y}"
+    },
+    {
+     "tex": "\\overleftharpoon{AB} \\quad \\overrightharpoon{AB} \\quad \\utilde{AB}"
+    },
+    {
+     "tex": "\\cancelto{0}{x} \\quad \\reflectbox{abc}"
     }
    ]
   }
@@ -1275,6 +1326,12 @@
     },
     {
      "tex": "\\pu{123 kJ mol^-1}"
+    },
+    {
+     "tex": "\\ce{Zn^2+ <=>[+ 2OH-][+ 2H+] Zn(OH)2 v}"
+    },
+    {
+     "tex": "\\ce{A <-->[k_1][k_{-1}] B}"
     }
    ]
   },
@@ -1407,6 +1464,24 @@
     },
     {
      "tex": "\\xymatrix{ A \\ar@{^{(}->}[r] \\ar@/^/[rr]^{\\phi} & B \\ar@{->>}[r] & C }"
+    }
+   ]
+  },
+  {
+   "id": "phasors",
+   "title": "Phasors and actuarial notation (steinmetz, actuarialangle)",
+   "rows": [
+    {
+     "tex": "V = 10\\phase{-48\\degree}\\,\\mathrm{V}"
+    },
+    {
+     "tex": "Z = |Z|\\phase{\\theta} = R + jX"
+    },
+    {
+     "tex": "\\ddot{a}_{\\angl{n}} = \\frac{1 - v^n}{d}"
+    },
+    {
+     "tex": "a_{\\angln} \\quad s_{\\anglr} \\quad \\bar{A}_{x:\\angl{n}}"
     }
    ]
   },
