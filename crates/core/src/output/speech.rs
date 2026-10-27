@@ -208,6 +208,7 @@ impl Speaker {
                 match shape {
                     Frame::Circle => self.say(self.t("circled", &[&b])),
                     Frame::Rectangle => self.say(self.t("boxed", &[&b])),
+                    Frame::Phase | Frame::ActuarialAngle => self.say(self.t("angle", &[&b])),
                     // a background is emphasis, like color: it is not read
                     Frame::Fill => self.say(b),
                 }

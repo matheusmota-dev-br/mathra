@@ -27,6 +27,8 @@ Warnings from tolerant mode go into the metadata as `<mathra:warning rule="E-REC
 
 Coordinates in font units, with the baseline at y = 0. `width` and `height` in `em`, to follow the size of the surrounding text. `vertical-align` lowers the SVG by its depth, lining up the equation's baseline with the text's.
 
+The view covers the equation's box and every bit of ink that passes it: an SVG clips what falls outside its view, and some ink does pass the box TeX measures (the hook of a bold f at the end of an equation, the tail of ρ at its start, the line of `\cancel`). Where no ink passes, the view is the box, starting at x = 0; where it does, the view starts before 0 or ends after the width by exactly that much, never by a fixed margin.
+
 ### S-SVG-2 · Speech
 
 `role="img"` and `aria-labelledby` pointing to a `<title>` with the phrase in the locale's language.

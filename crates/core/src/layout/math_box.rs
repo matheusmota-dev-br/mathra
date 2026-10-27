@@ -3,6 +3,8 @@
 
 use ttf_parser::GlyphId;
 
+use crate::font::Font;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Glyph {
@@ -180,5 +182,37 @@ impl MathBox {
 
     pub fn total(&self) -> f32 {
         self.height + self.depth
+    }
+
+    /// Where the ink really is, as (x_min, y_min, x_max, y_max), or `None` with nothing drawn. A
+    /// glyph's outline may pass its advance (the hook of a bold f, the tail of ρ) and a cancel's line
+    /// passes the box it crosses: the width and height say where the next box goes, not where the
+    /// ink stops (S-SVG-1).
+    pub fn ink(&self, f: &Font) -> Option<(f32, f32, f32, f32)> {
+        let mut b = (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut add = |x0: f32, y0: f32, x1: f32, y1: f32| {
+            b = (b.0.min(x0), b.1.min(y0), b.2.max(x1), b.3.max(y1));
+        };
+        for item in &self.items {
+            match *item {
+                Item::Glyph { id, x, y, scale, .. } => {
+                    let (x0, y0, x1, y1) = f.limits(id);
+                    if x1 > x0 || y1 > y0 {
+                        add(x + x0 * scale, y + y0 * scale, x + x1 * scale, y + y1 * scale);
+                    }
+                }
+                Item::Rule { x, y, width, height, .. } => add(x, y, x + width, y + height),
+                // round caps: half the thickness past each end
+                Item::Line { x1, y1, x2, y2, thickness, .. } => {
+                    let h = thickness / 2.0;
+                    add(x1.min(x2) - h, y1.min(y2) - h, x1.max(x2) + h, y1.max(y2) + h);
+                }
+                Item::Ellipse { cx, cy, rx, ry, thickness, .. } => {
+                    let h = thickness / 2.0;
+                    add(cx - rx - h, cy - ry - h, cx + rx + h, cy + ry + h);
+                }
+            }
+        }
+        (b.0 <= b.2).then_some(b)
     }
 }

@@ -807,7 +807,7 @@ fn bracketed(open: Option<char>, close: Option<char>, inner: Vec<Node>) -> Node 
         };
         if let Some(shape) = shape {
             let (rows, verticals) = augmented(rows);
-            return Node::Table { shape, rows, columns: vec![], verticals, horizontals: vec![], between: vec![], intertexts: vec![] };
+            return Node::Table { shape, rows, columns: vec![], verticals, dashed: vec![], horizontals: vec![], between: vec![], intertexts: vec![], stretch: 1.0 };
         }
     }
     if open.is_none() && close.is_none() {

@@ -277,8 +277,9 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         Node::Root { radicand, index } => compose_root(radicand, index.as_deref(), e, ctx),
         Node::Scripts { base, sup, sub } => compose_scripts(base, sup.as_deref(), sub.as_deref(), e, ctx),
         Node::Delimited { open, close, parts, middles } => compose_delimited(*open, *close, parts, middles, e, ctx),
-        Node::Table { shape: kind, rows, columns, verticals, horizontals, between, intertexts } => {
-            table::compose(*kind, rows, columns, verticals, horizontals, between, intertexts, e, ctx)
+        Node::Table { shape: kind, rows, columns, verticals, dashed, horizontals, between, intertexts, stretch } => {
+            let lines = table::Lines { verticals, dashed, horizontals, stretch: *stretch };
+            table::compose(*kind, rows, columns, &lines, between, intertexts, e, ctx)
         }
         Node::Multicolumn { base, .. } | Node::Unit { base, .. } => compose(base, e, ctx),
         Node::Raised { em: amount, base } => {
@@ -1035,6 +1036,39 @@ fn compose_frame(base: &Node, shape: Frame, background: Option<&str>, border: Op
             math_box.items.push(Item::Ellipse { cx, cy, rx: radius, ry: radius, thickness: t * 1.5, color: None });
             math_box.height = math_box.height.max(cy + radius + t);
             math_box.depth = math_box.depth.max(radius - cy + t);
+            Ok(math_box)
+        }
+        Frame::Phase => {
+            // steinmetz.sty: the angle's foot .35ex below the content, its side rising with slope 2
+            // to the content's height, the content starting where the side ends; lines of .6pt
+            let t = em(e, 0.06);
+            let foot = b.depth + 0.35 * k(e, |c| c.accent_base_height());
+            let run = (foot + b.height) / 2.0;
+            let width = b.width + run;
+            let mut math_box = MathBox::space(width);
+            math_box.place(&b, run, 0.0);
+            let y = -foot + t / 2.0;
+            math_box.items.push(Item::Line { x1: 0.0, y1: y, x2: width, y2: y, thickness: t, color: None });
+            math_box.items.push(Item::Line { x1: 0.0, y1: y, x2: run, y2: b.height, thickness: t, color: None });
+            math_box.depth = math_box.depth.max(foot + t);
+            Ok(math_box)
+        }
+        Frame::ActuarialAngle => {
+            // actuarialangle.sty: 1mu, the content and 2mu under an \overline rule, a rule down its
+            // right side to the depth of a \mathstrut, 1mu
+            let mu = em(e, 1.0 / 18.0);
+            let t = k(e, |c| c.overbar_rule_thickness());
+            let gap = k(e, |c| c.overbar_vertical_gap());
+            let inner = b.width + 2.0 * mu;
+            let top = b.height + gap;
+            let strut = glyph('(', e).map_or(b.depth, |p| p.depth);
+            let bottom = b.depth.max(strut);
+            let mut math_box = MathBox::space(mu + inner + t + mu);
+            math_box.place(&b, mu, 0.0);
+            math_box.items.push(Item::Rule { x: mu, y: top, width: inner + t, height: t, color: None });
+            math_box.items.push(Item::Rule { x: mu + inner, y: -bottom, width: t, height: top + bottom, color: None });
+            math_box.height = top + t + k(e, |c| c.overbar_extra_ascender());
+            math_box.depth = bottom;
             Ok(math_box)
         }
     }

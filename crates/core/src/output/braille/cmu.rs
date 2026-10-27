@@ -127,6 +127,16 @@ impl Writer {
                 self.node(base);
                 self.missing('▭');
             }
+            // the phasor A∠θ: the angle sign (§8.1), then the angle
+            Node::Framed { base, shape: Frame::Phase, .. } => {
+                self.dots("45 25");
+                self.node(base);
+            }
+            // the code has no sign for the actuarial angle either
+            Node::Framed { base, shape: Frame::ActuarialAngle, .. } => {
+                self.node(base);
+                self.missing('⌉');
+            }
             Node::Framed { base, .. }
             | Node::Colored { base, .. }
             | Node::ForcedClass { base, .. }

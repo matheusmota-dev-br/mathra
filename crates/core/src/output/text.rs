@@ -216,12 +216,22 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         Node::Phantom { .. } => {}
         Node::Canceled { base, .. } | Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => write_node(base, loc, s),
         Node::Framed { base, shape, .. } => {
-            if *shape == Frame::Circle {
-                s.push('(');
-                write_node(base, loc, s);
-                s.push(')');
-            } else {
-                write_node(base, loc, s);
+            match shape {
+                Frame::Circle => {
+                    s.push('(');
+                    write_node(base, loc, s);
+                    s.push(')');
+                }
+                // A∠θ, as the phasor is written in plain text; the annuity's a_(n⌉)
+                Frame::Phase => {
+                    s.push('∠');
+                    write_node(base, loc, s);
+                }
+                Frame::ActuarialAngle => {
+                    write_node(base, loc, s);
+                    s.push('⌉');
+                }
+                _ => write_node(base, loc, s),
             }
         }
         Node::Quantity { unit, .. } => write_node(unit, loc, s),

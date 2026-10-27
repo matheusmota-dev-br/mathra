@@ -275,6 +275,13 @@ impl Writer {
                 self.node(base, ctx);
                 self.put(ctx, "⠻", Kind::Other);
             }
+            // the phasor A∠θ: the angle sign, then the angle
+            Node::Framed { base, shape: Frame::Phase, .. } => self.node(&Node::row(vec![Node::Operator { symbol: '∠', class: Class::Ord }, (**base).clone()]), ctx),
+            // the code has no sign for the actuarial angle
+            Node::Framed { base, shape: Frame::ActuarialAngle, .. } => {
+                self.node(base, ctx);
+                self.missing(ctx, '⌉');
+            }
             Node::Framed { base, .. }
             | Node::Colored { base, .. }
             | Node::ForcedClass { base, .. }
