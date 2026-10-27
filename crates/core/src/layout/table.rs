@@ -1,8 +1,21 @@
 //! Matrices, cases, alignments and `array`, with TeX's measures:
 //! rows with a strut of 0.84 em above and 0.36 em below (`\arraystretch` 1, `\baselineskip` 12pt),
 //! columns separated by 2 × `\arraycolsep` (1 em), `\jot` of 0.3 em between alignment rows.
+//! `\arraystretch` makes the strut of `array` and of the matrices taller, as in LaTeX; the dashed
+//! rules (`:`, `\hdashline`) follow arydshln: dashes and gaps of 4pt.
 
 use crate::tree::{Node, TableKind, TableRule};
+
+/// The rules of a table and the stretch of its rows.
+pub struct Lines<'a> {
+    /// Boundaries with a `|` rule (0 = before the first column).
+    pub verticals: &'a [usize],
+    /// Boundaries with a dashed `:` rule.
+    pub dashed: &'a [usize],
+    pub horizontals: &'a [TableRule],
+    /// `\arraystretch`.
+    pub stretch: f32,
+}
 
 /// A composed cell: starting column, how many columns it spans, its own alignment.
 struct Cell {
@@ -19,17 +32,7 @@ use super::{compose_cell, em, k, stretch, Context, Item, Level, MathBox, Style};
 type R<T> = Result<T, Error>;
 
 #[allow(clippy::too_many_arguments)]
-pub fn compose(
-    kind: TableKind,
-    rows: &[Vec<Node>],
-    columns: &[char],
-    verticals: &[usize],
-    horizontals: &[TableRule],
-    between: &[(usize, Node)],
-    intertexts: &[usize],
-    e: Style,
-    ctx: &mut Context,
-) -> R<MathBox> {
+pub fn compose(kind: TableKind, rows: &[Vec<Node>], columns: &[char], lines: &Lines, between: &[(usize, Node)], intertexts: &[usize], e: Style, ctx: &mut Context) -> R<MathBox> {
     use TableKind::*;
     let cell_style = match kind {
         SmallMatrix => Style { level: Level::Script, cramped: e.cramped, font: e.font },
@@ -81,10 +84,13 @@ pub fn compose(
 
     // row and column measures
     let scale = cell_style.scale();
+    let horizontals = lines.horizontals;
     let (strut_height, strut_depth) = match kind {
         SmallMatrix => (em(cell_style, 0.85), em(cell_style, 0.35)),
         Substack => (em(cell_style, 0.6), em(cell_style, 0.2)),
-        _ => (0.84 * 1000.0 * scale, 0.36 * 1000.0 * scale),
+        // alignments space their rows with \jot, and a diagram is not an array: \arraystretch is not theirs
+        Aligned | Centered | Diagram => (0.84 * 1000.0 * scale, 0.36 * 1000.0 * scale),
+        _ => (0.84 * 1000.0 * scale * lines.stretch, 0.36 * 1000.0 * scale * lines.stretch),
     };
     let jot = if matches!(kind, Aligned | Centered) { em(e, 0.3) } else { 0.0 };
     let mut heights = Vec::new();
@@ -160,7 +166,7 @@ pub fn compose(
             boundary_content[*j] = Some(c);
         }
     }
-    for j in verticals {
+    for j in lines.verticals.iter().chain(lines.dashed) {
         if *j <= ncol {
             boundary[*j] += thickness;
         }
@@ -267,18 +273,34 @@ pub fn compose(
         }
     }
     // vertical rules per table row: a merged cell (\multicolumn) interrupts the rule
-    for j in verticals {
+    let (dash, gap) = (em(e, 0.4), em(e, 0.4));
+    for (j, dashed) in lines.verticals.iter().map(|j| (j, false)).chain(lines.dashed.iter().map(|j| (j, true))) {
         if *j > ncol {
             continue;
         }
-        let xv = if boundary_content[*j].is_some() { x_boundary[*j] } else { x_boundary[*j] + boundary[*j] / 2.0 - thickness / 2.0 };
+        // between columns the rule sits in the middle of the two \arraycolsep; on the outside, at
+        // the edge, the \arraycolsep inside it (as LaTeX's array puts it)
+        let xv = if boundary_content[*j].is_some() || *j == 0 {
+            x_boundary[*j]
+        } else if *j == ncol {
+            x_boundary[*j] + boundary[*j] - thickness
+        } else {
+            x_boundary[*j] + boundary[*j] / 2.0 - thickness / 2.0
+        };
         for (i, row) in cells.iter().enumerate() {
             let crosses = intertexts.contains(&i) || row.iter().any(|c| c.span > 1 && c.column < *j && *j < c.column + c.span);
             if crosses {
                 continue;
             }
-            let (top, low) = (y_rule[i], y_rule[i + 1]);
-            body.items.push(Item::Rule { x: xv, y: top + low, width: thickness, height: top - low, color: None });
+            // from the row's top rule to the next one, in the body's coordinates
+            let (low, length) = (top + y_rule[i + 1], y_rule[i] - y_rule[i + 1]);
+            if dashed {
+                for (from, length) in dashes(length, dash, gap) {
+                    body.items.push(Item::Rule { x: xv, y: low + from, width: thickness, height: length, color: None });
+                }
+            } else {
+                body.items.push(Item::Rule { x: xv, y: low, width: thickness, height: length, color: None });
+            }
         }
     }
     for t in horizontals {
@@ -286,7 +308,14 @@ pub fn compose(
         let to = t.to.min(ncol - 1);
         let (x0, x1) = if t.to == usize::MAX && t.from == 0 { (0.0, total_width) } else { (x_col[from] - boundary[from] / 2.0, x_col[to] + widths[to] + boundary[to + 1] / 2.0) };
         let yt = top + y_rule[t.row.min(cells.len())] - thickness;
-        body.items.push(Item::Rule { x: x0.max(0.0), y: yt, width: (x1 - x0.max(0.0)).min(total_width), height: thickness, color: None });
+        let (x0, width) = (x0.max(0.0), (x1 - x0.max(0.0)).min(total_width));
+        if t.dashed {
+            for (from, length) in dashes(width, dash, gap) {
+                body.items.push(Item::Rule { x: x0 + from, y: yt, width: length, height: thickness, color: None });
+            }
+        } else {
+            body.items.push(Item::Rule { x: x0, y: yt, width, height: thickness, color: None });
+        }
     }
     if let Some((open, close)) = &border {
         // center the parentheses on the core (rows 2 onward)
@@ -331,4 +360,18 @@ pub fn compose(
         None => math_box.append(&MathBox::space(em(e, 0.12))),
     }
     Ok(math_box)
+}
+
+/// The dashes of a dashed rule `length` long, as (start, length): as many as fit, the gaps
+/// adjusted so the rule starts and ends with a dash.
+fn dashes(length: f32, dash: f32, gap: f32) -> Vec<(f32, f32)> {
+    if length <= dash {
+        return vec![(0.0, length.max(0.0))];
+    }
+    let n = ((length + gap) / (dash + gap)).round().max(2.0) as usize;
+    let gap = (length - n as f32 * dash) / (n - 1) as f32;
+    if gap <= 0.0 {
+        return vec![(0.0, length)];
+    }
+    (0..n).map(|i| (i as f32 * (dash + gap), dash)).collect()
 }

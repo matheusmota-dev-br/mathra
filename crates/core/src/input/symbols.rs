@@ -77,6 +77,8 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("circleddash", '⊝', Bin),
         ("circledast", '⊛', Bin),
         ("circledcirc", '⊚', Bin),
+        // amsmath
+        ("And", '&', Bin),
         ("bigtriangleup", '△', Bin),
         ("bigtriangledown", '▽', Bin),
         ("wr", '≀', Bin),
@@ -514,6 +516,39 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("ss", 'ß', Ord),
         ("l", 'ł', Ord),
         ("smallint", '∫', Op),
+        // the LaTeX kernel
+        ("mathellipsis", '…', Inner),
+        ("mathsterling", '£', Ord),
+        ("ldotp", '.', Punct),
+        ("cdotp", '·', Punct),
+        ("lq", '‘', Ord),
+        ("rq", '’', Ord),
+        ("lgroup", '⟮', Open),
+        ("rgroup", '⟯', Close),
+        ("lmoustache", '⎰', Open),
+        ("rmoustache", '⎱', Close),
+        // amssymb
+        ("backepsilon", '∍', Rel),
+        ("gtreqqless", '⪌', Rel),
+        ("lesseqqgtr", '⪋', Rel),
+        ("circledR", '®', Ord),
+        ("maltese", '✠', Ord),
+        // mathtools and colonequals: the colon centered on the axis, alone and doubled
+        ("vcentcolon", '∶', Rel),
+        ("ratio", '∶', Rel),
+        ("dblcolon", '∷', Rel),
+        ("coloncolon", '∷', Rel),
+        ("colonequals", '≔', Rel),
+        ("equalscolon", '≕', Rel),
+        ("lparen", '(', Open),
+        ("rparen", ')', Close),
+        // stmaryrd
+        ("lBrace", '⦃', Open),
+        ("rBrace", '⦄', Close),
+        ("mapsfrom", '↤', Rel),
+        // unicode-math
+        ("imageof", '⊷', Rel),
+        ("origof", '⊶', Rel),
     ]
 };
 
@@ -698,6 +733,9 @@ pub fn large_operator(name: &str) -> Option<(char, bool)> {
         "bigsqcup" => ('⨆', true),
         "biguplus" => ('⨄', true),
         "int" => ('∫', false),
+        // plain TeX's \intop and \ointop: the integral that takes limits
+        "intop" => ('∫', true),
+        "ointop" => ('∮', true),
         "iint" => ('∬', false),
         "iiint" => ('∭', false),
         "oint" => ('∮', false),
@@ -737,6 +775,10 @@ pub fn delimiter_command(name: &str) -> Option<Option<char>> {
         "Downarrow" => '⇓',
         "Updownarrow" => '⇕',
         "lgroup" => '⟮',
+        "lparen" => '(',
+        "rparen" => ')',
+        "lBrace" => '⦃',
+        "rBrace" => '⦄',
         "rgroup" => '⟯',
         "lmoustache" => '⎰',
         "rmoustache" => '⎱',
@@ -788,6 +830,9 @@ pub fn accent(name: &str) -> Option<(char, bool)> {
         "overrightarrow" => ('→', true),
         "overleftarrow" => ('←', true),
         "overleftrightarrow" => ('↔', true),
+        // harpoon package
+        "overleftharpoon" => ('↼', true),
+        "overrightharpoon" => ('⇀', true),
         "overarc" | "wideparen" | "overparen" | "arc" => ('⏜', true),
         "underparen" => ('⏝', true),
         _ => return None,
@@ -814,6 +859,12 @@ pub fn text_combining(mark: char) -> Option<char> {
         '.' => '\u{0307}',
         'u' => '\u{0306}',
         'v' => '\u{030C}',
+        'H' => '\u{030B}',
+        'r' => '\u{030A}',
+        'k' => '\u{0328}',
+        'b' => '\u{0331}',
+        'd' => '\u{0323}',
+        't' => '\u{0361}',
         _ => return None,
     })
 }

@@ -37,20 +37,26 @@ pub fn generate(c: &Content) -> String {
     let f = c.font.get();
     let em = f.units_per_em();
     let math_box = c.math_box;
-    let total_height = math_box.height + math_box.depth;
     let id = id_prefix(c);
     let mut s = String::new();
 
-    // S-SVG-1: size in em and alignment on the baseline
+    // S-SVG-1: size in em and alignment on the baseline. The view covers the box and the ink that
+    // passes it (the hook of a bold f at the end, a cancel's line): an SVG clips what falls outside.
+    let (mut left, mut right, mut top, mut bottom) = (0.0f32, math_box.width, math_box.height, math_box.depth);
+    if let Some((x0, y0, x1, y1)) = math_box.ink(f) {
+        (left, right, top, bottom) = (left.min(x0), right.max(x1), top.max(y1), bottom.max(-y0));
+    }
+    let (width, total_height) = (right - left, top + bottom);
     let _ = write!(
         s,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1" viewBox="0 {} {} {}" width="{}em" height="{}em" style="vertical-align: {}em" role="img" aria-labelledby="{id}-speech" lang="{}" data-mathra-version="{}">"#,
-        n(-math_box.height),
-        n(math_box.width),
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1" viewBox="{} {} {} {}" width="{}em" height="{}em" style="vertical-align: {}em" role="img" aria-labelledby="{id}-speech" lang="{}" data-mathra-version="{}">"#,
+        n(left),
+        n(-top),
+        n(width),
         n(total_height),
-        n(math_box.width / em),
+        n(width / em),
         n(total_height / em),
-        n(-math_box.depth / em),
+        n(-bottom / em),
         c.locale,
         VERSION,
         id = id,
@@ -93,8 +99,10 @@ pub fn generate(c: &Content) -> String {
     s.push_str(r#"<g fill="currentColor" stroke="none" transform="scale(1,-1)">"#);
     for item in &math_box.items {
         match item {
-            Item::Glyph { id: g, x, y, scale, color } => {
-                let transform = if (*scale - 1.0).abs() < 1e-4 {
+            Item::Glyph { id: g, x, y, scale, color, flip } => {
+                let transform = if *flip {
+                    format!(r#"transform="translate({} {}) scale({} {})""#, n(*x), n(*y), n(-*scale), n(*scale))
+                } else if (*scale - 1.0).abs() < 1e-4 {
                     format!(r#"x="{}" y="{}""#, n(*x), n(*y))
                 } else {
                     format!(r#"transform="translate({} {}) scale({})""#, n(*x), n(*y), n(*scale))

@@ -76,7 +76,62 @@ pub fn horizontal(c: char, target: f32, e: Style) -> R<MathBox> {
     if let Some(parts) = f.assembly(id, false) {
         return Ok(assemble(&parts, target / s, s, false, f));
     }
+    if let Some(built) = composite_arrow(c, id, target, e)? {
+        return Ok(built);
+    }
     Ok(variants.last().map_or(glyph_id(id, s, f), |(v, _)| glyph_id(*v, s, f)))
+}
+
+/// Arrows the font draws at one size only (STIX Two Math has no assembly for ⇌, ⇄ or ⟶): built
+/// from arrows it can stretch, as `\xrightleftharpoons` and mhchem's `<=>` need. A pair is stacked
+/// where the glyph has its two arrows (the upper one's top on the glyph's top, the lower one's
+/// bottom on its bottom); a long arrow is its short one stretched. The second number is the length
+/// of the upper and lower arrow, as a share of the whole (⥂ has a short lower arrow).
+fn composite_arrow(c: char, id: ttf_parser::GlyphId, target: f32, e: Style) -> R<Option<MathBox>> {
+    let (upper, lower, shares) = match c {
+        '⇌' => ('⇀', Some('↽'), (1.0, 1.0)),
+        '⇋' => ('↼', Some('⇁'), (1.0, 1.0)),
+        '⇄' => ('→', Some('←'), (1.0, 1.0)),
+        '⇆' => ('←', Some('→'), (1.0, 1.0)),
+        '⇉' => ('→', Some('→'), (1.0, 1.0)),
+        '⇇' => ('←', Some('←'), (1.0, 1.0)),
+        '⥂' => ('→', Some('←'), (1.0, 0.6)),
+        '⥄' => ('→', Some('←'), (0.6, 1.0)),
+        '⟶' => ('→', None, (1.0, 1.0)),
+        '⟵' => ('←', None, (1.0, 1.0)),
+        '⟷' => ('↔', None, (1.0, 1.0)),
+        '⟹' => ('⇒', None, (1.0, 1.0)),
+        '⟸' => ('⇐', None, (1.0, 1.0)),
+        '⟺' => ('⇔', None, (1.0, 1.0)),
+        '⟼' => ('↦', None, (1.0, 1.0)),
+        _ => return Ok(None),
+    };
+    let f = e.font();
+    if [Some(upper), lower].into_iter().flatten().any(|p| f.glyph(p).and_then(|g| f.assembly(g, false)).is_none()) {
+        return Ok(None);
+    }
+    let Some(lower) = lower else {
+        return horizontal(upper, target, e).map(Some);
+    };
+    let s = e.scale();
+    let (_, bottom, _, top) = f.limits(id);
+    let a = horizontal(upper, target * shares.0, e)?;
+    let b = horizontal(lower, target * shares.1, e)?;
+    let width = a.width.max(b.width).max(target);
+    let mut math_box = MathBox::space(width);
+    let (_, a_top) = ink(&a, e);
+    let (b_bottom, _) = ink(&b, e);
+    let (mut up, mut down) = (top * s - a_top, bottom * s - b_bottom);
+    // the stretchable harpoons have taller barbs than the ones inside ⇌: kept apart as the glyph
+    // keeps them (and TeX's 2pt), shafts three rule thicknesses apart
+    let apart = 3.0 * k(e, |c| c.fraction_rule_thickness());
+    if up - down < apart {
+        let extra = (apart - (up - down)) / 2.0;
+        (up, down) = (up + extra, down - extra);
+    }
+    math_box.place(&a, (width - a.width) / 2.0, up);
+    math_box.place(&b, (width - b.width) / 2.0, down);
+    Ok(Some(math_box))
 }
 
 /// Lowest and highest ink of the glyphs in a box, from their outlines. A box's height and depth
@@ -131,7 +186,7 @@ fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool, f: &Font) -> Ma
     for p in &seq {
         let (x0, y0, _, _) = f.limits(p.id);
         let (x, y) = if vertical { (0.0, (cursor - y0) * s) } else { ((cursor - x0) * s, 0.0) };
-        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None });
+        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None, flip: false });
         let g = glyph_id(p.id, s, f);
         if vertical {
             math_box.width = math_box.width.max(g.width);

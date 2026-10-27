@@ -44,7 +44,7 @@ pub fn character(c: char, variant: Variant) -> char {
     }
     let (uppercase, lowercase, digit, greek_upper, greek_lower) = match variant {
         Upright => return c,
-        Italic => (0x1D434, 0x1D44E, None, None, Some(0x1D6FC)),
+        Italic => (0x1D434, 0x1D44E, None, Some(0x1D6E2), Some(0x1D6FC)),
         Bold => (0x1D400, 0x1D41A, Some(0x1D7CE), Some(0x1D6A8), Some(0x1D6C2)),
         BoldItalic => (0x1D468, 0x1D482, Some(0x1D7CE), Some(0x1D71C), Some(0x1D736)),
         Calligraphic => (0x1D49C, 0x1D4B6, None, None, None),

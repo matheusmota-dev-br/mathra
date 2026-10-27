@@ -59,6 +59,9 @@ pub enum Node {
         /// `\binom` has no rule.
         #[serde(skip_serializing_if = "std::clone::Clone::clone")]
         rule: bool,
+        /// The rule's thickness in em when the input gives one (`\above`, `\genfrac`); the font's otherwise.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thickness: Option<f32>,
     },
     Root {
         radicand: Box<Node>,
@@ -92,6 +95,9 @@ pub enum Node {
         /// Vertical rules: column indices preceded by `|`.
         #[serde(skip_serializing_if = "Vec::is_empty")]
         verticals: Vec<usize>,
+        /// Dashed vertical rules (arydshln): column indices preceded by `:`.
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        dashed: Vec<usize>,
         /// Horizontal rules (`\hline`, `\cline{a-b}`) before a table row.
         #[serde(skip_serializing_if = "Vec::is_empty")]
         horizontals: Vec<TableRule>,
@@ -101,6 +107,9 @@ pub enum Node {
         /// Rows that are full-width running text (`\intertext`).
         #[serde(skip_serializing_if = "Vec::is_empty")]
         intertexts: Vec<usize>,
+        /// `\arraystretch`: how much taller each row's strut is (1 by default).
+        #[serde(skip_serializing_if = "is_one")]
+        stretch: f32,
     },
     /// Accent over the base: hat, bar, vector, tilde, dot. `below`: under the base (`\underrightarrow`).
     Accent {
@@ -219,6 +228,18 @@ pub enum Node {
         height: f32,
         raise: f32,
     },
+    /// `\mathchoice{display}{text}{script}{scriptscript}`: the branch of the style it is set in.
+    Choice {
+        branches: Vec<Node>,
+    },
+    /// `\vcenter`: the content centered on the math axis.
+    VCenter {
+        base: Box<Node>,
+    },
+    /// `\reflectbox` (graphicx): the content mirrored left to right.
+    Reflected {
+        base: Box<Node>,
+    },
     /// `\smash`: draws, but takes no height (and/or depth).
     Smashed {
         base: Box<Node>,
@@ -331,6 +352,13 @@ pub struct TableRule {
     pub row: usize,
     pub from: usize,
     pub to: usize,
+    /// `\hdashline`, `\cdashline` (arydshln).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dashed: bool,
+}
+
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -341,6 +369,12 @@ pub enum Frame {
     Circle,
     /// No line, only the padding (and the background, if any): `\colorbox`.
     Fill,
+    /// The Steinmetz angle of a phasor, `\phase` (steinmetz package): a line under the content and
+    /// one rising to its left.
+    Phase,
+    /// The actuarial angle, `\angl` (actuarialangle package): a line over the content and one down
+    /// its right side, as in the annuity a with angle n.
+    ActuarialAngle,
 }
 
 impl Frame {

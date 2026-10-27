@@ -164,7 +164,7 @@ impl Reader<'_> {
             "mfrac" => {
                 let [num, den]: [Node; 2] = self.arguments(node, 2, variant)?.try_into().expect("two arguments");
                 let rule = !node.attribute("linethickness").is_some_and(|t| t.trim().trim_end_matches(char::is_alphabetic).trim().parse::<f32>() == Ok(0.0));
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule }
+                Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness: None }
             }
             "msqrt" => Node::Root { radicand: Box::new(self.row(node, variant)?), index: None },
             "mroot" => {
@@ -453,9 +453,9 @@ impl Reader<'_> {
             (1..n).filter(|j| matches!(given.get(j - 1).or(given.last()).copied(), Some("solid" | "dashed"))).collect()
         };
         let verticals = lines(node.attribute("columnlines"), ncol);
-        let horizontals = lines(node.attribute("rowlines"), rows.len()).into_iter().map(|r| TableRule { row: r, from: 0, to: usize::MAX }).collect();
+        let horizontals = lines(node.attribute("rowlines"), rows.len()).into_iter().map(|r| TableRule { row: r, from: 0, to: usize::MAX, dashed: false }).collect();
         let shape = if columns.is_empty() && verticals.is_empty() { TableKind::Matrix } else { TableKind::Array };
-        Ok(Node::Table { shape, rows, columns, verticals, horizontals, between: vec![], intertexts: vec![] })
+        Ok(Node::Table { shape, rows, columns, verticals, dashed: vec![], horizontals, between: vec![], intertexts: vec![], stretch: 1.0 })
     }
 }
 
@@ -666,8 +666,17 @@ fn fences(children: Vec<Node>) -> Node {
                 _ => None,
             }
         };
-        let table =
-            |shape: TableKind, rows: Vec<Vec<Node>>| Node::Table { shape, rows, columns: vec![], verticals: vec![], horizontals: vec![], between: vec![], intertexts: vec![] };
+        let table = |shape: TableKind, rows: Vec<Vec<Node>>| Node::Table {
+            shape,
+            rows,
+            columns: vec![],
+            verticals: vec![],
+            dashed: vec![],
+            horizontals: vec![],
+            between: vec![],
+            intertexts: vec![],
+            stretch: 1.0,
+        };
         if let (Some(o), Some(c)) = (open, close) {
             if let Some((_, rows)) = inner_table(1..n - 1) {
                 let shape = match (o, c) {

@@ -203,7 +203,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         Node::Text { parts } => {
             for p in parts {
                 match p {
-                    TextPart::Text(t) => s.push_str(&t.replace(['\u{E000}', '\u{E001}', '\u{E002}', '\u{E003}'], "")),
+                    TextPart::Text(t) => s.push_str(&t.replace(crate::input::latex::MARKERS, "")),
                     TextPart::Math(m) => write_node(m, loc, s),
                 }
             }
@@ -214,14 +214,30 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             }
         }
         Node::Phantom { .. } => {}
+        // \mathchoice: the text style's branch
+        Node::Choice { branches } => {
+            if let Some(b) = branches.get(1) {
+                write_node(b, loc, s);
+            }
+        }
         Node::Canceled { base, .. } | Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => write_node(base, loc, s),
         Node::Framed { base, shape, .. } => {
-            if *shape == Frame::Circle {
-                s.push('(');
-                write_node(base, loc, s);
-                s.push(')');
-            } else {
-                write_node(base, loc, s);
+            match shape {
+                Frame::Circle => {
+                    s.push('(');
+                    write_node(base, loc, s);
+                    s.push(')');
+                }
+                // A∠θ, as the phasor is written in plain text; the annuity's a_(n⌉)
+                Frame::Phase => {
+                    s.push('∠');
+                    write_node(base, loc, s);
+                }
+                Frame::ActuarialAngle => {
+                    write_node(base, loc, s);
+                    s.push('⌉');
+                }
+                _ => write_node(base, loc, s),
             }
         }
         Node::Quantity { unit, .. } => write_node(unit, loc, s),
@@ -240,6 +256,8 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         | Node::Raised { base, .. }
         | Node::Scaled { base, .. }
         | Node::Smashed { base, .. }
+        | Node::VCenter { base }
+        | Node::Reflected { base }
         | Node::Overlapped { base, .. } => write_node(base, loc, s),
         Node::Rule { .. } => {}
         Node::VerticalArrow { symbol, .. } => {

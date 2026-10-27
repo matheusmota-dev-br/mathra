@@ -22,12 +22,13 @@ const ACCENT: &str = "#f2b544";
 /// Returns the element and the width it takes, in px.
 fn equation(tex: &str, x: f32, base: f32, em: f32, color: &str) -> (String, f32) {
     let svg = convert(tex, &Options::default()).expect("the banner equations are valid").svg;
-    // viewBox="0 -height width height+depth", in font units (1000 per em)
+    // viewBox="left -top width top+bottom", in font units (1000 per em); left is below 0 when ink
+    // passes the start of the box, which stays at x
     let vb: Vec<f32> = svg.split("viewBox=\"").nth(1).unwrap().split('"').next().unwrap().split(' ').map(|n| n.parse().unwrap()).collect();
     let per_unit = em / font::font().units_per_em();
     let (width, height) = (vb[2] * per_unit, vb[3] * per_unit);
     let top = base + vb[1] * per_unit;
-    let placed = svg.replacen("<svg ", &format!(r#"<svg x="{}" y="{}" "#, num(x), num(top)), 1);
+    let placed = svg.replacen("<svg ", &format!(r#"<svg x="{}" y="{}" "#, num(x + vb[0] * per_unit), num(top)), 1);
     let placed = placed.replacen(r#"width=""#, r#"data-w=""#, 1).replacen(r#"height=""#, r#"data-h=""#, 1);
     let placed = placed.replacen("<svg ", &format!(r#"<svg width="{}" height="{}" "#, num(width), num(height)), 1);
     (format!(r#"<g color="{color}">{placed}</g>"#), width)

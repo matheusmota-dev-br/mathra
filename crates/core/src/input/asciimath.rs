@@ -552,7 +552,7 @@ impl Parser<'_> {
             if matches!(self.peek().map(|t| &t.kind), Some(Kind::Over)) {
                 self.pos += 1;
                 let right = if self.peek().is_some_and(|t| !matches!(t.kind, Kind::Right(_))) { self.intermediate()? } else { Node::row(vec![]) };
-                out.push(Node::Fraction { num: Box::new(unbracket(left)), den: Box::new(unbracket(right)), style: FractionStyle::Auto, rule: true });
+                out.push(Node::Fraction { num: Box::new(unbracket(left)), den: Box::new(unbracket(right)), style: FractionStyle::Auto, rule: true, thickness: None });
             } else {
                 out.push(left);
             }
@@ -647,7 +647,7 @@ impl Parser<'_> {
                 let a = unbracket(self.simple()?);
                 let b = unbracket(self.simple()?);
                 match name {
-                    "frac" => Node::Fraction { num: Box::new(a), den: Box::new(b), style: FractionStyle::Auto, rule: true },
+                    "frac" => Node::Fraction { num: Box::new(a), den: Box::new(b), style: FractionStyle::Auto, rule: true, thickness: None },
                     "root" => Node::Root { radicand: Box::new(b), index: Some(Box::new(a)) },
                     "underset" => {
                         let class = class_of(&b);
@@ -807,7 +807,7 @@ fn bracketed(open: Option<char>, close: Option<char>, inner: Vec<Node>) -> Node 
         };
         if let Some(shape) = shape {
             let (rows, verticals) = augmented(rows);
-            return Node::Table { shape, rows, columns: vec![], verticals, horizontals: vec![], between: vec![], intertexts: vec![] };
+            return Node::Table { shape, rows, columns: vec![], verticals, dashed: vec![], horizontals: vec![], between: vec![], intertexts: vec![], stretch: 1.0 };
         }
     }
     if open.is_none() && close.is_none() {

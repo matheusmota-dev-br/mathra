@@ -64,6 +64,11 @@ pub const BOLD_END: char = '\u{E001}';
 /// Small capitals markers (`\textsc{…}`).
 pub const SMALL_CAPS_START: char = '\u{E002}';
 pub const SMALL_CAPS_END: char = '\u{E003}';
+/// Typewriter markers (`\texttt{…}`, `\url{…}`).
+pub const MONO_START: char = '\u{E004}';
+pub const MONO_END: char = '\u{E005}';
+/// Every marker, for the outputs that drop them.
+pub const MARKERS: [char; 6] = [BOLD_START, BOLD_END, SMALL_CAPS_START, SMALL_CAPS_END, MONO_START, MONO_END];
 
 /// L-ENT-1 and L-ENT-2: HTML entities and outer delimiters that arrive with the equation.
 fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
@@ -115,8 +120,10 @@ enum Stop {
     End(String),
     Right(Option<char>),
     Middle(Option<char>),
-    Hline,
-    Cline(usize, usize),
+    /// `\hline`, or `\hdashline` when dashed.
+    Hline(bool),
+    /// `\cline{a-b}`, or `\cdashline{a-b}` when dashed.
+    Cline(usize, usize, bool),
     /// `\intertext{…}` inside an alignment.
     Intertext(Node),
 }
@@ -309,7 +316,7 @@ impl Reader<'_> {
                     }
                 }
                 Stop::Middle(_) => self.tolerate(rules::E_REC_5, self.pos, "\\middle outside \\left…\\right", "ignored")?,
-                Stop::Hline | Stop::Cline(..) => {}
+                Stop::Hline(_) | Stop::Cline(..) => {}
                 Stop::Intertext(t) => cells.push(t),
             }
         }
@@ -320,7 +327,7 @@ impl Reader<'_> {
             rows.push(cells);
         }
         let kind = if had_e { TableKind::Aligned } else { TableKind::Centered };
-        Ok(Node::Table { shape: kind, rows, columns: vec![], verticals: vec![], horizontals: vec![], between: vec![], intertexts: vec![] })
+        Ok(Node::Table { shape: kind, rows, columns: vec![], verticals: vec![], dashed: vec![], horizontals: vec![], between: vec![], intertexts: vec![], stretch: 1.0 })
     }
 
     /// Reads atoms up to a stop (end, `}`, `&`, `\\`, `\end`, `\right`…).
@@ -709,13 +716,18 @@ impl Reader<'_> {
             "end" => return Ok(Some(Some(Stop::End(self.raw_text()?.trim().to_string())))),
             "right" => return Ok(Some(Some(Stop::Right(self.delimiter()?)))),
             "middle" => return Ok(Some(Some(Stop::Middle(self.delimiter()?)))),
-            "hline" | "midrule" | "toprule" | "bottomrule" => return Ok(Some(Some(Stop::Hline))),
-            "cline" => {
+            "hline" | "midrule" | "toprule" | "bottomrule" => return Ok(Some(Some(Stop::Hline(false)))),
+            // arydshln
+            "hdashline" => {
+                self.raw_optional();
+                return Ok(Some(Some(Stop::Hline(true))));
+            }
+            "cline" | "cdashline" => {
                 let range = self.raw_text()?;
                 let (a, b) = range.split_once('-').unwrap_or((&range, &range));
                 let n = |t: &str| t.trim().parse::<usize>().map(|v| v.saturating_sub(1));
                 return match (n(a), n(b)) {
-                    (Ok(a), Ok(b)) => Ok(Some(Some(Stop::Cline(a, b)))),
+                    (Ok(a), Ok(b)) => Ok(Some(Some(Stop::Cline(a, b, name == "cdashline")))),
                     _ => self.error(col, format!("\\cline{{{range}}}: use the form \\cline{{1-2}}")),
                 };
             }
@@ -791,12 +803,34 @@ impl Reader<'_> {
                 });
                 return Ok(Some(Some(p)));
             }
-            "over" | "choose" | "atop" | "brack" | "brace" => {
+            "over" | "choose" | "atop" | "brack" | "brace" | "above" => {
                 let num = Node::row(std::mem::take(items));
+                // \above<dimen>: TeX reads a dimension, written bare (2pt) or, as KaTeX allows, braced
+                let thickness = if name == "above" {
+                    self.skip_spaces();
+                    let raw = if self.current() == Some('{') {
+                        self.raw_text()?
+                    } else {
+                        let start = self.pos;
+                        while self.current().is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')) {
+                            self.pos += 1;
+                        }
+                        while self.current().is_some_and(|c| c.is_ascii_alphabetic()) && self.pos - start < 12 {
+                            self.pos += 1;
+                            if measure_em(&self.c[start..self.pos].iter().collect::<String>()).is_some() {
+                                break;
+                            }
+                        }
+                        self.c[start..self.pos].iter().collect()
+                    };
+                    Some(measure_em(&raw).ok_or(Error::Syntax { column: col, message: format!("\\above needs a dimension, not {raw:?}") })?.max(0.0))
+                } else {
+                    None
+                };
                 let (remainder, p) = self.list()?;
                 let den = Node::row(remainder);
-                let rule = name == "over";
-                let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule };
+                let rule = matches!(name, "over" | "above");
+                let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
                 items.push(match name {
                     "choose" => Node::Delimited { open: Some('('), close: Some(')'), parts: vec![fraction], middles: vec![] },
                     "brack" => Node::Delimited { open: Some('['), close: Some(']'), parts: vec![fraction], middles: vec![] },
@@ -867,7 +901,7 @@ impl Reader<'_> {
                     "tfrac" => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: true }
+                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: true, thickness: None }
             }
             "binom" | "dbinom" | "tbinom" => {
                 let num = self.argument()?;
@@ -877,7 +911,7 @@ impl Reader<'_> {
                     "tbinom" => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: false };
+                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: false, thickness: None };
                 Node::Delimited { open: Some('('), close: Some(')'), parts: vec![f], middles: vec![] }
             }
             "sqrt" | "root" => {
@@ -895,7 +929,7 @@ impl Reader<'_> {
         let _ = (col, start, star);
         let node: Node = match name {
             // text and fonts
-            "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textit" | "textbf" | "textsf" | "texttt" | "emph" | "textmd" | "textsl" | "fbox" | "framebox" => {
+            "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textit" | "textsf" | "emph" | "textmd" | "textsl" | "fbox" | "framebox" => {
                 let text = self.text()?;
                 if matches!(name, "fbox" | "framebox") {
                     Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None }
@@ -903,18 +937,33 @@ impl Reader<'_> {
                     text
                 }
             }
-            "textsc" => match self.text()? {
-                Node::Text { parts } => Node::Text {
-                    parts: parts
-                        .into_iter()
-                        .map(|p| match p {
-                            TextPart::Text(t) => TextPart::Text(format!("{SMALL_CAPS_START}{t}{SMALL_CAPS_END}")),
-                            math => math,
-                        })
-                        .collect(),
-                },
-                other => other,
-            },
+            "textsc" | "textbf" | "texttt" => {
+                let (open, close) = match name {
+                    "textsc" => (SMALL_CAPS_START, SMALL_CAPS_END),
+                    "textbf" => (BOLD_START, BOLD_END),
+                    _ => (MONO_START, MONO_END),
+                };
+                match self.text()? {
+                    Node::Text { parts } => Node::Text {
+                        parts: parts
+                            .into_iter()
+                            .map(|p| match p {
+                                TextPart::Text(t) => TextPart::Text(format!("{open}{t}{close}")),
+                                math => math,
+                            })
+                            .collect(),
+                    },
+                    other => other,
+                }
+            }
+            // hyperref: the address as written, in typewriter type (_ % # ~ are its own characters)
+            "url" => {
+                let address = self.raw_text()?;
+                let address: String = address.chars().filter(|c| !matches!(c, '\\')).collect();
+                Node::Text { parts: vec![TextPart::Text(format!("{MONO_START}{address}{MONO_END}"))] }
+            }
+            // graphicx: \scalebox{-1}[1]{…}, its argument in text mode
+            "reflectbox" => Node::Reflected { base: Box::new(self.text()?) },
             "mathrm" | "mathup" | "mathit" | "mathbf" | "mathsf" | "mathtt" | "mathbb" | "mathcal" | "mathscr" | "mathfrak" | "boldsymbol" | "bm" | "pmb" | "mathbfit"
             | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
                 let variant = match name {
@@ -934,7 +983,9 @@ impl Reader<'_> {
             "operatorname" => {
                 let raw = self.raw_text()?;
                 // in math mode TeX ignores spaces: \operatorname{ l i m } is "lim"
-                let function_name: String = raw.chars().filter(|c| c.is_alphanumeric() || *c == '-').collect();
+                // \, stays a space, as in \operatorname*{inj\,lim}
+                let function_name: String = raw.replace("\\,", "\u{2009}").chars().filter(|c| c.is_alphanumeric() || matches!(c, '-' | '\u{2009}')).collect();
+                let function_name = function_name.replace('\u{2009}', " ");
                 Node::Function { name: function_name.trim().to_string(), limits: star }
             }
             "mathop" | "mathrel" | "mathbin" | "mathord" | "mathopen" | "mathclose" | "mathpunct" | "mathinner" => {
@@ -968,10 +1019,12 @@ impl Reader<'_> {
                 self.raw_optional();
                 Node::Brace { base: Box::new(self.argument()?), above: name == "overbracket", label: None, bracket: true }
             }
-            "underrightarrow" | "underleftarrow" | "underleftrightarrow" => {
+            "underrightarrow" | "underleftarrow" | "underleftrightarrow" | "utilde" => {
                 let accent = match name {
                     "underrightarrow" => '→',
                     "underleftarrow" => '←',
+                    // undertilde
+                    "utilde" => '\u{0303}',
                     _ => '↔',
                 };
                 Node::Accent { base: Box::new(self.argument()?), accent, stretchy: true, below: true }
@@ -991,7 +1044,8 @@ impl Reader<'_> {
                 Node::ForcedClass { class, base: Box::new(Node::Stacked { base: Box::new(base), above: None, below: Some(Box::new(below)) }) }
             }
             "xrightarrow" | "xleftarrow" | "xRightarrow" | "xLeftarrow" | "xleftrightarrow" | "xLeftrightarrow" | "xrightleftharpoons" | "xleftrightharpoons" | "xmapsto"
-            | "xlongequal" | "xhookrightarrow" => {
+            | "xlongequal" | "xhookrightarrow" | "xhookleftarrow" | "xtwoheadrightarrow" | "xtwoheadleftarrow" | "xrightharpoonup" | "xrightharpoondown" | "xleftharpoonup"
+            | "xleftharpoondown" | "xtofrom" => {
                 let symbol = match name {
                     "xrightarrow" => '→',
                     "xleftarrow" => '←',
@@ -1003,6 +1057,15 @@ impl Reader<'_> {
                     "xleftrightharpoons" => '⇋',
                     "xmapsto" => '↦',
                     "xhookrightarrow" => '↪',
+                    // mathtools and extarrows
+                    "xhookleftarrow" => '↩',
+                    "xtwoheadrightarrow" => '↠',
+                    "xtwoheadleftarrow" => '↞',
+                    "xrightharpoonup" => '⇀',
+                    "xrightharpoondown" => '⇁',
+                    "xleftharpoonup" => '↼',
+                    "xleftharpoondown" => '↽',
+                    "xtofrom" => '⇄',
                     _ => '=',
                 };
                 let below = self.optional_argument()?;
@@ -1024,7 +1087,27 @@ impl Reader<'_> {
                 Node::Scripts { base: Box::new(Node::Canceled { base: Box::new(base), shape: Cancel::Bar }), sup: Some(Box::new(value)), sub: None }
             }
             "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle, background: None, border: None },
-            "textcircled" | "circled" | "circledcirc" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None },
+            // steinmetz: \phase[style]{angle}, the angle in text style unless [0] to [3] say otherwise
+            // (display, text, script, scriptscript); any other option leaves the current style, as
+            // the package's \ifcase does
+            "phase" => {
+                let level = self.raw_optional().map_or(Some(1), |o| o.trim().parse::<u8>().ok().filter(|l| *l <= 3));
+                let angle = self.argument()?;
+                let base = match level {
+                    Some(level) => Node::Style { level, base: Box::new(angle) },
+                    None => angle,
+                };
+                Node::Framed { base: Box::new(base), shape: Frame::Phase, background: None, border: None }
+            }
+            // actuarialangle: \angl{n}, and \angln, \anglr, \anglk for the common durations
+            "angl" | "angln" | "anglr" | "anglk" => {
+                let base = match name {
+                    "angl" => self.argument()?,
+                    _ => Node::Identifier { name: name[4..].to_string(), variant: Variant::Italic },
+                };
+                Node::Framed { base: Box::new(base), shape: Frame::ActuarialAngle, background: None, border: None }
+            }
+            "textcircled" | "circled" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None },
             "phantom" | "hphantom" | "vphantom" => Node::Phantom { base: Box::new(self.argument()?), width: name != "vphantom", height: name != "hphantom" },
             "textcolor" => {
                 let color = self.color()?;
@@ -1255,7 +1338,9 @@ impl Reader<'_> {
                     _ => FractionStyle::Row,
                 };
                 let rule = !thickness.trim().trim_start_matches(['0', '.']).trim_end_matches(char::is_alphabetic).is_empty() || thickness.trim().is_empty();
-                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule };
+                // an empty thickness is the font's; a given one is drawn as given
+                let given = measure_em(&thickness).filter(|_| rule);
+                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule, thickness: given };
                 let delim = |t: &str| -> Option<char> {
                     let t = t.trim();
                     match t.strip_prefix('\\') {
@@ -1269,6 +1354,14 @@ impl Reader<'_> {
                     Node::Delimited { open: delim(&open), close: delim(&close), parts: vec![f], middles: vec![] }
                 }
             }
+            "mathchoice" => {
+                let mut branches = Vec::with_capacity(4);
+                for _ in 0..4 {
+                    branches.push(self.argument()?);
+                }
+                Node::Choice { branches }
+            }
+            "vcenter" => Node::VCenter { base: Box::new(self.argument()?) },
             "smash" => {
                 let option = self.raw_optional().unwrap_or_default();
                 let base = self.argument()?;
@@ -1425,7 +1518,16 @@ impl Reader<'_> {
             }
             Node::Function { name: canonical.to_string(), limits }
         } else if let Some((symbol, _)) = symbols::large_operator(other) {
-            Node::LargeOperator { symbol, limits: None }
+            let operator = Node::LargeOperator { symbol, limits: None };
+            // plain TeX's \intop is \mathop without \nolimits: limits above and below in display
+            if matches!(other, "intop" | "ointop") {
+                Node::ForcedClass { class: Class::Op, base: Box::new(operator) }
+            } else {
+                operator
+            }
+        } else if let Some(letter) = other.strip_prefix("var").and_then(symbols::greek).filter(|g| g.is_uppercase()) {
+            // amsmath's \varGamma…\varOmega: the capital Greek letters in italic
+            Node::Identifier { name: letter.to_string(), variant: Variant::Italic }
         } else if let Some(letter) = symbols::greek(other) {
             let variant = if symbols::greek_upright(other) && self.variant == Variant::Italic { Variant::Upright } else { self.variant };
             Node::Identifier { name: letter.to_string(), variant }
@@ -1540,6 +1642,7 @@ impl Reader<'_> {
         let base = name.trim_end_matches('*');
         let mut columns: Vec<char> = Vec::new();
         let mut verticals = Vec::new();
+        let mut dashed = Vec::new();
         let mut between = Vec::new();
         let kind = match base {
             "matrix" => TableKind::Matrix,
@@ -1593,7 +1696,7 @@ impl Reader<'_> {
         if matches!(kind, TableKind::Array | TableKind::Substack) {
             self.raw_optional();
             let spec = self.raw_text()?;
-            self.array_columns(&spec, &mut columns, &mut verticals, &mut between, col)?;
+            self.array_columns(&spec, &mut columns, &mut verticals, &mut dashed, &mut between, col)?;
         }
 
         let (rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
@@ -1603,7 +1706,12 @@ impl Reader<'_> {
             let n = rows.iter().map(Vec::len).max().unwrap_or(1);
             columns = vec![a; n];
         }
-        Ok(Node::Table { shape: kind, rows, columns, verticals, horizontals, between, intertexts })
+        Ok(Node::Table { shape: kind, rows, columns, verticals, dashed, horizontals, between, intertexts, stretch: self.array_stretch() })
+    }
+
+    /// `\arraystretch` as the input defined it (`\def`, `\renewcommand`), or 1.
+    fn array_stretch(&self) -> f32 {
+        self.macros.commands.get("arraystretch").and_then(|m| m.body.trim().parse::<f32>().ok()).filter(|v| v.is_finite() && *v > 0.0).map_or(1.0, |v| v.min(10.0))
     }
 
     /// Rows and cells up to `\end{name}` (or up to the end of the text, when `name` is None).
@@ -1636,8 +1744,8 @@ impl Reader<'_> {
                     row.push(Node::row(std::mem::take(&mut cell)).simplify());
                     rows.push(std::mem::take(&mut row));
                 }
-                Stop::Hline => horizontals.push(TableRule { row: rows.len(), from: 0, to: usize::MAX }),
-                Stop::Cline(from, to) => horizontals.push(TableRule { row: rows.len(), from, to }),
+                Stop::Hline(dashed) => horizontals.push(TableRule { row: rows.len(), from: 0, to: usize::MAX, dashed }),
+                Stop::Cline(from, to, dashed) => horizontals.push(TableRule { row: rows.len(), from, to, dashed }),
                 Stop::Intertext(t) => {
                     if !cell.is_empty() || !row.is_empty() {
                         row.push(Node::row(std::mem::take(&mut cell)).simplify());
@@ -1674,7 +1782,7 @@ impl Reader<'_> {
         let raw = self.raw_text()?;
         let mut sub = Reader { c: raw.chars().collect(), pos: 0, locale: self.locale, registry: self.registry, macros: self.macros, variant: self.variant, strict: self.strict };
         let (rows, horizontals, intertexts) = sub.table_body(None, col)?;
-        Ok(Node::Table { shape, rows, columns: vec![], verticals: vec![], horizontals, between: vec![], intertexts })
+        Ok(Node::Table { shape, rows, columns: vec![], verticals: vec![], dashed: vec![], horizontals, between: vec![], intertexts, stretch: 1.0 })
     }
 
     /// amscd commutative diagram: `A @>f>> B \\ @VgVV @VVhV \\ C @>>k> D`.
@@ -1779,10 +1887,20 @@ impl Reader<'_> {
             }
             rows.push(cells);
         }
-        Ok(Node::Table { shape: TableKind::Diagram, rows, columns: vec![], verticals: vec![], horizontals: vec![], between: vec![], intertexts: vec![] })
+        Ok(Node::Table {
+            shape: TableKind::Diagram,
+            rows,
+            columns: vec![],
+            verticals: vec![],
+            dashed: vec![],
+            horizontals: vec![],
+            between: vec![],
+            intertexts: vec![],
+            stretch: 1.0,
+        })
     }
 
-    fn array_columns(&mut self, spec: &str, columns: &mut Vec<char>, verticals: &mut Vec<usize>, between: &mut Vec<(usize, Node)>, col: usize) -> R<()> {
+    fn array_columns(&mut self, spec: &str, columns: &mut Vec<char>, verticals: &mut Vec<usize>, dashed: &mut Vec<usize>, between: &mut Vec<(usize, Node)>, col: usize) -> R<()> {
         let c: Vec<char> = spec.chars().collect();
         let mut i = 0;
         let group = |i: &mut usize| -> String {
@@ -1828,6 +1946,11 @@ impl Reader<'_> {
                     verticals.push(columns.len());
                     i += 1;
                 }
+                // arydshln: a dashed rule
+                ':' => {
+                    dashed.push(columns.len());
+                    i += 1;
+                }
                 '@' | '!' => {
                     i += 1;
                     let content = group(&mut i);
@@ -1842,7 +1965,7 @@ impl Reader<'_> {
                         if columns.len() >= MAX_COLUMNS {
                             break;
                         }
-                        self.nested(|this| this.array_columns(&repeat_n_times, columns, verticals, between, col))?;
+                        self.nested(|this| this.array_columns(&repeat_n_times, columns, verticals, dashed, between, col))?;
                     }
                 }
                 ' ' => i += 1,
@@ -1920,7 +2043,7 @@ impl Reader<'_> {
                 '\\' => {
                     i += 1;
                     let mark = c.get(i).copied().unwrap_or(' ');
-                    if "'`^~\"=.".contains(mark) || (matches!(mark, 'c' | 'u' | 'v') && c.get(i + 1).is_some_and(|x| *x == '{' || *x == ' ')) {
+                    if "'`^~\"=.".contains(mark) || (matches!(mark, 'c' | 'u' | 'v' | 'H' | 'r' | 'k' | 'b' | 'd' | 't') && c.get(i + 1).is_some_and(|x| *x == '{' || *x == ' ')) {
                         i += 1;
                         while c.get(i) == Some(&' ') || c.get(i) == Some(&'{') {
                             i += 1;
@@ -1976,8 +2099,16 @@ impl Reader<'_> {
                             current.push(SMALL_CAPS_START);
                             open_until.push((level, SMALL_CAPS_END));
                         }
-                        "textit" | "emph" | "textrm" | "textsf" | "texttt" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "tt" | "em" | "small"
-                        | "scriptsize" | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" => {}
+                        "texttt" => {
+                            current.push(MONO_START);
+                            open_until.push((level + 1, MONO_END));
+                        }
+                        "tt" | "ttfamily" => {
+                            current.push(MONO_START);
+                            open_until.push((level, MONO_END));
+                        }
+                        "textit" | "emph" | "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "em" | "small" | "scriptsize"
+                        | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" => {}
                         "quad" => current.push('\u{2003}'),
                         "qquad" => current.push_str("\u{2003}\u{2003}"),
                         "ldots" | "dots" => current.push('…'),
@@ -1987,6 +2118,30 @@ impl Reader<'_> {
                         "aa" => current.push('å'),
                         "AA" => current.push('Å'),
                         "ae" => current.push('æ'),
+                        "AE" => current.push('Æ'),
+                        "oe" => current.push('œ'),
+                        "OE" => current.push('Œ'),
+                        "i" => current.push('ı'),
+                        "j" => current.push('ȷ'),
+                        "L" => current.push('Ł'),
+                        "textdollar" => current.push('$'),
+                        "textasciicircum" => current.push('^'),
+                        "textunderscore" => current.push('_'),
+                        "textbar" => current.push('|'),
+                        "textbardbl" => current.push('‖'),
+                        "textbraceleft" => current.push('{'),
+                        "textbraceright" => current.push('}'),
+                        "textdagger" => current.push('†'),
+                        "textdaggerdbl" => current.push('‡'),
+                        "textellipsis" => current.push('…'),
+                        "textbullet" => current.push('•'),
+                        "textperiodcentered" => current.push('·'),
+                        "textparagraph" => current.push('¶'),
+                        "textsection" => current.push('§'),
+                        "textquoteleft" => current.push('‘'),
+                        "textquoteright" => current.push('’'),
+                        "textquotedblleft" => current.push('“'),
+                        "textquotedblright" => current.push('”'),
                         "textendash" => current.push('–'),
                         "textemdash" => current.push('—'),
                         "textasciitilde" => current.push('~'),
@@ -2410,7 +2565,7 @@ impl Reader<'_> {
             ("frac", [a, b, ..]) => {
                 let num = self.chemistry(a, col)?.simplify();
                 let den = self.chemistry(b, col)?.simplify();
-                Ok(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true })
+                Ok(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true, thickness: None })
             }
             _ => {
                 let raw: String = c[start..*i].iter().collect();
@@ -2525,7 +2680,7 @@ fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
         *i += 1;
         let den = digits(i);
         let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
-        return Node::Fraction { num: number(value), den: number(den), style: FractionStyle::Row, rule: true };
+        return Node::Fraction { num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
     }
     Node::Number { value, group: false, thousands: None }
 }
@@ -3090,8 +3245,76 @@ impl Reader<'_> {
                     }
                 }
             }
-            "ket" => format!("\\left| {} \\right\\rangle", self.raw_text()?),
-            "bra" => format!("\\left\\langle {} \\right|", self.raw_text()?),
+            "ket" | "Ket" => format!("\\left| {} \\right\\rangle", self.raw_text()?),
+            "bra" | "Bra" => format!("\\left\\langle {} \\right|", self.raw_text()?),
+            // mathtools (its names since 2022) and colonequals: a colon on the axis beside another
+            // relation, set as one; \coloneq, \coloneqq, \eqcolon and \eqqcolon are single symbols
+            "Coloneq" | "coloncolonequals" => "\\Coloneqq ".into(),
+            "Eqcolon" | "Eqqcolon" | "equalscoloncolon" => "\\mathrel{\\mathord{=}\\mkern-1.2mu\\mathord{\\dblcolon}}".into(),
+            "colondash" | "colonminus" => "\\mathrel{\\mathord{\\vcentcolon}\\mkern-1.2mu\\mathord{-}}".into(),
+            "Colondash" | "coloncolonminus" => "\\mathrel{\\mathord{\\dblcolon}\\mkern-1.2mu\\mathord{-}}".into(),
+            "dashcolon" | "minuscolon" => "\\mathrel{\\mathord{-}\\mkern-1.2mu\\mathord{\\vcentcolon}}".into(),
+            "Dashcolon" | "minuscoloncolon" => "\\mathrel{\\mathord{-}\\mkern-1.2mu\\mathord{\\dblcolon}}".into(),
+            "colonapprox" => "\\mathrel{\\mathord{\\vcentcolon}\\mkern-1.2mu\\mathord{\\approx}}".into(),
+            "Colonapprox" | "coloncolonapprox" => "\\mathrel{\\mathord{\\dblcolon}\\mkern-1.2mu\\mathord{\\approx}}".into(),
+            "colonsim" => "\\mathrel{\\mathord{\\vcentcolon}\\mkern-1.2mu\\mathord{\\sim}}".into(),
+            "Colonsim" | "coloncolonsim" => "\\mathrel{\\mathord{\\dblcolon}\\mkern-1.2mu\\mathord{\\sim}}".into(),
+            "approxcolon" => "\\mathrel{\\mathord{\\approx}\\mkern-1.2mu\\mathord{\\vcentcolon}}".into(),
+            "Approxcolon" | "approxcoloncolon" => "\\mathrel{\\mathord{\\approx}\\mkern-1.2mu\\mathord{\\dblcolon}}".into(),
+            "simcolon" => "\\mathrel{\\mathord{\\sim}\\mkern-1.2mu\\mathord{\\vcentcolon}}".into(),
+            "Simcolon" | "simcoloncolon" => "\\mathrel{\\mathord{\\sim}\\mkern-1.2mu\\mathord{\\dblcolon}}".into(),
+            // amsmath: italic capital Greek, and the limits of category theory and of sets
+            "injlim" => "\\operatorname*{inj\\,lim}".into(),
+            "projlim" => "\\operatorname*{proj\\,lim}".into(),
+            "varinjlim" => "\\mathop{\\underrightarrow{\\mathrm{lim}}}".into(),
+            "varprojlim" => "\\mathop{\\underleftarrow{\\mathrm{lim}}}".into(),
+            "varliminf" => "\\mathop{\\underline{\\mathrm{lim}}}".into(),
+            "varlimsup" => "\\mathop{\\overline{\\mathrm{lim}}}".into(),
+            "operatornamewithlimits" => format!("\\operatorname*{{{}}}", self.raw_text()?),
+            // mathtools: the operator with its limits; the limits keep their width (partial support)
+            "smashoperator" => {
+                self.raw_optional();
+                format!("{{{}}}", self.raw_text()?)
+            }
+            // the LaTeX kernel
+            "underbar" => format!("\\underline{{{}}}", self.raw_text()?),
+            // definitions already last for the whole equation: \global changes nothing
+            "global" => String::new(),
+            "space" => "\\ ".into(),
+            "nobreakspace" => "~".into(),
+            // hyperref: the link's text is what the equation shows
+            "href" => {
+                self.raw_text()?;
+                format!("{{{}}}", self.raw_text()?)
+            }
+            // TeX's \char: a character by its code, decimal, "hex, 'octal or `character
+            "char" => {
+                self.skip_spaces();
+                if self.current() == Some('`') {
+                    // `a, or `\a: the character itself
+                    self.pos += 1;
+                    if self.current() == Some('\\') {
+                        self.pos += 1;
+                    }
+                    let c = self.current().ok_or(Error::Syntax { column: col, message: "\\char` without a character".into() })?;
+                    self.pos += 1;
+                    return Ok(Some(format!("\\unicode{{{:X}}}", c as u32)));
+                }
+                let (radix, digits): (u32, fn(char) -> bool) = match self.current() {
+                    Some('"') => (16, |c| c.is_ascii_hexdigit()),
+                    Some('\'') => (8, |c| ('0'..='7').contains(&c)),
+                    _ => (10, |c| c.is_ascii_digit()),
+                };
+                if radix != 10 {
+                    self.pos += 1;
+                }
+                let code: String = self.c[self.pos..].iter().take_while(|c| digits(**c)).collect();
+                self.pos += code.chars().count();
+                match u32::from_str_radix(&code, radix).ok().and_then(char::from_u32).filter(|c| !c.is_control()) {
+                    Some(c) => format!("\\unicode{{{:X}}}", c as u32),
+                    None => return self.error(col, format!("\\char needs a character code, not \"{code}\"")),
+                }
+            }
             "braket" | "Braket" | "innerproduct" | "ip" => {
                 let x = self.raw_text()?;
                 match self.optional_braced()? {

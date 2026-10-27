@@ -350,7 +350,9 @@ fn stacked_and_extensible_arrows() {
 fn cancels_frames_and_phantoms() {
     has(&tree(r"\cancelto{0}{x}"), &["Canceled", "sup: Some"]);
     has(&tree(r"\bcancel{x} \xcancel{y} \sout{z}"), &["Backslash", "X }"]);
-    has(&tree(r"\circled{1} \circledcirc{2}"), &["Circle"]);
+    has(&tree(r"\circled{1}"), &["Circle"]);
+    // amssymb's \circledcirc is the operator ⊚, not a frame
+    has(&tree(r"a \circledcirc b"), &["'⊚'", "Bin"]);
     has(&tree(r"\phantom{x}"), &["width: true, height: true"]);
     has(&tree(r"\hphantom{x}"), &["width: true, height: false"]);
     has(&tree(r"\vphantom{x}"), &["width: false, height: true"]);

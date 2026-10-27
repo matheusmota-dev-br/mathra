@@ -3,6 +3,8 @@
 
 use ttf_parser::GlyphId;
 
+use crate::font::Font;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Glyph {
@@ -11,33 +13,15 @@ pub enum Item {
         y: f32,
         scale: f32,
         color: Option<String>,
+        /// Mirrored left to right around its origin (`\reflectbox`).
+        flip: bool,
     },
     /// Filled rectangle; (x, y) is the lower left corner.
-    Rule {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        color: Option<String>,
-    },
+    Rule { x: f32, y: f32, width: f32, height: f32, color: Option<String> },
     /// Straight segment (cancels).
-    Line {
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        thickness: f32,
-        color: Option<String>,
-    },
+    Line { x1: f32, y1: f32, x2: f32, y2: f32, thickness: f32, color: Option<String> },
     /// Ellipse outline (`\textcircled`).
-    Ellipse {
-        cx: f32,
-        cy: f32,
-        rx: f32,
-        ry: f32,
-        thickness: f32,
-        color: Option<String>,
-    },
+    Ellipse { cx: f32, cy: f32, rx: f32, ry: f32, thickness: f32, color: Option<String> },
 }
 
 impl Item {
@@ -172,6 +156,28 @@ impl MathBox {
         self.single_glyph = false;
     }
 
+    /// Mirrors everything left to right inside the box's width (`\reflectbox`).
+    pub fn mirror(&mut self) {
+        let w = self.width;
+        for item in &mut self.items {
+            match item {
+                Item::Glyph { x, flip, .. } => {
+                    *x = w - *x;
+                    *flip = !*flip;
+                }
+                Item::Rule { x, width, .. } => *x = w - *x - *width,
+                Item::Line { x1, x2, .. } => {
+                    *x1 = w - *x1;
+                    *x2 = w - *x2;
+                }
+                Item::Ellipse { cx, .. } => *cx = w - *cx,
+            }
+        }
+        self.italic = 0.0;
+        self.accent_point = self.accent_point.map(|p| w - p);
+        self.single_glyph = false;
+    }
+
     pub fn colorize(&mut self, color: &str) {
         for item in &mut self.items {
             item.colorize(color);
@@ -180,5 +186,38 @@ impl MathBox {
 
     pub fn total(&self) -> f32 {
         self.height + self.depth
+    }
+
+    /// Where the ink really is, as (x_min, y_min, x_max, y_max), or `None` with nothing drawn. A
+    /// glyph's outline may pass its advance (the hook of a bold f, the tail of ρ) and a cancel's line
+    /// passes the box it crosses: the width and height say where the next box goes, not where the
+    /// ink stops (S-SVG-1).
+    pub fn ink(&self, f: &Font) -> Option<(f32, f32, f32, f32)> {
+        let mut b = (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut add = |x0: f32, y0: f32, x1: f32, y1: f32| {
+            b = (b.0.min(x0), b.1.min(y0), b.2.max(x1), b.3.max(y1));
+        };
+        for item in &self.items {
+            match *item {
+                Item::Glyph { id, x, y, scale, flip, .. } => {
+                    let (x0, y0, x1, y1) = f.limits(id);
+                    if x1 > x0 || y1 > y0 {
+                        let (left, right) = if flip { (x - x1 * scale, x - x0 * scale) } else { (x + x0 * scale, x + x1 * scale) };
+                        add(left, y + y0 * scale, right, y + y1 * scale);
+                    }
+                }
+                Item::Rule { x, y, width, height, .. } => add(x, y, x + width, y + height),
+                // round caps: half the thickness past each end
+                Item::Line { x1, y1, x2, y2, thickness, .. } => {
+                    let h = thickness / 2.0;
+                    add(x1.min(x2) - h, y1.min(y2) - h, x1.max(x2) + h, y1.max(y2) + h);
+                }
+                Item::Ellipse { cx, cy, rx, ry, thickness, .. } => {
+                    let h = thickness / 2.0;
+                    add(cx - rx - h, cy - ry - h, cx + rx + h, cy + ry + h);
+                }
+            }
+        }
+        (b.0 <= b.2).then_some(b)
     }
 }

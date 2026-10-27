@@ -174,7 +174,7 @@ The rules for fractions, roots, scripts, limits, accents, bars, braces and arrow
 
 | Structure | MATH table constants used |
 |---|---|
-| Fraction (`\frac`, `\dfrac`, `\tfrac`) | `FractionNumerator(DisplayStyle)ShiftUp`, `…DenominatorShiftDown`, `…GapMin`, `FractionRuleThickness`, `AxisHeight`; `\nulldelimiterspace` of 0.12 em on each side |
+| Fraction (`\frac`, `\dfrac`, `\tfrac`) | `FractionNumerator(DisplayStyle)ShiftUp`, `…DenominatorShiftDown`, `…GapMin`, `FractionRuleThickness`, `AxisHeight`; `\nulldelimiterspace` of 0.12 em on each side. A thickness the input gives (`\above`, `\genfrac`) is absolute and sets the clearance as TeX's rule 15d does: 3θ in display style, θ otherwise; 0 draws no rule |
 | Binomial | `StackTopShiftUp`, `StackBottomShiftDown`, `StackGapMin` |
 | Root | `RadicalVerticalGap`, `RadicalRuleThickness`, `RadicalExtraAscender`, `RadicalKernBefore/AfterDegree`, `RadicalDegreeBottomRaisePercent` |
 | Scripts | `SuperscriptShiftUp(Cramped)`, `SubscriptShiftDown`, `…BaselineDrop…`, `SubSuperscriptGapMin`, `SpaceAfterScript`, italic correction |
