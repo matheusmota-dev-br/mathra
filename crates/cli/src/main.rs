@@ -18,6 +18,8 @@ OPTIONS
                           LaTeX (starting with <math) is recognized on its own
       --inline            inline style, as in $…$; the default is display style
       --strict            refuse invalid LaTeX, like TeX (the default recovers and warns)
+      --animate           the SVG writes itself in the browser, in the order the layout set it
+      --steps             each element numbered by its step (data-step), with no animation
       --explain           show the tree, the speech and the rules applied
       --tree              print only the tree of meaning as JSON
       --speech            print only the screen reader phrase
@@ -58,11 +60,30 @@ struct Args {
     strict: bool,
     input: Input,
     braille: Option<BrailleCode>,
+    animate: bool,
+    steps: bool,
     mode: Mode,
 }
 
+impl Args {
+    fn options(&self) -> Options {
+        Options { locale: self.locale, display: self.display, strict: self.strict, input: self.input, braille: self.braille, animate: self.animate, steps: self.steps }
+    }
+}
+
 fn read_args() -> Result<Option<Args>, String> {
-    let mut args = Args { tex: None, output: None, locale: Locale::default(), display: true, strict: false, input: Input::Latex, braille: None, mode: Mode::Svg };
+    let mut args = Args {
+        tex: None,
+        output: None,
+        locale: Locale::default(),
+        display: true,
+        strict: false,
+        input: Input::Latex,
+        braille: None,
+        animate: false,
+        steps: false,
+        mode: Mode::Svg,
+    };
     let mut it = env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -78,6 +99,8 @@ fn read_args() -> Result<Option<Args>, String> {
             "-l" | "--locale" => args.locale = it.next().ok_or("missing code after --locale")?.parse()?,
             "-f" | "--from" => args.input = it.next().ok_or("missing format after --from")?.parse()?,
             "--explain" => args.mode = Mode::Explain,
+            "--animate" => args.animate = true,
+            "--steps" => args.steps = true,
             "--inline" => args.display = false,
             "--strict" => args.strict = true,
             "--tree" => args.mode = Mode::Tree,
@@ -108,7 +131,7 @@ fn main() -> ExitCode {
         return batch(&args);
     }
 
-    let tex = match args.tex {
+    let tex = match args.tex.clone() {
         Some(t) => t,
         None => match io::read_to_string(io::stdin()) {
             Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
@@ -119,7 +142,7 @@ fn main() -> ExitCode {
         },
     };
 
-    let result = match convert(&tex, &Options { locale: args.locale, display: args.display, strict: args.strict, input: args.input, braille: args.braille }) {
+    let result = match convert(&tex, &args.options()) {
         Ok(r) => {
             if !matches!(args.mode, Mode::Explain) {
                 for a in &r.warnings {
@@ -183,7 +206,7 @@ fn main() -> ExitCode {
 
 fn batch(args: &Args) -> ExitCode {
     use std::io::{BufRead, Write};
-    let options = Options { locale: args.locale, display: args.display, strict: args.strict, input: args.input, braille: args.braille };
+    let options = args.options();
     let mut output = io::BufWriter::new(io::stdout().lock());
     for (i, line) in io::stdin().lock().split(b'\n').enumerate() {
         let Ok(bytes) = line else { break };

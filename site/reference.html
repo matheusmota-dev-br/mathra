@@ -22,6 +22,7 @@
     <nav aria-label="Site">
       <a href="index.html#playground">Playground</a>
       <a href="gallery.html">Gallery</a>
+      <a href="changelog.html">Evolution</a>
       <a href="docs.html">Docs</a>
       <a href="reference.html" aria-current="page">Reference</a>
       <a href="philosophy.html">Philosophy</a>
@@ -86,13 +87,13 @@
       source: (r) => r.am,
     },
     latex: {
-      intro: 'Math LaTeX by topic, in the order of Overleaf\'s <a href="https://www.overleaf.com/learn/latex/Mathematical_expressions">Mathematics</a> articles: scripts, brackets, matrices, fractions, alignment, operators, spacing, integrals and sums, display style, symbols, fonts and decorations.',
+      intro: 'Math LaTeX by topic, in the order of Overleaf\'s <a href="https://www.overleaf.com/learn/latex/Mathematical_expressions">Mathematics</a> articles: scripts, brackets, matrices, fractions, alignment, operators, spacing, integrals and sums, display style, symbols, fonts and decorations. Each topic ends with what LaTeX\'s packages add to it, as they define it: arydshln\'s dashed rules and <code>\\arraystretch</code>, the colons of mathtools, amsmath\'s <code>\\varGamma</code>, TeX\'s <code>\\mathchoice</code>, <code>\\vcenter</code> and <code>\\above</code>, graphicx\'s <code>\\reflectbox</code>, hyperref\'s <code>\\url</code>.',
       columns: ["LaTeX", "Drawn", "Braille", ""],
       input: "latex",
       source: (r) => r.tex,
     },
     science: {
-      intro: "Packages for the sciences that mathra reads without a TeX install: chemistry (mhchem), units (siunitx), physics, structural chemistry (chemfig: structures, schemes, mechanisms), commutative diagrams (amscd, tikz-cd, xymatrix), and the column arithmetic of Brazilian schools.",
+      intro: "Packages for the sciences that mathra reads without a TeX install: chemistry (mhchem), units (siunitx), physics, structural chemistry (chemfig: structures, schemes, mechanisms), commutative diagrams (amscd, tikz-cd, xymatrix), phasors (steinmetz) and actuarial notation (actuarialangle), and the column arithmetic of Brazilian schools.",
       columns: ["LaTeX", "Drawn", "Braille", ""],
       input: "latex",
       source: (r) => r.tex,

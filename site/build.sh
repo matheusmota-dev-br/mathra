@@ -13,3 +13,5 @@ printf 'var MATHRA_WASM_BASE64 = "%s";\n' "$(base64 < site/pkg/mathra_wasm_bg.wa
 printf 'var MATHRA_REFERENCE = %s;\n' "$(cat corpus/reference.json)" > site/pkg/reference_data.js
 # the gallery page's groups (corpus/gallery.json, checked by crates/core/tests/examples.rs), the same way
 printf 'var MATHRA_GALLERY = %s;\n' "$(cat corpus/gallery.json)" > site/pkg/gallery_data.js
+# the releases of CHANGELOG.md, for the evolution page
+python3 -I scripts/changelog.py js > site/pkg/changelog.js

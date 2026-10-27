@@ -249,3 +249,87 @@ fn l_opr_1_the_dot_between_vectors_is_the_dot_product() {
     assert_eq!(pt(r"\mathbf{u} \cdot \mathbf{v}").speech, "u escalar v");
     assert_eq!(en(r"2 \cdot 3").speech, "2 times 3");
 }
+
+fn with(tex: &str, animate: bool, steps: bool) -> String {
+    convert(tex, &Options { animate, steps, ..Default::default() }).unwrap().svg
+}
+
+/// The drawn elements of an SVG, in order: `use`, `rect`, `line`, `ellipse`.
+fn drawn(svg: &str) -> Vec<String> {
+    let body = &svg[svg.find("transform=\"scale(1,-1)\">").unwrap()..svg.find("</g><text").unwrap()];
+    body.split('<').filter(|e| ["use ", "rect ", "line ", "ellipse "].iter().any(|t| e.starts_with(t))).map(|e| format!("<{e}")).collect()
+}
+
+const WRITTEN: &str = r"x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a} + \cancel{c} + \textcircled{1} + \begin{array}{c|c} 1 & 2 \\ \hline 3 & 4 \end{array}";
+
+#[test]
+fn s_svg_10_off_by_default() {
+    let plain = en(WRITTEN).svg;
+    assert_eq!(plain, with(WRITTEN, false, false));
+    for mark in ["data-step", "mr-", "--i:", "@keyframes", "pathLength"] {
+        assert!(!plain.contains(mark), "{mark} in an SVG without steps");
+    }
+}
+
+#[test]
+fn s_svg_10_steps_number_every_drawn_element_in_order() {
+    let svg = with(WRITTEN, false, true);
+    let elements = drawn(&svg);
+    assert!(elements.len() > 20);
+    for (k, e) in elements.iter().enumerate() {
+        assert!(e.contains(&format!(r#" data-step="{k}""#)), "{k}: {e}");
+    }
+    assert!(svg.contains(&format!(r#" data-steps="{}""#, elements.len())));
+    // no CSS: the page walks through it
+    assert!(!svg.contains("@keyframes") && !svg.contains("mr-"));
+    // and nothing else changes: without the step numbers, it is the plain SVG
+    let unnumbered = svg.replace(&format!(r#" data-steps="{}""#, elements.len()), "");
+    let unnumbered = (0..elements.len()).fold(unnumbered, |s, k| s.replacen(&format!(r#" data-step="{k}""#), "", 1));
+    assert_eq!(unnumbered, en(WRITTEN).svg);
+}
+
+#[test]
+fn s_svg_10_each_kind_enters_its_own_way() {
+    let svg = with(WRITTEN, true, false);
+    let elements = drawn(&svg);
+    let kind = |tag: &str| elements.iter().filter(|e| e.starts_with(tag)).collect::<Vec<_>>();
+    assert!(kind("<use ").iter().all(|e| e.contains(r#"class="mr-f""#)), "glyphs fade in");
+    assert!(kind("<line ").iter().all(|e| e.contains(r#"class="mr-d" pathLength="1""#)), "lines are drawn");
+    assert!(kind("<ellipse ").iter().all(|e| e.contains(r#"class="mr-d" pathLength="1""#)), "the circle is drawn");
+    let rects = kind("<rect ");
+    // the fraction bar, the radical's rule and the \hline grow from the left; the | from the top
+    assert!(rects.iter().filter(|e| e.contains(r#"class="mr-w""#)).count() >= 3);
+    assert!(rects.iter().any(|e| e.contains(r#"class="mr-v""#)));
+    for (k, e) in elements.iter().enumerate() {
+        assert!(e.contains(&format!(r#" data-step="{k}""#)) && e.contains(&format!(r#"style="--i:{k}""#)), "{e}");
+    }
+    assert!(svg.contains("@media (prefers-reduced-motion:reduce)"));
+    assert_eq!(svg.matches("@keyframes mr-f").count(), 1);
+}
+
+#[test]
+fn s_svg_10_about_three_seconds_and_the_same_rules_everywhere() {
+    let interval = |tex: &str| -> f32 {
+        let svg = with(tex, true, false);
+        svg.split("--mr-step: ").nth(1).unwrap().split('s').next().unwrap().parse().unwrap()
+    };
+    let steps = |tex: &str| drawn(&with(tex, true, false)).len() as f32;
+    // a short equation at the most 0.15 s apart; a long one within three seconds
+    assert_eq!(interval("x+1"), 0.15);
+    assert!(((steps(WRITTEN) - 1.0) * interval(WRITTEN) - 3.0).abs() < 0.2);
+    // the <style> does not depend on the equation: two on one page do not retime each other
+    let style = |tex: &str| {
+        let svg = with(tex, true, false);
+        svg[svg.find("<style>@keyframes").unwrap()..].split("</style>").next().unwrap().to_string()
+    };
+    assert_eq!(style("x+1"), style(WRITTEN));
+}
+
+#[test]
+fn s_svg_10_still_valid_xml_and_still_accessible() {
+    for tex in [WRITTEN, r"\ce{A <=>[K] B}", r"\phase{\alpha}", r"\reflectbox{abc}", "x"] {
+        let svg = with(tex, true, true);
+        roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{tex}: {e}"));
+        assert!(svg.contains("role=\"img\"") && svg.contains("<title"), "{tex}");
+    }
+}

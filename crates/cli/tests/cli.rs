@@ -217,3 +217,14 @@ fn braille_output() {
     assert_eq!(o.status.code(), Some(2));
     assert!(stderr(&o).contains("unknown braille code"));
 }
+
+#[test]
+fn animate_and_steps() {
+    let plain = stdout(&mathra(&[r"\frac{a}{b}"], None));
+    let steps = stdout(&mathra(&[r"\frac{a}{b}", "--steps"], None));
+    let animated = stdout(&mathra(&[r"\frac{a}{b}", "--animate"], None));
+    assert!(!plain.contains("data-step"));
+    assert!(steps.contains(r#"data-steps="3""#) && !steps.contains("@keyframes"));
+    assert!(animated.contains(r#"data-steps="3""#) && animated.contains("@keyframes mr-f") && animated.contains("--mr-step"));
+    assert!(stdout(&mathra(&["--help"], None)).contains("--animate"));
+}

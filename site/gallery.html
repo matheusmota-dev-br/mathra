@@ -22,6 +22,7 @@
     <nav aria-label="Site">
       <a href="index.html#playground">Playground</a>
       <a href="gallery.html" aria-current="page">Gallery</a>
+      <a href="changelog.html">Evolution</a>
       <a href="docs.html">Docs</a>
       <a href="reference.html">Reference</a>
       <a href="philosophy.html">Philosophy</a>
@@ -45,6 +46,7 @@
 
 <script src="pkg/mathra_wasm.js"></script>
 <script src="pkg/gallery_data.js"></script>
+<script src="animate.js"></script>
 <script>
 (function () {
   "use strict";
@@ -56,8 +58,8 @@
   const WIDE_EM = 15;
   let render = null;
 
-  function convert(src, loc, input) {
-    return JSON.parse(render(src, loc, true, false, input, null));
+  function convert(src, loc, input, animate = false) {
+    return JSON.parse(render(src, loc, true, false, input, null, animate, false));
   }
 
   function tryLink(row) {
@@ -69,7 +71,7 @@
 
   // the equations of a group, drawn the first time it opens
   function tiles(group) {
-    return group.rows.map((row) => {
+    return group.rows.map((row, i) => {
       const input = row.input || "latex";
       let svg;
       try {
@@ -79,8 +81,54 @@
       }
       const width = parseFloat((svg.match(/width="([\d.]+)em"/) || [])[1] || "0");
       const tag = [row.locale === "en" ? "" : row.locale, input === "latex" ? "" : INPUT_NAMES[input]].filter(Boolean).join(" · ");
-      return `<a class="card tile${width > WIDE_EM ? " wide" : ""}" href="${escape(tryLink(row))}"><div class="eq">${svg}</div><div class="cap"><span>${escape(row.caption)}</span><span>${escape(tag)}</span></div></a>`;
+      const link = escape(tryLink(row));
+      return `<div class="card tile${width > WIDE_EM ? " wide" : ""}" data-row="${i}"><a class="eq" href="${link}" title="Open in the playground">${svg}</a>` +
+        `<a class="cap" href="${link}"><span>${escape(row.caption)}</span><span>${escape(tag)}</span></a>` +
+        `<div class="tile-actions"><button class="button" type="button" data-act="play">▶ Animate</button>` +
+        `<button class="button" type="button" data-act="gif">GIF</button>` +
+        `<button class="button" type="button" data-act="animated">Animated SVG</button></div></div>`;
     }).join("");
+  }
+
+  function save(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  }
+
+  // the writing animation of each tile: played over and over, or saved as a GIF or an animated SVG
+  function animateTiles(body, group) {
+    for (const card of body.querySelectorAll(".tile")) {
+      const row = group.rows[Number(card.dataset.row)];
+      const eq = card.querySelector(".eq");
+      const still = eq.innerHTML;
+      const name = row.name || group.id;
+      let animated = null, stop = null;
+      const svg = () => (animated ??= convert(row.tex, row.locale, row.input || "latex", true).svg);
+      const play = card.querySelector('[data-act="play"]');
+      play.onclick = () => {
+        if (stop) { stop(); stop = null; play.textContent = "▶ Animate"; return; }
+        stop = mathraAnimation.loop(eq, svg(), still);
+        play.textContent = "■ Stop";
+      };
+      card.querySelector('[data-act="animated"]').onclick = () => save(new Blob([mathraAnimation.withControls(svg())], { type: "image/svg+xml" }), `${name}-animated.svg`);
+      const gif = card.querySelector('[data-act="gif"]');
+      gif.onclick = async () => {
+        if (gif.disabled) return;
+        gif.disabled = true;
+        try {
+          const bytes = await mathraAnimation.gif(svg(), { progress: (p) => (gif.textContent = `${Math.round(p * 100)}%`) });
+          save(new Blob([bytes], { type: "image/gif" }), `${name}.gif`);
+        } catch (e) {
+          alert(`Could not make the GIF: ${String(e.message ?? e)}`);
+        } finally {
+          gif.disabled = false;
+          gif.textContent = "GIF";
+        }
+      };
+    }
   }
 
   function toggle(card, group, open) {
@@ -91,6 +139,7 @@
     body.hidden = !open;
     if (open && !body.dataset.drawn) {
       body.innerHTML = `<div class="gallery">${tiles(group)}</div>`;
+      animateTiles(body, group);
       body.dataset.drawn = "1";
     }
   }

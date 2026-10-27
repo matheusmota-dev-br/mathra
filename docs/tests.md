@@ -36,7 +36,7 @@ cargo llvm-cov report --summary-only        # or --html
 
 | File | Tests | What it checks |
 |---|---:|---|
-| `crates/core/tests/rules.rs` | 29 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. |
+| `crates/core/tests/rules.rs` | 34 | One test per rule in `spec/rules.md` and `spec/svg.md`; the name starts with the rule id. S-SVG-10 (steps and the writing animation) has five: off by default and byte for byte, every element numbered in order, how each kind enters, the timing and the same `<style>` in every equation, valid XML. |
 | `crates/core/tests/structures.rs` | 24 | Fractions, roots, matrices, cases, alignments: what sits above, below or beside what. |
 | `crates/core/tests/latex_reader.rs` | 92 | Every command and environment the reader knows (including every amssymb symbol and negation, drawn in strict mode so the font must have it), every recovery path (arrow diagrams included) and, at the end (`p_*`), the problem inputs. |
 | `crates/core/tests/layout.rs` | 67 | From the tree to boxes: geometric properties (width, height, alignment, stretching), not exact coordinates. Includes the layout problem cases and arrow diagrams (shaft on the axis, diagonal and bent arrows, strokes per style, labels that widen a column or break a line). |
@@ -54,16 +54,16 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/reference.rs` | 5 | The reference page (`site/reference.html`, data in `corpus/reference.json`): every row converts in strict mode with no warning, each AsciiMath and MathML row has the same speech as its LaTeX column, every row has braille in both codes. |
 | `crates/core/tests/fonts.rs` | 6 | The font an equation is set in: STIX Two Math by default; with the `latin-modern` feature, Latin Modern Math with its own metrics and its own word space (a third of an em). The embedded fonts against the originals in `tools/fonts`: every character keeps its glyph ID, outline, advance and MATH data, and so do its size variants and assembly parts. |
 | `crates/core/tests/banner.rs` | 1 | The README banner (`examples/banner.rs`) is deterministic and matches `docs/banner.svg`. |
-| `crates/core/tests/examples.rs` | 3 | The README gallery (famous equations, big equations, constructions): every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. The site's gallery page (`corpus/gallery.json`): every README example is on it, as the same equation, and every row converts in strict mode. |
+| `crates/core/tests/examples.rs` | 4 | The README gallery (famous equations, big equations, constructions): every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. The site's gallery page (`corpus/gallery.json`): every README example is on it, as the same equation, and every row converts in strict mode. `CHANGELOG.md`: releases newest first, each with a date and a headline, and every equation it shows a gallery name or LaTeX that converts in strict mode. |
 | `crates/core/src/input/asciimath.rs` (unit) | 1 | Every AsciiMath symbol's LaTeX spelling is valid LaTeX in strict mode. |
 | `crates/core/src/chem/chemfig.rs` (unit) | 3 | The chemfig reader on its own: labels split into atoms, angle syntax, Lewis marks. |
 | `crates/core/src/chem/formula.rs` (unit) | 2 | Molecular formulas: atoms counted in labels, Hill order without carbon. |
 | `crates/core/src/font.rs` (unit) | 2 | A glyph without an outline and a quadratic curve, which the embedded font does not have. |
-| `crates/cli/tests/cli.rs` | 17 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes. |
-| `crates/wasm/tests/native.rs` | 6 | Exported functions outside the browser, and the errors before they become a `JsError`. |
+| `crates/cli/tests/cli.rs` | 18 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes. |
+| `crates/wasm/tests/native.rs` | 7 | Exported functions outside the browser, and the errors before they become a `JsError`. |
 | `crates/wasm/tests/web.rs` | 2 | The same functions inside wasm, on Node, including the `JsError`. |
-| `npm/test/*.test.*` | 9 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales, input notations, braille. Run with `npm/build.sh && npm/test/run.sh`. |
-| `crates/python/tests/test_mathra.py` | 13 | The installed Python package: SVG, tree, `render`, `locales`, `display`, `strict`, `input` and `braille`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
+| `npm/test/*.test.*` | 10 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales, input notations, braille. Run with `npm/build.sh && npm/test/run.sh`. |
+| `crates/python/tests/test_mathra.py` | 14 | The installed Python package: SVG, tree, `render`, `locales`, `display`, `strict`, `input` and `braille`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
 
 ## Coverage
 

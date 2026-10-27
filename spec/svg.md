@@ -67,3 +67,10 @@ All text that comes from outside (source, speech, linear text, warnings, colors)
 ### S-SVG-9 · Braille
 
 `<metadata>` also keeps the equation in braille, as Unicode braille cells, with its code: `<mathra:braille code="cmu|nemeth">`. A braille display or an app can read it without converting the equation again. What each code covers is in `braille.md`.
+
+### S-SVG-10 · Steps and the writing animation
+
+Off by default; without them the SVG is the same, byte for byte.
+
+- **Steps** (`steps`, `--steps`): each glyph, rule, line and ellipse carries `data-step="k"`, from 0, in the order the layout set it (numerator before denominator, the content before the delimiters it measured), and the `<svg>` carries `data-steps` with the count. No CSS: a page can walk through the equation itself, showing the elements whose step is below k.
+- **Animation** (`animate`, `--animate`, steps included): the equation writes itself, with CSS alone, in that order. A glyph fades in; a rule grows along its length (a wide one from the left, a tall one from the top); a line or an ellipse (`\cancel`, `\phase`, `\textcircled`) is drawn along its length (`pathLength="1"`). The whole equation takes about three seconds: the interval between two steps is 3 s divided by their count, at most 0.15 s. Each element carries its index (`style="--i:k"`) and the `<svg>` the interval (`--mr-step`): the `<style>` itself is the same in every equation, since an inline SVG's style applies to the whole page, and two animated equations on one page must not change each other's timing. With `prefers-reduced-motion: reduce` nothing moves.

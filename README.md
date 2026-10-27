@@ -130,6 +130,16 @@ $ mathra 'x^2 + 1' --braille --braille-code cmu                  # ⠭⠡⠼⠃�
 
 Besides the outlines, every SVG follows the contract in `spec/svg.md`: speech for screen readers, the source equation, the tree and the braille in `<metadata>`, color inherited from the page, reused glyphs, a text layer for selection and unique ids per equation. The same input always produces the same bytes.
 
+### The equation writes itself
+
+With `--animate` (`{ animate: true }` in JavaScript, `animate=True` in Python, `animate: true` in Rust) the SVG writes itself in the browser, with CSS alone: each glyph fades in, each rule grows along its length and each line is drawn, in the order the layout set them, in about three seconds. `--steps` numbers each element (`data-step`) with no CSS, for a page that walks through the equation; nothing moves with `prefers-reduced-motion`, and without either option the SVG is unchanged byte for byte (S-SVG-10). The [playground](https://matheusmota-dev-br.github.io/mathra/) walks through an equation step by step and downloads the animation as a GIF, a video or an animated SVG with its own play bar; every equation of the [gallery](https://matheusmota-dev-br.github.io/mathra/gallery.html) animates too.
+
+```console
+$ mathra 'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}' --animate -o quadratic.svg
+```
+
+What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md), and on the site's [evolution page](https://matheusmota-dev-br.github.io/mathra/changelog.html) with the equations drawn live.
+
 ## Install and use
 
 | Where | Install | Registry |

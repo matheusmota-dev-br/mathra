@@ -49,6 +49,7 @@
     <nav aria-label="Site">
       <a href="index.html#playground">Playground</a>
       <a href="gallery.html">Gallery</a>
+      <a href="changelog.html">Evolution</a>
       <a href="docs.html" aria-current="page">Docs</a>
       <a href="reference.html">Reference</a>
       <a href="philosophy.html">Philosophy</a>
@@ -133,6 +134,8 @@ println!("{}", r.speech);</pre>
           <tr><td>Refuse broken LaTeX</td><td><code>strict: true</code></td><td><code>strict=True</code></td><td><code>--strict</code></td><td><code>strict: true</code></td></tr>
           <tr><td>Input notation</td><td><code>input: "mathml"</code></td><td><code>input="mathml"</code></td><td><code>-f, --from mathml</code></td><td><code>input: Input::MathMl</code></td></tr>
           <tr><td>Braille code</td><td><code>braille: "cmu"</code></td><td><code>braille="cmu"</code></td><td><code>--braille-code cmu</code></td><td><code>braille: Some(BrailleCode::Cmu)</code></td></tr>
+          <tr><td>The SVG writes itself</td><td><code>animate: true</code></td><td><code>animate=True</code></td><td><code>--animate</code></td><td><code>animate: true</code></td></tr>
+          <tr><td>Each element numbered by its step</td><td><code>steps: true</code></td><td><code>steps=True</code></td><td><code>--steps</code></td><td><code>steps: true</code></td></tr>
         </table></div>
         <ul>
           <li><strong>Language</strong>: <code>en</code> by default. The 16 codes are under <a href="#languages">Languages</a>. A region is accepted (<code>es-MX</code>, <code>zh-CN</code>). In JavaScript, a plain string as the second argument is read as the locale: <code>texToSvg(tex, "fr")</code>.</li>
@@ -211,6 +214,8 @@ echo '&lt;equation&gt;' | mathra [options]</pre>
           <tr><td><code>--explain</code></td><td>Show the text, the speech, the braille, the tree and the rules applied</td></tr>
           <tr><td><code>--tree</code>, <code>--speech</code>, <code>--text</code>, <code>--braille</code></td><td>Print only that output</td></tr>
           <tr><td><code>--braille-code &lt;c&gt;</code></td><td><code>cmu</code> or <code>nemeth</code></td></tr>
+          <tr><td><code>--animate</code></td><td>The SVG writes itself in the browser, in the order the layout set it (CSS in the SVG)</td></tr>
+          <tr><td><code>--steps</code></td><td>Each element numbered by that order (<code>data-step</code>), with no animation</td></tr>
           <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>…; prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line</td></tr>
           <tr><td><code>-V, --version</code>, <code>-h, --help</code></td><td>Version and help</td></tr>
         </table></div>

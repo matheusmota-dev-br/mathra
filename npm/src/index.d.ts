@@ -12,6 +12,10 @@ export interface Options {
   input?: "latex" | "mathml" | "asciimath";
   /** The braille code of `Result.braille`: "cmu" or "nemeth". Default: the locale's (CMU in pt-BR and es, Nemeth elsewhere). */
   braille?: "cmu" | "nemeth";
+  /** The SVG writes itself in the browser, glyph by glyph and stroke by stroke, in the order the layout set it (CSS in the SVG). Default false; without it the SVG is unchanged. */
+  animate?: boolean;
+  /** Each element of the SVG numbered by that order (`data-step`, and `data-steps` on the `<svg>`), with no CSS: for a page that walks through the equation itself. Default false. */
+  steps?: boolean;
 }
 
 /** A numbered rule from spec/rules.md or spec/tolerance.md, and what it did to this equation. */
