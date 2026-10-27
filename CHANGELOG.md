@@ -4,7 +4,7 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
-## Unreleased
+## 1.6.0 - 2026-10-27
 
 The equation writes itself, and reads the LaTeX of the packages it names.
 

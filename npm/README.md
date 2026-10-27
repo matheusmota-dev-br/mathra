@@ -74,7 +74,7 @@ Without a bundler, from a CDN:
 | `locales()` | `[{ code: "en", name: "English" }, …]`. |
 | `version` | The version of mathra's core inside the package (the npm package has its own version). |
 
-Options: `locale` (`"en"` by default, `"pt-BR"`, `"es"`, `"fr"`, `"de"`, `"it"`, `"ru"`, `"zh"`, `"ja"`, `"ko"`, `"hi"`, `"ar"`, `"id"`, `"tr"`, `"nl"`, `"pl"`), `display` (`true` by default; `false` for inline style) `strict` (`false` by default: broken LaTeX is drawn with warnings instead of throwing) and `input` (`"latex"` by default, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own) and `braille` (`"cmu"` or `"nemeth"`; by default the locale's: CMU in pt-BR and es, Nemeth elsewhere). A plain string as the second argument is read as the locale.
+Options: `locale` (`"en"` by default, `"pt-BR"`, `"es"`, `"fr"`, `"de"`, `"it"`, `"ru"`, `"zh"`, `"ja"`, `"ko"`, `"hi"`, `"ar"`, `"id"`, `"tr"`, `"nl"`, `"pl"`), `display` (`true` by default; `false` for inline style) `strict` (`false` by default: broken LaTeX is drawn with warnings instead of throwing) and `input` (`"latex"` by default, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own) and `braille` (`"cmu"` or `"nemeth"`; by default the locale's: CMU in pt-BR and es, Nemeth elsewhere), `animate` (`false` by default; `true` makes the SVG write itself in the browser) and `steps` (`false` by default; `true` numbers each element by its step, `data-step`, with no animation). A plain string as the second argument is read as the locale.
 
 ## Chemistry and diagrams
 
@@ -92,6 +92,8 @@ Every construction, drawn live, is in the [gallery](https://matheusmota-dev-br.g
 ## What the SVG carries
 
 Speech in `<title>` linked with `aria-labelledby`, the source equation and the tree of meaning in `<metadata>`, color from the page (`currentColor`), size in `em`, a selectable text layer and ids unique to each equation. The same input always gives the same bytes.
+
+With `{ animate: true }` the equation writes itself, with CSS alone: each glyph fades in, each rule grows and each line is drawn, in the order the layout set them, in about three seconds (nothing moves with `prefers-reduced-motion`). Off by default, and without it the SVG is unchanged byte for byte. The [playground](https://matheusmota-dev-br.github.io/mathra/) turns it into a GIF, a video or an animated SVG with its own play bar.
 
 ## Also for Python, Rust and the terminal
 

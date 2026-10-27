@@ -30,9 +30,9 @@ mathra.render(r"\chemfig{H_3C-*6(=-=-=-)}")["speech"]                     # 'str
 
 | | |
 |---|---|
-| `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None)` | The SVG as a string. |
-| `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
-| `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None)` | The tree of meaning as JSON. |
+| `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The SVG as a string. |
+| `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
+| `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The tree of meaning as JSON. |
 | `locales()` | `[{"code": "en", "name": "English"}, …]`: en, pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar, id, tr, nl, pl. |
 
 `input` is `"latex"`, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own. `braille` is `"cmu"` or `"nemeth"`; by default the locale's (CMU in pt-BR and es, Nemeth elsewhere). Errors are `ValueError`. Types are included (`py.typed`).
@@ -57,6 +57,8 @@ chemfig works inside any equation: structures (rings, wedges, Lewis marks), reac
 ## What the SVG carries
 
 Speech in `<title>` linked with `aria-labelledby`, the source equation and the tree of meaning in `<metadata>`, color from the page (`currentColor`), size in `em`, a selectable text layer and ids unique to each equation. The same input always gives the same bytes, in Python and in every other package.
+
+With `animate=True` the equation writes itself in the browser, with CSS alone: each glyph fades in, each rule grows and each line is drawn, in the order the layout set them, in about three seconds (nothing moves with `prefers-reduced-motion`); `steps=True` numbers each element by that order (`data-step`) with no animation. Both are off by default, and without them the SVG is unchanged byte for byte.
 
 ## Also for JavaScript, Rust and the terminal
 
