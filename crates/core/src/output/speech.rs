@@ -193,7 +193,7 @@ impl Speaker {
             Node::Text { parts } => {
                 for p in parts {
                     match p {
-                        TextPart::Text(t) => self.say(t.replace(['\u{E000}', '\u{E001}', '\u{E002}', '\u{E003}'], "").trim().to_string()),
+                        TextPart::Text(t) => self.say(t.replace(crate::input::latex::MARKERS, "").trim().to_string()),
                         TextPart::Math(m) => self.node(m),
                     }
                 }
@@ -245,7 +245,19 @@ impl Speaker {
                     self.say(self.t("with_below", &[&b]));
                 }
             }
-            Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } | Node::Overlapped { base, .. } => self.node(base),
+            Node::Multicolumn { base, .. }
+            | Node::Raised { base, .. }
+            | Node::Scaled { base, .. }
+            | Node::Smashed { base, .. }
+            | Node::Overlapped { base, .. }
+            | Node::VCenter { base }
+            | Node::Reflected { base } => self.node(base),
+            // the speech does not follow the style: \mathchoice reads as its text style's branch
+            Node::Choice { branches } => {
+                if let Some(b) = branches.get(1) {
+                    self.node(b);
+                }
+            }
             Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, left, right } => {
                 let arrow = match symbol {

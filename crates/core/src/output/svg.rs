@@ -99,8 +99,10 @@ pub fn generate(c: &Content) -> String {
     s.push_str(r#"<g fill="currentColor" stroke="none" transform="scale(1,-1)">"#);
     for item in &math_box.items {
         match item {
-            Item::Glyph { id: g, x, y, scale, color } => {
-                let transform = if (*scale - 1.0).abs() < 1e-4 {
+            Item::Glyph { id: g, x, y, scale, color, flip } => {
+                let transform = if *flip {
+                    format!(r#"transform="translate({} {}) scale({} {})""#, n(*x), n(*y), n(-*scale), n(*scale))
+                } else if (*scale - 1.0).abs() < 1e-4 {
                     format!(r#"x="{}" y="{}""#, n(*x), n(*y))
                 } else {
                     format!(r#"transform="translate({} {}) scale({})""#, n(*x), n(*y), n(*scale))

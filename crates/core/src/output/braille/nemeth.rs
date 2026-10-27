@@ -197,6 +197,12 @@ impl Writer {
 
     fn node(&mut self, node: &Node, ctx: &Ctx) {
         match node {
+            // \mathchoice: the text style's branch
+            Node::Choice { branches } => {
+                if let Some(b) = branches.get(1) {
+                    self.node(b, ctx);
+                }
+            }
             Node::Number { value, .. } => self.number(value, ctx),
             Node::Identifier { name, variant } => self.identifier(name, *variant, ctx),
             Node::Function { name, .. } => self.function_name(name, ctx),
@@ -290,6 +296,8 @@ impl Writer {
             | Node::Raised { base, .. }
             | Node::Scaled { base, .. }
             | Node::Smashed { base, .. }
+            | Node::VCenter { base }
+            | Node::Reflected { base }
             | Node::Overlapped { base, .. }
             | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base, ctx),
@@ -408,7 +416,7 @@ impl Writer {
                 word.clear();
             }
         };
-        for c in t.chars().filter(|c| !matches!(c, '\u{E000}'..='\u{E003}')) {
+        for c in t.chars().filter(|c| !matches!(c, '\u{E000}'..='\u{E005}')) {
             if c.is_ascii_digit() {
                 flush_word(self, &mut word);
                 digits.push(c);

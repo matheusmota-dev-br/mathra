@@ -171,7 +171,7 @@ pub(crate) fn glyph_id(id: ttf_parser::GlyphId, s: f32, f: &Font) -> MathBox {
         width: f.advance(id) * s,
         height: y1.max(0.0) * s,
         depth: (-y0).max(0.0) * s,
-        items: vec![Item::Glyph { id, x: 0.0, y: 0.0, scale: s, color: None }],
+        items: vec![Item::Glyph { id, x: 0.0, y: 0.0, scale: s, color: None, flip: false }],
         italic: f.italic_correction(id) * s,
         accent_point: f.accent_point(id).map(|v| v * s),
         single_glyph: true,
@@ -183,19 +183,22 @@ const SMALL_CAPS_SCALE: f32 = 0.76;
 
 /// Upright text (function names, `\text`, units).
 fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
-    use crate::input::latex::{BOLD_END, BOLD_START, SMALL_CAPS_END, SMALL_CAPS_START};
+    use crate::input::latex::{BOLD_END, BOLD_START, MARKERS, MONO_END, MONO_START, SMALL_CAPS_END, SMALL_CAPS_START};
     let mut math_box = MathBox::empty();
     let mut bold = 0;
     let mut small_caps = 0;
+    let mut mono = 0;
     for c in t.chars() {
         match c {
             BOLD_START => bold += 1,
             BOLD_END => bold -= 1,
             SMALL_CAPS_START => small_caps += 1,
             SMALL_CAPS_END => small_caps -= 1,
+            MONO_START => mono += 1,
+            MONO_END => mono -= 1,
             _ => {}
         }
-        if matches!(c, BOLD_START | BOLD_END | SMALL_CAPS_START | SMALL_CAPS_END) {
+        if MARKERS.contains(&c) {
             continue;
         }
         // small capitals: a lowercase letter is its capital at the height of the x
@@ -206,7 +209,14 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
             }
         }
         // bold through the math block letters; accented ones stay regular
-        let c = if bold > 0 { alphabet::character(c, Variant::Bold) } else { c };
+        // typewriter likewise: letters and digits; the font has no typewriter punctuation
+        let c = if mono > 0 {
+            alphabet::character(c, Variant::Monospace)
+        } else if bold > 0 {
+            alphabet::character(c, Variant::Bold)
+        } else {
+            c
+        };
         if c == ' ' || c == '\u{00A0}' {
             math_box.append(&MathBox::space(em(e, e.font.word_space())));
             continue;
@@ -273,7 +283,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         }
         Node::LargeOperator { symbol, .. } => large_operator(*symbol, e),
         Node::Row { children } => compose_row(children, e, ctx, false),
-        Node::Fraction { num, den, style, rule } => compose_fraction(num, den, *style, *rule, e, ctx),
+        Node::Fraction { num, den, style, rule, thickness } => compose_fraction(num, den, *style, *rule, *thickness, e, ctx),
         Node::Root { radicand, index } => compose_root(radicand, index.as_deref(), e, ctx),
         Node::Scripts { base, sup, sub } => compose_scripts(base, sup.as_deref(), sub.as_deref(), e, ctx),
         Node::Delimited { open, close, parts, middles } => compose_delimited(*open, *close, parts, middles, e, ctx),
@@ -294,6 +304,33 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             Ok(math_box)
         }
         Node::Rule { width, height, raise } => Ok(MathBox::bar(em(e, *width), em(e, *height), em(e, *raise))),
+        // \mathchoice: TeX sets the branch of the style it lands in
+        Node::Choice { branches } => {
+            let i = match e.level {
+                Level::Display => 0,
+                Level::Text => 1,
+                Level::Script => 2,
+                Level::ScriptScript => 3,
+            };
+            match branches.get(i) {
+                Some(branch) => compose(branch, e, ctx),
+                None => Ok(MathBox::empty()),
+            }
+        }
+        // \vcenter: the box's middle on the math axis
+        Node::VCenter { base } => {
+            let mut b = compose(base, e, ctx)?;
+            let axis = k(e, |c| c.axis_height());
+            b.shift_vertical(axis - (b.height - b.depth) / 2.0);
+            b.single_glyph = false;
+            Ok(b)
+        }
+        // \reflectbox: \scalebox{-1}[1], mirrored inside its own width
+        Node::Reflected { base } => {
+            let mut b = compose(base, e, ctx)?;
+            b.mirror();
+            Ok(b)
+        }
         Node::Smashed { base, height, depth } => {
             let mut math_box = compose(base, e, ctx)?;
             if *height {
@@ -416,6 +453,8 @@ pub fn class_of(node: &Node) -> Option<Class> {
         Node::Fraction { .. } | Node::Delimited { .. } => Class::Inner,
         Node::Table { shape: kind, .. } if !matches!(kind, TableKind::Array | TableKind::Aligned | TableKind::Centered | TableKind::Substack | TableKind::Diagram) => Class::Inner,
         Node::Multicolumn { base, .. } | Node::Raised { base, .. } | Node::Scaled { base, .. } | Node::Smashed { base, .. } | Node::Unit { base, .. } => return class_of(base),
+        // the text style's branch: a class does not know the style
+        Node::Choice { branches } => return branches.get(1).and_then(class_of),
         Node::Scripts { base, .. } => return class_of(base),
         Node::Arrow { .. } => Class::Rel,
         Node::Colored { base, .. } | Node::Style { base, .. } => match base.as_ref() {
@@ -556,7 +595,8 @@ fn compose_cell(node: &Node, e: Style, ctx: &mut Context, initial_ord: bool) -> 
 
 // ---------- fractions and roots ----------
 
-fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
+#[allow(clippy::too_many_arguments)]
+fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, given: Option<f32>, e: Style, ctx: &mut Context) -> R<MathBox> {
     let e = match style {
         FractionStyle::Display => Style { level: Level::Display, ..e },
         FractionStyle::Row => e.not_display(),
@@ -568,12 +608,21 @@ fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, e:
     let axis = k(e, |c| c.axis_height());
     let (mut u, mut v);
     let mut thickness = 0.0;
+    // a thickness of 0 (\above0pt) is a fraction without a rule, as in TeX
+    let rule = rule && given.is_none_or(|t| t > 0.0);
     if rule {
         thickness = k(e, |c| c.fraction_rule_thickness());
         u = if display { k(e, |c| c.fraction_numerator_display_style_shift_up()) } else { k(e, |c| c.fraction_numerator_shift_up()) };
         v = if display { k(e, |c| c.fraction_denominator_display_style_shift_down()) } else { k(e, |c| c.fraction_denominator_shift_down()) };
-        let gap_n = if display { k(e, |c| c.fraction_num_display_style_gap_min()) } else { k(e, |c| c.fraction_numerator_gap_min()) };
-        let gap_d = if display { k(e, |c| c.fraction_denom_display_style_gap_min()) } else { k(e, |c| c.fraction_denominator_gap_min()) };
+        let mut gap_n = if display { k(e, |c| c.fraction_num_display_style_gap_min()) } else { k(e, |c| c.fraction_numerator_gap_min()) };
+        let mut gap_d = if display { k(e, |c| c.fraction_denom_display_style_gap_min()) } else { k(e, |c| c.fraction_denominator_gap_min()) };
+        // a thickness the input gives (\above, \genfrac) is absolute, as TeX's dimensions are, and the
+        // clearance follows it (TeX's rule 15d: 3θ in display style, θ otherwise)
+        if let Some(t) = given {
+            thickness = e.font().units_per_em() * t;
+            gap_n = if display { 3.0 * thickness } else { thickness };
+            gap_d = gap_n;
+        }
         u = u.max(gap_n + thickness / 2.0 + axis + n.depth);
         v = v.max(gap_d + thickness / 2.0 - axis + d.height);
     } else {

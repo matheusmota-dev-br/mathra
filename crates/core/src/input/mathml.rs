@@ -164,7 +164,7 @@ impl Reader<'_> {
             "mfrac" => {
                 let [num, den]: [Node; 2] = self.arguments(node, 2, variant)?.try_into().expect("two arguments");
                 let rule = !node.attribute("linethickness").is_some_and(|t| t.trim().trim_end_matches(char::is_alphabetic).trim().parse::<f32>() == Ok(0.0));
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule }
+                Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness: None }
             }
             "msqrt" => Node::Root { radicand: Box::new(self.row(node, variant)?), index: None },
             "mroot" => {

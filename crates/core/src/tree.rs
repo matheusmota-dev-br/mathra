@@ -59,6 +59,9 @@ pub enum Node {
         /// `\binom` has no rule.
         #[serde(skip_serializing_if = "std::clone::Clone::clone")]
         rule: bool,
+        /// The rule's thickness in em when the input gives one (`\above`, `\genfrac`); the font's otherwise.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thickness: Option<f32>,
     },
     Root {
         radicand: Box<Node>,
@@ -224,6 +227,18 @@ pub enum Node {
         width: f32,
         height: f32,
         raise: f32,
+    },
+    /// `\mathchoice{display}{text}{script}{scriptscript}`: the branch of the style it is set in.
+    Choice {
+        branches: Vec<Node>,
+    },
+    /// `\vcenter`: the content centered on the math axis.
+    VCenter {
+        base: Box<Node>,
+    },
+    /// `\reflectbox` (graphicx): the content mirrored left to right.
+    Reflected {
+        base: Box<Node>,
     },
     /// `\smash`: draws, but takes no height (and/or depth).
     Smashed {

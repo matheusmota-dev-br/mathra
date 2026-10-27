@@ -64,6 +64,11 @@ pub const BOLD_END: char = '\u{E001}';
 /// Small capitals markers (`\textsc{…}`).
 pub const SMALL_CAPS_START: char = '\u{E002}';
 pub const SMALL_CAPS_END: char = '\u{E003}';
+/// Typewriter markers (`\texttt{…}`, `\url{…}`).
+pub const MONO_START: char = '\u{E004}';
+pub const MONO_END: char = '\u{E005}';
+/// Every marker, for the outputs that drop them.
+pub const MARKERS: [char; 6] = [BOLD_START, BOLD_END, SMALL_CAPS_START, SMALL_CAPS_END, MONO_START, MONO_END];
 
 /// L-ENT-1 and L-ENT-2: HTML entities and outer delimiters that arrive with the equation.
 fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
@@ -798,12 +803,34 @@ impl Reader<'_> {
                 });
                 return Ok(Some(Some(p)));
             }
-            "over" | "choose" | "atop" | "brack" | "brace" => {
+            "over" | "choose" | "atop" | "brack" | "brace" | "above" => {
                 let num = Node::row(std::mem::take(items));
+                // \above<dimen>: TeX reads a dimension, written bare (2pt) or, as KaTeX allows, braced
+                let thickness = if name == "above" {
+                    self.skip_spaces();
+                    let raw = if self.current() == Some('{') {
+                        self.raw_text()?
+                    } else {
+                        let start = self.pos;
+                        while self.current().is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')) {
+                            self.pos += 1;
+                        }
+                        while self.current().is_some_and(|c| c.is_ascii_alphabetic()) && self.pos - start < 12 {
+                            self.pos += 1;
+                            if measure_em(&self.c[start..self.pos].iter().collect::<String>()).is_some() {
+                                break;
+                            }
+                        }
+                        self.c[start..self.pos].iter().collect()
+                    };
+                    Some(measure_em(&raw).ok_or(Error::Syntax { column: col, message: format!("\\above needs a dimension, not {raw:?}") })?.max(0.0))
+                } else {
+                    None
+                };
                 let (remainder, p) = self.list()?;
                 let den = Node::row(remainder);
-                let rule = name == "over";
-                let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule };
+                let rule = matches!(name, "over" | "above");
+                let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
                 items.push(match name {
                     "choose" => Node::Delimited { open: Some('('), close: Some(')'), parts: vec![fraction], middles: vec![] },
                     "brack" => Node::Delimited { open: Some('['), close: Some(']'), parts: vec![fraction], middles: vec![] },
@@ -874,7 +901,7 @@ impl Reader<'_> {
                     "tfrac" => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: true }
+                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: true, thickness: None }
             }
             "binom" | "dbinom" | "tbinom" => {
                 let num = self.argument()?;
@@ -884,7 +911,7 @@ impl Reader<'_> {
                     "tbinom" => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: false };
+                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: false, thickness: None };
                 Node::Delimited { open: Some('('), close: Some(')'), parts: vec![f], middles: vec![] }
             }
             "sqrt" | "root" => {
@@ -902,7 +929,7 @@ impl Reader<'_> {
         let _ = (col, start, star);
         let node: Node = match name {
             // text and fonts
-            "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textit" | "textbf" | "textsf" | "texttt" | "emph" | "textmd" | "textsl" | "fbox" | "framebox" => {
+            "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textit" | "textsf" | "emph" | "textmd" | "textsl" | "fbox" | "framebox" => {
                 let text = self.text()?;
                 if matches!(name, "fbox" | "framebox") {
                     Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None }
@@ -910,18 +937,33 @@ impl Reader<'_> {
                     text
                 }
             }
-            "textsc" => match self.text()? {
-                Node::Text { parts } => Node::Text {
-                    parts: parts
-                        .into_iter()
-                        .map(|p| match p {
-                            TextPart::Text(t) => TextPart::Text(format!("{SMALL_CAPS_START}{t}{SMALL_CAPS_END}")),
-                            math => math,
-                        })
-                        .collect(),
-                },
-                other => other,
-            },
+            "textsc" | "textbf" | "texttt" => {
+                let (open, close) = match name {
+                    "textsc" => (SMALL_CAPS_START, SMALL_CAPS_END),
+                    "textbf" => (BOLD_START, BOLD_END),
+                    _ => (MONO_START, MONO_END),
+                };
+                match self.text()? {
+                    Node::Text { parts } => Node::Text {
+                        parts: parts
+                            .into_iter()
+                            .map(|p| match p {
+                                TextPart::Text(t) => TextPart::Text(format!("{open}{t}{close}")),
+                                math => math,
+                            })
+                            .collect(),
+                    },
+                    other => other,
+                }
+            }
+            // hyperref: the address as written, in typewriter type (_ % # ~ are its own characters)
+            "url" => {
+                let address = self.raw_text()?;
+                let address: String = address.chars().filter(|c| !matches!(c, '\\')).collect();
+                Node::Text { parts: vec![TextPart::Text(format!("{MONO_START}{address}{MONO_END}"))] }
+            }
+            // graphicx: \scalebox{-1}[1]{…}, its argument in text mode
+            "reflectbox" => Node::Reflected { base: Box::new(self.text()?) },
             "mathrm" | "mathup" | "mathit" | "mathbf" | "mathsf" | "mathtt" | "mathbb" | "mathcal" | "mathscr" | "mathfrak" | "boldsymbol" | "bm" | "pmb" | "mathbfit"
             | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
                 let variant = match name {
@@ -1296,7 +1338,9 @@ impl Reader<'_> {
                     _ => FractionStyle::Row,
                 };
                 let rule = !thickness.trim().trim_start_matches(['0', '.']).trim_end_matches(char::is_alphabetic).is_empty() || thickness.trim().is_empty();
-                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule };
+                // an empty thickness is the font's; a given one is drawn as given
+                let given = measure_em(&thickness).filter(|_| rule);
+                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule, thickness: given };
                 let delim = |t: &str| -> Option<char> {
                     let t = t.trim();
                     match t.strip_prefix('\\') {
@@ -1310,6 +1354,14 @@ impl Reader<'_> {
                     Node::Delimited { open: delim(&open), close: delim(&close), parts: vec![f], middles: vec![] }
                 }
             }
+            "mathchoice" => {
+                let mut branches = Vec::with_capacity(4);
+                for _ in 0..4 {
+                    branches.push(self.argument()?);
+                }
+                Node::Choice { branches }
+            }
+            "vcenter" => Node::VCenter { base: Box::new(self.argument()?) },
             "smash" => {
                 let option = self.raw_optional().unwrap_or_default();
                 let base = self.argument()?;
@@ -2047,8 +2099,16 @@ impl Reader<'_> {
                             current.push(SMALL_CAPS_START);
                             open_until.push((level, SMALL_CAPS_END));
                         }
-                        "textit" | "emph" | "textrm" | "textsf" | "texttt" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "tt" | "em" | "small"
-                        | "scriptsize" | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" => {}
+                        "texttt" => {
+                            current.push(MONO_START);
+                            open_until.push((level + 1, MONO_END));
+                        }
+                        "tt" | "ttfamily" => {
+                            current.push(MONO_START);
+                            open_until.push((level, MONO_END));
+                        }
+                        "textit" | "emph" | "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "em" | "small" | "scriptsize"
+                        | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" => {}
                         "quad" => current.push('\u{2003}'),
                         "qquad" => current.push_str("\u{2003}\u{2003}"),
                         "ldots" | "dots" => current.push('…'),
@@ -2505,7 +2565,7 @@ impl Reader<'_> {
             ("frac", [a, b, ..]) => {
                 let num = self.chemistry(a, col)?.simplify();
                 let den = self.chemistry(b, col)?.simplify();
-                Ok(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true })
+                Ok(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true, thickness: None })
             }
             _ => {
                 let raw: String = c[start..*i].iter().collect();
@@ -2620,7 +2680,7 @@ fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
         *i += 1;
         let den = digits(i);
         let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
-        return Node::Fraction { num: number(value), den: number(den), style: FractionStyle::Row, rule: true };
+        return Node::Fraction { num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
     }
     Node::Number { value, group: false, thousands: None }
 }

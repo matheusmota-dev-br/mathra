@@ -469,7 +469,7 @@ fn katex_list_readings_follow_latex() {
 fn unsupported_commands_are_refused_or_shown_in_red() {
     // KaTeX-only names (texvc aliases, HTML extensions) are not LaTeX: refused in strict mode,
     // and with a warning otherwise, never replaced in silence by a look-alike
-    for tex in [r"\R", r"\Reals", r"\larr", r"\hearts", r"\htmlClass{a}{x}", r"\mathchoice{a}{b}{c}{d}", r"\foocommand"] {
+    for tex in [r"\R", r"\Reals", r"\larr", r"\hearts", r"\htmlClass{a}{x}", r"\mathreflectbox{x}", r"\foocommand"] {
         assert!(convert(tex, &strict()).is_err(), "{tex} accepted in strict mode");
         let out = convert(tex, &Options::default()).unwrap();
         assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1"), "{tex}: {:?}", out.warnings);
@@ -478,4 +478,92 @@ fn unsupported_commands_are_refused_or_shown_in_red() {
     for tex in [r"\R", r"\larr", r"\foocommand"] {
         assert!(convert(tex, &Options::default()).unwrap().svg.contains("#c0392b"), "{tex}: not drawn in red");
     }
+}
+
+// ---------- TeX primitives and package commands added after the audit ----------
+
+fn glyphs(b: &MathBox) -> usize {
+    b.items.iter().filter(|i| matches!(i, Item::Glyph { .. })).count()
+}
+
+#[test]
+fn mathchoice_sets_the_branch_of_its_style() {
+    let out = read(r"\mathchoice{D}{T}{S}{SS}");
+    assert!(matches!(&out.tree, Node::Row { children } if matches!(&children[0], Node::Choice { branches } if branches.len() == 4)), "{:?}", out.tree);
+    // one glyph in display and text style, two in the scriptscript branch of a second-level script
+    let display = math_box(r"\mathchoice{D}{T}{S}{SS}");
+    let inline = mathra::typeset(r"\mathchoice{D}{T}{S}{SS}", &Options { display: false, ..strict() }).unwrap().0;
+    let script = math_box(r"x_{\mathchoice{D}{T}{S}{SS}}");
+    let scriptscript = math_box(r"x_{y_{\mathchoice{D}{T}{S}{SS}}}");
+    assert_eq!((glyphs(&display), glyphs(&inline)), (1, 1));
+    assert_eq!(glyphs(&script), 2, "x and S");
+    assert_eq!(glyphs(&scriptscript), 4, "x, y and the two letters of SS");
+    assert_ne!(display.items, inline.items, "D and T are different letters");
+    // KaTeX's example: one thin space in display style, two inline
+    let spaced = r"a\mathchoice{\,}{\,\,}{\,\,\,}{\,\,\,\,}b";
+    let gap = mathra::typeset(spaced, &Options { display: false, ..strict() }).unwrap().0.width - math_box(spaced).width;
+    assert!((gap - 1000.0 / 6.0).abs() < 1.0, "a thin space (3mu) more inline: {gap}");
+    // speech and text, which do not follow the style, read the text style's branch
+    assert_eq!(out.text, "T");
+}
+
+#[test]
+fn vcenter_puts_the_middle_of_its_box_on_the_axis() {
+    let axis = 250.0_f32; // STIX Two Math's axis height, in font units
+    for tex in [r"\vcenter{x}", r"\vcenter{\frac{\frac a b}c}", r"\vcenter{\rule{1em}{2em}}"] {
+        let b = math_box(tex);
+        let middle = (b.height - b.depth) / 2.0;
+        assert!((middle - axis).abs() < 10.0, "{tex}: middle {middle}");
+    }
+    read(r"a+\left(\vcenter{\frac{\frac a b}c}\right)");
+}
+
+#[test]
+fn above_draws_a_rule_of_the_given_thickness() {
+    let rule = |tex: &str| {
+        math_box(tex).items.iter().filter_map(|i| if let Item::Rule { width, height, .. } = i { Some((*width, *height)) } else { None }).find(|(w, h)| w > h).map(|(_, h)| h)
+    };
+    // 2pt is 0.2 em, absolute: the same in a script
+    let thick = rule(r"{a \above{2pt} b+1}").unwrap();
+    assert!((thick - 200.0).abs() < 1.0, "{thick}");
+    assert!((rule(r"{a \above 2pt b}").unwrap() - thick).abs() < 0.01, "bare dimension, as TeX reads it");
+    assert!((rule(r"x^{a \above{2pt} b}").unwrap() - thick).abs() < 0.01);
+    // 0pt is \atop: no rule
+    assert!(rule(r"{a \above 0pt b}").is_none());
+    // \genfrac's thickness is drawn too
+    assert!((rule(r"\genfrac{}{}{1pt}{}{n}{k}").unwrap() - 100.0).abs() < 1.0);
+    assert_eq!(read(r"{a \above{2pt} b}").speech, read(r"\frac{a}{b}").speech);
+    assert!(convert(r"{a \above b}", &strict()).is_err(), "a dimension is required");
+}
+
+#[test]
+fn reflectbox_mirrors_its_content() {
+    let plain = math_box(r"\text{abc}");
+    let mirrored = math_box(r"\reflectbox{abc}");
+    assert_eq!(plain.width, mirrored.width);
+    let flipped = mirrored.items.iter().filter(|i| matches!(i, Item::Glyph { flip: true, .. })).count();
+    assert_eq!(flipped, 3);
+    // the first letter is now on the right, its ink where the last one's was
+    let (x0, _, x1, _) = ink(&plain);
+    let (m0, _, m1, _) = ink(&mirrored);
+    assert!((m0 - (plain.width - x1)).abs() < 0.5 && (m1 - (plain.width - x0)).abs() < 0.5, "{m0}..{m1} against {x0}..{x1}");
+    // drawn with a negative x scale; read as what it says
+    let out = read(r"\reflectbox{$x^2$}");
+    assert!(out.svg.contains("scale(-1 1)"), "no mirrored glyph in the SVG");
+    assert_eq!(out.speech, read(r"x^2").speech);
+    assert_ink_inside(r"\reflectbox{$x^2$} + \reflectbox{f}", &Options::default());
+}
+
+#[test]
+fn url_is_the_address_as_written_in_typewriter() {
+    let out = read(r"\url{https://katex.org/a_b%20c#x}");
+    assert_eq!(out.text, "https://katex.org/a_b%20c#x");
+    assert_eq!(out.speech, "https://katex.org/a_b%20c#x");
+    // the letters are the typewriter ones; \texttt and \textbf are no longer plain text
+    let font = font::font();
+    let mono = font.glyph('𝚊').unwrap();
+    let has = |tex: &str, id| math_box(tex).items.iter().any(|i| matches!(i, Item::Glyph { id: g, .. } if *g == id));
+    assert!(has(r"\url{a}", mono) && has(r"\texttt{a}", mono) && has(r"\text{x \texttt{a}}", mono) && has(r"\text{\tt a}", mono));
+    assert!(has(r"\textbf{a}", font.glyph('𝐚').unwrap()));
+    assert!(!has(r"\text{a}", mono));
 }

@@ -61,7 +61,7 @@ fn same_meaning_as_latex() {
 
 #[test]
 fn fractions_drop_the_brackets_of_their_parts() {
-    let Node::Fraction { num, den, style: FractionStyle::Auto, rule: true } = first("(a+b)/(c+d)") else { panic!() };
+    let Node::Fraction { num, den, style: FractionStyle::Auto, rule: true, .. } = first("(a+b)/(c+d)") else { panic!() };
     assert!(!format!("{num:?}{den:?}").contains("Delimited"));
     // brackets of scripts go too, but not of a function's argument
     assert!(!format!("{:?}", am("x^(2n)").tree).contains("Delimited"));

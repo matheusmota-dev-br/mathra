@@ -186,7 +186,7 @@ fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool, f: &Font) -> Ma
     for p in &seq {
         let (x0, y0, _, _) = f.limits(p.id);
         let (x, y) = if vertical { (0.0, (cursor - y0) * s) } else { ((cursor - x0) * s, 0.0) };
-        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None });
+        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None, flip: false });
         let g = glyph_id(p.id, s, f);
         if vertical {
             math_box.width = math_box.width.max(g.width);

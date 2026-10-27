@@ -52,6 +52,12 @@ impl Writer {
 
     fn node(&mut self, node: &Node) {
         match node {
+            // \mathchoice: the text style's branch
+            Node::Choice { branches } => {
+                if let Some(b) = branches.get(1) {
+                    self.node(b);
+                }
+            }
             Node::Number { value, thousands, .. } => self.number(value, thousands.is_some()),
             Node::Identifier { name, variant } => self.identifier(name, *variant),
             Node::Function { name, .. } => self.function_name(name),
@@ -145,6 +151,8 @@ impl Writer {
             | Node::Raised { base, .. }
             | Node::Scaled { base, .. }
             | Node::Smashed { base, .. }
+            | Node::VCenter { base }
+            | Node::Reflected { base }
             | Node::Overlapped { base, .. }
             | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base),
@@ -373,7 +381,7 @@ impl Writer {
 
     fn text(&mut self, t: &str) {
         let mut digits = String::new();
-        for c in t.chars().filter(|c| !matches!(c, '\u{E000}'..='\u{E003}')) {
+        for c in t.chars().filter(|c| !matches!(c, '\u{E000}'..='\u{E005}')) {
             if c.is_ascii_digit() {
                 digits.push(c);
                 continue;
@@ -442,7 +450,7 @@ impl Writer {
         }
         // §3.2.2: a numeric fraction, the numerator in the lower part of the cell after ⠼, the
         // denominator in the upper part without ⠼: 3/4 = ⠼⠒⠙
-        if let Some((n, d)) = numeric_fraction(&Node::Fraction { num: Box::new(num.clone()), den: Box::new(den.clone()), style: FractionStyle::Auto, rule }) {
+        if let Some((n, d)) = numeric_fraction(&Node::Fraction { num: Box::new(num.clone()), den: Box::new(den.clone()), style: FractionStyle::Auto, rule, thickness: None }) {
             let lower: String = n.chars().map(|c| cells(lower_digit(c))).collect();
             let upper: String = d.chars().map(|c| cells(upper_digit(c))).collect();
             self.push(&format!("⠼{lower}{upper}"));
