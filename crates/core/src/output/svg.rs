@@ -22,6 +22,69 @@ pub struct Content<'a> {
     pub warnings: &'a [crate::Applied],
     /// The font the equation was set in: its glyphs are drawn from it.
     pub font: MathFont,
+    /// S-SVG-10: each element numbered by the order the layout set it (`data-step`).
+    pub steps: bool,
+    /// S-SVG-10: the equation writes itself in that order (CSS in the SVG; steps included).
+    pub animate: bool,
+}
+
+/// S-SVG-10: the steps of the drawing, one per glyph, rule, line or ellipse, in the order the layout
+/// set them: each one numbered and, animated, timed. Off, it writes nothing.
+struct Steps {
+    on: bool,
+    animate: bool,
+    count: usize,
+}
+
+/// How a step comes in: a glyph fades in, a rule grows along its length (wide from the left, tall
+/// from the top), a line or an ellipse is drawn along its length.
+#[derive(Clone, Copy)]
+enum Entry {
+    Fade,
+    Wide,
+    Tall,
+    Drawn,
+}
+
+impl Steps {
+    fn next(&mut self, entry: Entry) -> String {
+        if !self.on {
+            return String::new();
+        }
+        let i = self.count;
+        self.count += 1;
+        if !self.animate {
+            return format!(r#" data-step="{i}""#);
+        }
+        let (class, extra) = match entry {
+            Entry::Fade => ("mr-f", ""),
+            Entry::Wide => ("mr-w", ""),
+            Entry::Tall => ("mr-v", ""),
+            Entry::Drawn => ("mr-d", r#" pathLength="1""#),
+        };
+        format!(r#" data-step="{i}" class="{class}"{extra} style="--i:{i}""#)
+    }
+
+    /// The seconds between two steps: the whole equation in about three seconds, however long.
+    fn interval(&self) -> f32 {
+        (3.0 / self.count.max(1) as f32).min(0.15)
+    }
+
+    /// The rules, the same in every equation: an inline SVG's `<style>` applies to the whole page, so
+    /// what differs (the interval) is a property of each `<svg>`, `--mr-step`.
+    fn style(&self) -> &'static str {
+        if !self.animate || self.count == 0 {
+            return "";
+        }
+        "<style>@keyframes mr-f{from{opacity:0}}@keyframes mr-w{from{transform:scaleX(0)}}@keyframes mr-v{from{transform:scaleY(0)}}\
+         @keyframes mr-d{from{stroke-dashoffset:1.01}}\
+         .mr-f{animation:mr-f .4s ease-out both}\
+         .mr-w{transform-box:fill-box;transform-origin:left center;animation:mr-w .5s ease-in-out both}\
+         .mr-v{transform-box:fill-box;transform-origin:center bottom;animation:mr-v .5s ease-in-out both}\
+         .mr-d{stroke-dasharray:1 2;animation:mr-d .6s ease-in-out both}\
+         .mr-f,.mr-w,.mr-v,.mr-d{animation-delay:calc(var(--i)*var(--mr-step,.1s))}\
+         @media (prefers-reduced-motion:reduce){.mr-f,.mr-w,.mr-v,.mr-d{animation:none;stroke-dasharray:none}}</style>"
+    }
 }
 
 fn n(v: f32) -> String {
@@ -47,9 +110,14 @@ pub fn generate(c: &Content) -> String {
         (left, right, top, bottom) = (left.min(x0), right.max(x1), top.max(y1), bottom.max(-y0));
     }
     let (width, total_height) = (right - left, top + bottom);
+    // the drawing first: the <svg> carries how many steps it has
+    let mut steps = Steps { on: c.steps || c.animate, animate: c.animate, count: 0 };
+    let body = items_svg(math_box, &id, &mut steps);
+    let animated = if steps.animate && steps.count > 0 { format!("; --mr-step: {}s", n(steps.interval())) } else { String::new() };
+    let counted = if steps.on { format!(r#" data-steps="{}""#, steps.count) } else { String::new() };
     let _ = write!(
         s,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1" viewBox="{} {} {} {}" width="{}em" height="{}em" style="vertical-align: {}em" role="img" aria-labelledby="{id}-speech" lang="{}" data-mathra-version="{}">"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1" viewBox="{} {} {} {}" width="{}em" height="{}em" style="vertical-align: {}em{animated}" role="img" aria-labelledby="{id}-speech" lang="{}" data-mathra-version="{}"{counted}>"#,
         n(left),
         n(-top),
         n(width),
@@ -83,6 +151,7 @@ pub fn generate(c: &Content) -> String {
     // the image does not know the page theme, and following the system theme vanishes on a light page.
     // A <style> inside an inline SVG applies to the whole page: hence nothing beyond svg:root.
     s.push_str("<style>svg:root{color:#111}</style>");
+    s.push_str(steps.style());
 
     // S-SVG-5: each glyph drawn only once, in order of first appearance (deterministic)
     s.push_str("<defs>");
@@ -96,49 +165,7 @@ pub fn generate(c: &Content) -> String {
     }
     s.push_str("</defs>");
 
-    s.push_str(r#"<g fill="currentColor" stroke="none" transform="scale(1,-1)">"#);
-    for item in &math_box.items {
-        match item {
-            Item::Glyph { id: g, x, y, scale, color, flip } => {
-                let transform = if *flip {
-                    format!(r#"transform="translate({} {}) scale({} {})""#, n(*x), n(*y), n(-*scale), n(*scale))
-                } else if (*scale - 1.0).abs() < 1e-4 {
-                    format!(r#"x="{}" y="{}""#, n(*x), n(*y))
-                } else {
-                    format!(r#"transform="translate({} {}) scale({})""#, n(*x), n(*y), n(*scale))
-                };
-                let _ = write!(s, r##"<use href="#{id}-g{}" {transform}{}/>"##, g.0, fill(color));
-            }
-            Item::Rule { x, y, width, height, color } => {
-                let _ = write!(s, r#"<rect x="{}" y="{}" width="{}" height="{}"{}/>"#, n(*x), n(*y), n(*width), n(*height), fill(color));
-            }
-            Item::Line { x1, y1, x2, y2, thickness, color } => {
-                let _ = write!(
-                    s,
-                    r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" stroke-width="{}" stroke-linecap="round"/>"#,
-                    n(*x1),
-                    n(*y1),
-                    n(*x2),
-                    n(*y2),
-                    color.as_deref().unwrap_or("currentColor"),
-                    n(*thickness)
-                );
-            }
-            Item::Ellipse { cx, cy, rx, ry, thickness, color } => {
-                let _ = write!(
-                    s,
-                    r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="none" stroke="{}" stroke-width="{}"/>"#,
-                    n(*cx),
-                    n(*cy),
-                    n(*rx),
-                    n(*ry),
-                    color.as_deref().unwrap_or("currentColor"),
-                    n(*thickness)
-                );
-            }
-        }
-    }
-    s.push_str("</g>");
+    s.push_str(&body);
 
     // S-SVG-6: transparent text layer, to select and copy when the SVG is inline in the page
     let _ = write!(
@@ -151,6 +178,59 @@ pub fn generate(c: &Content) -> String {
 
     s.push_str("</svg>");
     s
+}
+
+/// S-SVG-5 and S-SVG-10: the drawing, glyphs as `<use>` of their `<path>`, in the order the layout
+/// set them.
+fn items_svg(math_box: &MathBox, id: &str, steps: &mut Steps) -> String {
+    let mut out = String::new();
+    out.push_str(r#"<g fill="currentColor" stroke="none" transform="scale(1,-1)">"#);
+    for item in &math_box.items {
+        match item {
+            Item::Glyph { id: g, x, y, scale, color, flip } => {
+                let transform = if *flip {
+                    format!(r#"transform="translate({} {}) scale({} {})""#, n(*x), n(*y), n(-*scale), n(*scale))
+                } else if (*scale - 1.0).abs() < 1e-4 {
+                    format!(r#"x="{}" y="{}""#, n(*x), n(*y))
+                } else {
+                    format!(r#"transform="translate({} {}) scale({})""#, n(*x), n(*y), n(*scale))
+                };
+                let _ = write!(out, r##"<use href="#{id}-g{}" {transform}{}{}/>"##, g.0, fill(color), steps.next(Entry::Fade));
+            }
+            Item::Rule { x, y, width, height, color } => {
+                let entry = if width >= height { Entry::Wide } else { Entry::Tall };
+                let _ = write!(out, r#"<rect x="{}" y="{}" width="{}" height="{}"{}{}/>"#, n(*x), n(*y), n(*width), n(*height), fill(color), steps.next(entry));
+            }
+            Item::Line { x1, y1, x2, y2, thickness, color } => {
+                let _ = write!(
+                    out,
+                    r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" stroke-width="{}" stroke-linecap="round"{}/>"#,
+                    n(*x1),
+                    n(*y1),
+                    n(*x2),
+                    n(*y2),
+                    color.as_deref().unwrap_or("currentColor"),
+                    n(*thickness),
+                    steps.next(Entry::Drawn)
+                );
+            }
+            Item::Ellipse { cx, cy, rx, ry, thickness, color } => {
+                let _ = write!(
+                    out,
+                    r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="none" stroke="{}" stroke-width="{}"{}/>"#,
+                    n(*cx),
+                    n(*cy),
+                    n(*rx),
+                    n(*ry),
+                    color.as_deref().unwrap_or("currentColor"),
+                    n(*thickness),
+                    steps.next(Entry::Drawn)
+                );
+            }
+        }
+    }
+    out.push_str("</g>");
+    out
 }
 
 /// S-SVG-7: unique ids per equation, so several equations on one page do not clash.

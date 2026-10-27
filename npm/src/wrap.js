@@ -3,7 +3,7 @@
 /** `options` may be an object or, as in earlier versions, just the locale code. */
 function args(options) {
   const o = typeof options === "string" ? { locale: options } : options ?? {};
-  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null];
+  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null];
 }
 
 export function wrap(raw, isReady) {

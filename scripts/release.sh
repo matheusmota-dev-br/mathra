@@ -5,6 +5,9 @@
 #   scripts/release.sh            create and push the missing tags
 #   scripts/release.sh --dry-run  only show what would be released
 #
+# Each release needs its section in CHANGELOG.md (`## <version> - <date>`): the script stops without it,
+# and makes the GitHub release of tag v<version> from it once the tags are pushed.
+#
 # Versions come from the files the workflows check: Cargo.toml (crates mathra and mathra-cli, tag v*),
 # npm/package.json (npm-v*) and crates/python/Cargo.toml (py-v*). A version already on its registry,
 # or a tag that already exists, is skipped with a note.
@@ -29,6 +32,9 @@ problems=""
 [ "$branch" = main ] || problems="$problems\n  - on branch $branch, not main"
 [ -z "$(git status --porcelain --untracked-files=no)" ] || problems="$problems\n  - uncommitted changes"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || problems="$problems\n  - not in sync with origin/main (git pull --ff-only)"
+# what changed, for the GitHub release: written before the release, not after
+python3 -I scripts/changelog.py notes "$crates" >/dev/null 2>&1 ||
+  problems="$problems\n  - CHANGELOG.md has no section for $crates (## $crates - $(date +%F))"
 if [ -n "$problems" ] && ! $dry_run; then
   printf "Cannot release:%b\n" "$problems" >&2
   exit 1
@@ -82,3 +88,15 @@ for t in $tags; do git tag "$t"; done
 # shellcheck disable=SC2086 # one word per tag
 git push origin $tags
 echo "Pushed:$tags. Follow the workflows with: gh run list --limit 5"
+
+# the GitHub release of the crates' tag, with its section of CHANGELOG.md as the notes
+case " $tags " in
+  *" v$crates "*)
+    if python3 -I scripts/changelog.py notes "$crates" | gh release create "v$crates" --title "mathra $crates" --notes-file - --verify-tag; then
+      echo "GitHub release v$crates created from CHANGELOG.md."
+    else
+      echo "Could not create the GitHub release; make it by hand with:"
+      echo "  python3 -I scripts/changelog.py notes $crates | gh release create v$crates --title \"mathra $crates\" --notes-file -"
+    fi
+    ;;
+esac

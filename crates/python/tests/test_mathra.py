@@ -92,3 +92,11 @@ def test_braille():
     assert mathra.render(r"\frac{3}{4}", braille="nemeth")["braille"] == "⠹⠒⠌⠲⠼"
     with pytest.raises(ValueError, match="unknown braille code"):
         mathra.render("x", braille="ueb")
+
+
+def test_animate_and_steps():
+    assert "data-step" not in mathra.tex_to_svg("x+1")
+    assert "@keyframes mr-f" in mathra.tex_to_svg("x+1", animate=True)
+    steps = mathra.tex_to_svg("x+1", steps=True)
+    assert 'data-steps="3"' in steps and "@keyframes" not in steps
+    assert "mr-f" in mathra.render("x", animate=True)["svg"]

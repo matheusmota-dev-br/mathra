@@ -270,3 +270,38 @@ fn the_site_gallery_matches_the_readme_gallery() {
         assert!(named.contains(&e.name), "{} is in the README gallery but not on the site's gallery page", e.name);
     }
 }
+
+/// CHANGELOG.md (read by scripts/changelog.py for the GitHub release and the site's evolution page):
+/// releases newest first, each with a date and a headline, and the equations each one shows are a
+/// gallery name or LaTeX that converts in strict mode.
+#[test]
+fn the_changelog_shows_equations_that_convert() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+    let text = std::fs::read_to_string(format!("{root}/CHANGELOG.md")).unwrap();
+    let gallery: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(format!("{root}/corpus/gallery.json")).unwrap()).unwrap();
+    let names: Vec<&str> = gallery.as_array().unwrap().iter().flat_map(|g| g["rows"].as_array().unwrap()).filter_map(|r| r["name"].as_str()).collect();
+    let mut versions = Vec::new();
+    for section in text.split("\n## ").skip(1) {
+        let (title, body) = section.split_once('\n').unwrap();
+        if title != "Unreleased" {
+            let (version, date) = title.split_once(" - ").unwrap_or_else(|| panic!("## {title}: `## <version> - <date>`"));
+            assert_eq!(date.len(), 10, "{title}");
+            versions.push(version.split('.').map(|n| n.parse::<u32>().unwrap()).collect::<Vec<_>>());
+        }
+        let headline = body.trim_start().lines().next().unwrap_or("");
+        assert!(!headline.is_empty() && !headline.starts_with("- "), "{title}: no headline");
+        let listed = body.lines().find_map(|l| l.strip_prefix("Equations:")).unwrap_or_else(|| panic!("{title}: no Equations: line"));
+        for item in listed.split('`').skip(1).step_by(2) {
+            if names.contains(&item) {
+                continue;
+            }
+            // a gallery-like name that is not in the gallery is a typo, not LaTeX
+            assert!(item.contains(['\\', '^', '_', '=', '{']), "{title}: `{item}` is neither a gallery name nor LaTeX");
+            if cfg!(not(feature = "chem")) && item.contains("\\chemfig") {
+                continue;
+            }
+            convert(item, &Options { strict: true, ..Options::default() }).unwrap_or_else(|e| panic!("{title}: {item}: {e}"));
+        }
+    }
+    assert!(versions.len() >= 8 && versions.windows(2).all(|w| w[0] > w[1]), "newest first: {versions:?}");
+}

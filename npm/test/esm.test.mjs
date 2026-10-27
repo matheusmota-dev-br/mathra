@@ -52,3 +52,12 @@ test("braille", () => {
   assert.equal(render(String.raw`\frac{3}{4}`, { braille: "nemeth" }).braille, "⠹⠒⠌⠲⠼");
   assert.throws(() => render("x", { braille: "ueb" }), /unknown braille code/);
 });
+
+test("the writing animation and the steps", () => {
+  assert.doesNotMatch(texToSvg("x+1"), /data-step/);
+  assert.match(texToSvg("x+1", { animate: true }), /@keyframes mr-f/);
+  const steps = texToSvg("x+1", { steps: true });
+  assert.match(steps, /data-steps="3"/);
+  assert.doesNotMatch(steps, /@keyframes/);
+  assert.match(render("x", { animate: true }).svg, /mr-f/);
+});

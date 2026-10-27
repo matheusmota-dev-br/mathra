@@ -137,6 +137,13 @@
   .preview .status { margin: 0 auto; font-size: 15px; color: var(--muted); }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--line); }
   .actions .button { padding: 8px 13px; font-size: 13px; }
+  .actions .button:disabled { opacity: 0.6; cursor: progress; }
+  /* the equation step by step, under the preview */
+  .steps { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); }
+  .steps[hidden] { display: none; }
+  .steps .button { padding: 6px 10px; font-size: 12px; line-height: 1; }
+  .steps input { flex: 1; min-width: 0; accent-color: var(--accent); }
+  .steps output { min-width: 9ch; text-align: right; font: 12.5px/1.4 "JetBrains Mono", ui-monospace, monospace; color: var(--muted); }
   .messages { display: flex; flex-direction: column; gap: 6px; padding: 0 16px 14px; }
   .messages:empty { display: none; }
   .msg { font: 12.5px/1.5 "JetBrains Mono", ui-monospace, monospace; padding: 7px 10px; border-radius: 8px; border: 1px solid; overflow-wrap: anywhere; }
@@ -185,7 +192,25 @@
   .tile .eq svg { max-width: 100%; height: auto; }
   .tile .cap { font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
   .tile .cap span:last-child { color: var(--accent-ink); }
-  a.tile { text-decoration: none; }
+  a.tile, .tile a.eq, .tile a.cap { text-decoration: none; }
+  .tile-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 14px 12px; }
+  .tile-actions .button { padding: 6px 11px; font-size: 12.5px; }
+  .tile-actions .button:disabled { opacity: 0.6; cursor: progress; }
+
+  /* the evolution page: every release, what it changed and the equations that show it */
+  .evo-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0 0 16px; }
+  .evo-stats .card { padding: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--muted); }
+  .evo-value { font-family: "STIX Two Text", Georgia, serif; font-size: 26px; font-weight: 600; color: var(--ink); }
+  .evo-releases { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 16px; }
+  .evo-release { padding: 20px 22px; }
+  .evo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .evo-head h3 { font-family: "STIX Two Text", Georgia, serif; font-size: 22px; margin: 0; }
+  .evo-head .stats { font-size: 13px; color: var(--muted); }
+  .evo-headline { font-size: 16.5px; margin: 6px 0 10px; }
+  .evo-release ul { margin: 0 0 10px; padding-left: 20px; color: var(--muted); font-size: 14.5px; }
+  .evo-release li + li { margin-top: 4px; }
+  .evo-equations { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top: 6px; }
+  .evo-equations .tile .eq { min-height: 90px; }
   .gallery-more { display: flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 500; min-height: 120px; padding: 20px; text-align: center; }
   .gallery-more:hover { border-color: var(--accent); color: var(--ink); }
 

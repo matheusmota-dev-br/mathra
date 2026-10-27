@@ -95,11 +95,17 @@ pub struct Options {
     pub input: Input,
     /// The braille code of [`Output::braille`]. `None`: the language's (CMU in pt-BR and es, Nemeth elsewhere).
     pub braille: Option<BrailleCode>,
+    /// The equation writes itself in the browser, glyph by glyph and stroke by stroke, in the order
+    /// the layout set it (CSS in the SVG, S-SVG-10). Off by default; without it the SVG is unchanged.
+    pub animate: bool,
+    /// Each element of the SVG numbered by that order (`data-step`, and `data-steps` on the `<svg>`),
+    /// with no CSS: for a page that walks through the equation itself. The animation numbers them too.
+    pub steps: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { locale: Locale::default(), display: true, strict: false, input: Input::Latex, braille: None }
+        Options { locale: Locale::default(), display: true, strict: false, input: Input::Latex, braille: None, animate: false, steps: false }
     }
 }
 
@@ -209,6 +215,8 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
         locale: options.locale,
         warnings: &registry.warnings,
         font,
+        steps: options.steps,
+        animate: options.animate,
     });
     Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, applied: registry.applied, warnings: registry.warnings })
 }
