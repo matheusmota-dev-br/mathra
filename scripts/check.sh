@@ -14,20 +14,20 @@ cd "$(dirname "$0")/.."
 
 name=mathra
 
-rust() {
+check_rust() {
   cargo fmt --all --check
   cargo clippy --workspace --exclude "$name-python" --all-targets -- -D warnings
   cargo test --workspace --exclude "$name-python"
 }
 
-wasm() {
+check_wasm() {
   CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
     cargo test -p "$name-wasm" --target wasm32-unknown-unknown
   site/build.sh
   npm/build.sh && npm/test/run.sh
 }
 
-python() {
+check_python() {
   (
     cd crates/python
     [ -d .venv ] || python3 -m venv .venv
@@ -41,7 +41,7 @@ python() {
 [ $# -eq 0 ] && set -- rust wasm python
 for check in "$@"; do
   case "$check" in
-    rust | wasm | python) echo "== $check"; "$check" ;;
+    rust | wasm | python) echo "== $check"; "check_$check" ;;
     *) echo "unknown check: $check (rust, wasm or python)" >&2; exit 2 ;;
   esac
 done
