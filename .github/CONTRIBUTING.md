@@ -26,14 +26,15 @@ Test inputs are made by hand for the test. Do not copy equations from books, exa
 
 ## Before opening a pull request
 
+Pull requests are not checked on GitHub; the checks run on your machine, through git hooks. Turn them on once after cloning:
+
 ```console
-$ cargo fmt --all
-$ cargo clippy --all-targets -- -D warnings
-$ cargo test
-$ npm/build.sh && npm/test/run.sh     # if the change reaches the npm package
+$ git config core.hooksPath .githooks
 ```
 
-The pull request runs the same checks (`.github/workflows/ci.yml`): fmt, clippy, the Rust, wasm, npm and Python tests. [docs/tests.md](../docs/tests.md) explains each suite.
+From then on, every commit runs fmt, clippy and the Rust tests, and every push the wasm, npm and Python tests, the same as `.github/workflows/ci.yml`. `scripts/check.sh` runs them all by hand, or one group: `scripts/check.sh rust`, `wasm` or `python`. They need rustup with the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` at the version in `Cargo.lock`, Node 22 and Python 3.12.
+
+[docs/tests.md](../docs/tests.md) explains each suite.
 
 - One change per pull request.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(core): …`, `fix(cli): …`, `docs: …`.
@@ -41,7 +42,7 @@ The pull request runs the same checks (`.github/workflows/ci.yml`): fmt, clippy,
 - Leave versions alone; they are bumped in release pull requests.
 - If the change alters the banner, regenerate it with `cargo run -p mathra --example banner`.
 
-Every pull request needs the approval of the maintainer before merging.
+Every pull request needs the approval of the maintainer before merging. After the merge, `.github/workflows/ci.yml` runs the same checks again on `main`.
 
 ## License
 
