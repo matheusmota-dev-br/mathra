@@ -761,7 +761,7 @@ fn compose_scripts(base: &Node, sup: Option<&Node>, sub: Option<&Node>, e: Style
         }
     }
     let delta = b.italic;
-    let (x_sup, x_sub) = if integral { (b.width + delta * 0.5, b.width - delta * 0.5) } else { (b.width + delta, b.width) };
+    let (x_sup, x_sub) = if integral { (b.width, b.width - delta) } else { (b.width + delta, b.width) };
     let mut math_box = b.clone();
     math_box.single_glyph = false;
     let mut width = b.width;
