@@ -4,6 +4,14 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+The limits of an integral sit next to its sign.
+
+- The limits of an integral sit next to the sign, as the font's italic correction asks: the upper one at the sign's advance width, the lower one moved left by the italic correction ([#65](https://github.com/matheusmota-dev-br/mathra/issues/65)).
+
+Equations: `gaussian` `stokes` `\int_0^1 x\,dx`
+
 ## 1.6.1 - 2026-10-28
 
 How to contribute, and how to report a vulnerability.
