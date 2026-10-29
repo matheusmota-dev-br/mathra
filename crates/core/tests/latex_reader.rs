@@ -510,6 +510,21 @@ fn boxes_and_rules() {
     assert!(always_error(r"\raisebox{x}{a}").contains("unrecognized measure"));
     has(&tree(r"\scalebox{2}[1]{a}"), &["Scaled"]);
     assert!(always_error(r"\scalebox{dobro}{a}").contains("takes a number"));
+    // L-BOX-1: graphicx's lengths, factors and angles
+    has(&tree(r"\raisebox{0pt}[\height][0pt]{a}"), &["height: Some(BoxLength { em: 0.0, width: 0.0, height: 1.0", "depth: Some(BoxLength { em: 0.0,"]);
+    has(&tree(r"\raisebox{0pt}[-.5\totalheight]{a}"), &["height: -0.5, depth: -0.5"]);
+    has(&recovers(r"\raisebox{0pt}[alto]{a}", "E-REC-9"), &["height: None"]);
+    has(&tree(r"\scalebox{-1}[1]{a}"), &["factor: -1.0, vertical: Some(1.0)"]);
+    has(&tree(r"\scalebox{2}[2]{a}"), &["factor: 2.0, vertical: None"]);
+    assert!(always_error(r"\scalebox{1}[x]{a}").contains("takes numbers"));
+    assert!(always_error(r"\scalebox{inf}{a}").contains("takes a number"));
+    has(&tree(r"\resizebox{1cm}{!}{a}"), &["Resized", "height: None", "total: false"]);
+    has(&tree(r"\resizebox*{!}{\totalheight}{a}"), &["width: None", "total: true"]);
+    assert!(always_error(r"\resizebox{largo}{!}{a}").contains("unrecognized measure"));
+    has(&tree(r"\rotatebox{90}{a}"), &["Rotated { degrees: 90.0, origin: \"\""]);
+    has(&tree(r"\rotatebox[origin=br, units=360]{-30}{a}"), &["degrees: -30.0, origin: \"br\""]);
+    has(&tree(r"\rotatebox[origin]{30}{a}"), &["origin: \"c\""]);
+    assert!(always_error(r"\rotatebox{noventa}{a}").contains("takes a number"));
     has(&tree(r"\rule[1pt]{2em}{1ex}"), &["Rule"]);
     assert!(always_error(r"\rule{a}{b}").contains("unrecognized measures"));
     has(&tree(r"\smash[t]{x} \smash[b]{y}"), &["height: true, depth: false", "height: false, depth: true"]);

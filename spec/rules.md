@@ -201,6 +201,17 @@ The rules for fractions, roots, scripts, limits, accents, bars, braces and arrow
 
 The prime of `f'` uses the ′ glyph at normal size, attached to the base, because it is already drawn as a superscript.
 
+### L-BOX-1 · graphicx boxes
+
+graphicx's box commands set their argument in text mode, and work in math and inside `\text{…}` alike (the CircuiTikZ manual uses them in node labels):
+
+- `\scalebox{h}[v]{…}` scales the box by h across and v up (v is h when left out). A negative h mirrors it inside its own width, as `\reflectbox{…}` does (`\scalebox{-1}[1]`); a negative v turns it upside down, its height becoming its depth. Factors are kept between 0.05 and 20 in size.
+- `\resizebox{width}{height}{…}` scales it to that size; `!` for one of them keeps the ratio. `\resizebox*` counts the depth in the height.
+- `\rotatebox[origin=…]{angle}{…}` turns it counterclockwise, by degrees, and takes the smallest box around the turned one, as graphicx does. The turn is around the left end of the baseline; `origin` moves that point with graphicx's letters: `l`, `r` across, `t`, `b`, `B` (baseline) up and down, `c` the center; a direction it leaves out is centered (`origin=c`, `origin=lt`).
+- `\raisebox{lift}[height][depth]{…}` raises it, then gives it that height and depth, if asked: `\raisebox{0pt}[\height][0pt]{…}` (the manual's `\killdepth`) removes its depth, so labels with and without descenders share a baseline.
+
+The lengths take any TeX unit and the box's own `\width`, `\height`, `\depth` and `\totalheight`, with a factor (`2\height`); in `\raisebox`, those of the raised box. A length that cannot be read is an error in `\raisebox{lift}` and `\resizebox`; in `\raisebox`'s optional arguments it is ignored in tolerant mode (E-REC-9). Turned and unevenly scaled boxes are drawn through an SVG `matrix()` (S-SVG-5).
+
 ## Measured coverage
 
 `cargo run --release -p mathra --example bench` runs the hand-written constructions in `corpus/` in both modes and prints how many convert; the README has the numbers of one run. The constructions strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and drawings with coordinates (`\tikz`). Strict mode also "accepts" LaTeX escaped twice (`\\cdot`), because it is valid for TeX (a line break followed by the letters "cdot"); tolerant mode reads what the author meant and warns (E-REC-2).
