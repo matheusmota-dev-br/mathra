@@ -107,6 +107,20 @@ fn l_let_1_letters_in_math_italic() {
 }
 
 #[test]
+fn l_let_1_greek_variants_in_math_italic() {
+    // \phi is ϕ, which TeX sets in italic like \varphi (#66)
+    for (from, to) in [('ϕ', '𝜙'), ('φ', '𝜑'), ('ϵ', '𝜖'), ('ϑ', '𝜗'), ('ϰ', '𝜘'), ('ϱ', '𝜚'), ('ϖ', '𝜛')] {
+        assert_eq!(mathra::layout::math_italic(from), to, "{from}");
+    }
+    use mathra::tree::Variant::{Bold, BoldItalic};
+    assert_eq!(mathra::layout::alphabet::character('ϕ', Bold), '𝛟');
+    assert_eq!(mathra::layout::alphabet::character('ϕ', BoldItalic), '𝝓');
+    // drawn in italic, not as the upright ϕ of \mathrm
+    let glyphs = |tex: &str| convert(tex, &Options::default()).unwrap().svg.split("<defs>").nth(1).map(str::to_string);
+    assert_ne!(glyphs(r"\phi"), glyphs(r"\mathrm{\phi}"));
+}
+
+#[test]
 fn s_svg_2_portuguese_speech_in_title() {
     let r = pt(r"x \le 2,5");
     assert_eq!(r.speech, "x é menor ou igual a 2,5");
