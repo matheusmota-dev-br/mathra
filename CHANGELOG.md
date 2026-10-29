@@ -4,6 +4,14 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+Bold text stays bold after math inside it.
+
+- Inside `\text{…}`, the text after math (`$…$`, `\(…\)`, `\ensuremath`, `\textsubscript`, siunitx, graphicx boxes) keeps the bold, small capitals or monospace of its group: in `\textbf{Z $x$ Z}` the second Z was upright ([#77](https://github.com/matheusmota-dev-br/mathra/pull/77)).
+
+Equations: `\text{\textbf{Z $x$ Z} and \textsc{Small $x$ Caps}}`
+
 ## 1.7.0 - 2026-10-29
 
 Labels as LaTeX sets them: subscripts, siunitx and graphicx boxes inside text, and `\phi` in italic.

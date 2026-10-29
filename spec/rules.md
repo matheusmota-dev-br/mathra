@@ -104,6 +104,7 @@ Inside `\text{…}` (and every text argument), these are set as LaTeX sets them:
 - `\textsubscript{…}` and `\textsuperscript{…}`: a script of the text before it (`H\textsubscript{2}O`).
 - `\ensuremath{…}`: its argument as math, as `$…$` would.
 - `\boldmath`: the math that follows (`$…$`, `\(…\)`, `\ensuremath`) is bold, until the end of the group it is in; `\unboldmath` ends it.
+- Math does not end the text's style: in `\textbf{a $x$ b}`, b is bold, as are the letters after math in `\textsc`, `\texttt` and `\bf`, `\scshape`, `\ttfamily` until the end of their group. The math itself is not (that is `\boldmath`).
 
 A math command written in text (`\mathrm{V}`, `\frac{1}{2}`, `\sqrt{2}`) is an error in TeX: strict mode refuses it, and tolerant mode reads it as math, with a warning (E-REC-1).
 
