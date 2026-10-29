@@ -2053,9 +2053,7 @@ impl Reader<'_> {
                         continue;
                     };
                     let snippet: String = c[i + 1..end].iter().collect();
-                    if !current.is_empty() {
-                        parts.push(TextPart::Text(std::mem::take(&mut current)));
-                    }
+                    split_text(&mut parts, &mut current, &open_until);
                     parts.push(TextPart::Math(self.sub_reader(&snippet, math_variant)?));
                     i = end + 1;
                 }
@@ -2089,9 +2087,7 @@ impl Reader<'_> {
                         continue;
                     };
                     let snippet: String = c[i + 2..end].iter().collect();
-                    if !current.is_empty() {
-                        parts.push(TextPart::Text(std::mem::take(&mut current)));
-                    }
+                    split_text(&mut parts, &mut current, &open_until);
                     parts.push(TextPart::Math(self.sub_reader(&snippet, math_variant)?));
                     i = end + 2;
                 }
@@ -2173,26 +2169,20 @@ impl Reader<'_> {
                         // L-TXT-2: commands that TeX sets as math inside text
                         "textsubscript" | "textsuperscript" | "ensuremath" => {
                             let tex = format!("\\{name}{}", text_arguments(&c, &mut i, "{"));
-                            if !current.is_empty() {
-                                parts.push(TextPart::Text(std::mem::take(&mut current)));
-                            }
+                            split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
                         // L-UNI-4: siunitx typesets its quantities in text as in math; L-BOX-1: graphicx's boxes
                         other if siunitx_in_text(other).or(graphicx_box(other)).is_some() => {
                             let tex = format!("\\{other}{}", text_arguments(&c, &mut i, siunitx_in_text(other).or(graphicx_box(other)).unwrap_or_default()));
-                            if !current.is_empty() {
-                                parts.push(TextPart::Text(std::mem::take(&mut current)));
-                            }
+                            split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
                         // E-REC-1: a math command in text is an error in TeX; read as math
                         other if math_in_text(other).is_some() => {
                             self.tolerate(rules::E_REC_1, col, format!("math command in text: \\{other}"), "read as math")?;
                             let tex = format!("\\{other}{}", text_arguments(&c, &mut i, math_in_text(other).unwrap_or_default()));
-                            if !current.is_empty() {
-                                parts.push(TextPart::Text(std::mem::take(&mut current)));
-                            }
+                            split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
                         "quad" => current.push('\u{2003}'),
@@ -2920,6 +2910,24 @@ fn negate(c: char) -> Option<char> {
         '→' => '↛',
         _ => return None,
     })
+}
+
+/// The text so far as a part of its own, before math inside it: each part is set apart, so the bold,
+/// small capitals and monospace still open (`open`, by their closing markers) are closed at its end
+/// and opened again in the text that follows (`\textbf{a $x$ b}`: b is bold too). Text of markers
+/// alone stays, to go on after the math.
+fn split_text(parts: &mut Vec<TextPart>, current: &mut String, open: &[(usize, char)]) {
+    if current.chars().all(|c| MARKERS.contains(&c)) {
+        return;
+    }
+    let mut done = std::mem::take(current);
+    done.extend(open.iter().rev().map(|&(_, end)| end));
+    parts.push(TextPart::Text(done));
+    current.extend(open.iter().map(|&(_, end)| match end {
+        BOLD_END => BOLD_START,
+        SMALL_CAPS_END => SMALL_CAPS_START,
+        _ => MONO_START,
+    }));
 }
 
 /// The arguments of a command inside text, as written, to read them again with the command: `spec` has

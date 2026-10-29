@@ -233,6 +233,32 @@ fn bold_text_uses_block_letters() {
 }
 
 #[test]
+fn bold_small_capitals_and_monospace_go_on_after_math_in_their_group() {
+    // the glyphs of a box, left to right
+    let glyphs = |tex: &str| -> Vec<u16> { math_box(tex).items.iter().filter_map(|i| if let Item::Glyph { id, .. } = i { Some(id.0) } else { None }).collect() };
+    // `\textbf{Z $x$ Z}`: both Z bold, as TeX sets them
+    let g = glyphs(r"\text{\textbf{Z$x$Z}}");
+    assert_eq!(g[0], g[2], "{g:?}");
+    assert_eq!(g[0], glyphs(r"\text{\textbf{Z}}")[0]);
+    // after other math in text too (`\ensuremath`, `\(…\)`), and for small capitals and monospace:
+    // the letters on both sides are those of the group without math
+    for (tex, alone) in [
+        (r"\text{\textbf{ab\ensuremath{x}ab}}", r"\text{\textbf{ab}}"),
+        (r"\text{\textbf{ab\(x\)ab}}", r"\text{\textbf{ab}}"),
+        (r"\text{\textsc{ab $x$ ab}}", r"\text{\textsc{ab}}"),
+        (r"\text{\texttt{ab $x$ ab}}", r"\text{\texttt{ab}}"),
+    ] {
+        let (g, a) = (glyphs(tex), glyphs(alone));
+        assert!(g[..2] == a[..] && g[3..] == a[..], "{tex}: {g:?} against {a:?}");
+    }
+    // \bf until its group ends, not after
+    let g = glyphs(r"\text{{\bf Z $x$ Z} Z}");
+    assert!(g[0] == g[2] && g[2] != g[3], "{g:?}");
+    // math at the start of the group: what follows is bold
+    assert_eq!(glyphs(r"\text{\textbf{$x$Z}}")[1], glyphs(r"\text{\textbf{Z}}")[0]);
+}
+
+#[test]
 fn multi_letter_identifier_without_variant() {
     let node = Node::Identifier { name: "abc".into(), variant: Variant::Italic };
     let c = compose_node(&node, Style::display(), true).unwrap();
