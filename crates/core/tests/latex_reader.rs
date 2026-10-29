@@ -784,6 +784,38 @@ fn text_commands() {
 }
 
 #[test]
+fn l_txt_2_scripts_and_math_inside_text() {
+    // H₂O: the script of the text before it, as \textsubscript outside text
+    let t = tree(r"\text{H\textsubscript{2}O}");
+    has(&t, &["Text(\"H\")", "Math(Scripts", "sub: Some(Text", "Text(\"O\")"]);
+    has(&tree(r"\text{x\textsuperscript{th}}"), &["sup: Some(Text { parts: [Text(\"th\")]"]);
+    has(&tree(r"\text{n\textsuperscript 2}"), &["sup: Some"]);
+    // \ensuremath: math, whether in text or not
+    has(&tree(r"\text{a \ensuremath{x^2} b}"), &["Math(Scripts", "Italic"]);
+    assert_eq!(tree(r"\ensuremath{x}"), tree("x"));
+}
+
+#[test]
+fn l_txt_2_boldmath_until_the_end_of_its_group() {
+    let t = tree(r"\text{{\boldmath $x$} $y$}");
+    assert!(t.find("Bold").unwrap() < t.find("Italic").unwrap(), "{t}");
+    has(&tree(r"\text{\boldmath \ensuremath{x}}"), &["Bold"]);
+    assert!(!tree(r"\text{\boldmath\unboldmath $x$}").contains("Bold"));
+    // CircuiTikZ's op amp font: the size is the page's, the math bold
+    has(&tree(r"\text{\fontsize{10}{12}\selectfont\boldmath $V$}"), &["Bold"]);
+    assert!(!tree(r"\text{\fontsize{10}{12}\selectfont a}").contains("fontsize"));
+}
+
+#[test]
+fn l_txt_2_math_commands_in_text_read_as_math() {
+    has(&recovers(r"\text{\mathrm{V}}", "E-REC-1"), &["Math(Identifier", "Upright"]);
+    has(&recovers(r"\text{a \frac{1}{2} b}", "E-REC-1"), &["Math(Fraction"]);
+    has(&recovers(r"\text{\sqrt[3]{2}}", "E-REC-1"), &["Math(Root", "index: Some"]);
+    has(&recovers(r"\text{\operatorname*{argmax}}", "E-REC-1"), &["argmax"]);
+    has(&recovers(r"\text{\mathbb R}", "E-REC-1"), &["DoubleStruck"]);
+}
+
+#[test]
 fn all_text_accents_compose() {
     for (mark, letter, expected) in [('`', 'a', 'à'), ('^', 'o', 'ô'), ('"', 'u', 'ü'), ('=', 'a', 'ā'), ('.', 'z', 'ż'), ('u', 'a', 'ă'), ('v', 's', 'š')] {
         assert_eq!(symbols::text_accent(mark, letter), Some(expected), "{mark}{letter}");

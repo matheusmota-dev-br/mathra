@@ -6,11 +6,12 @@ Each release has a headline (the line under its title), what changed, and the eq
 
 ## Unreleased
 
-`\phi` in italic, as TeX sets it.
+`\phi` in italic, as TeX sets it, and the subscripts and math of LaTeX's text commands.
 
 - `\phi` is in math italic, as TeX sets it, like `\varphi` and the other lowercase Greek letters; so are `\epsilon`, `\vartheta`, `\varkappa`, `\varrho` and `\varpi`, which were upright too ([#66](https://github.com/matheusmota-dev-br/mathra/issues/66)).
+- Inside `\text{…}`: `\textsubscript{…}` and `\textsuperscript{…}` (`H\textsubscript{2}O`), `\ensuremath{…}`, and `\boldmath`, which sets the math that follows in bold until the end of its group; `\fontsize{…}{…}\selectfont` is ignored like the other sizes. A math command written in text (`\mathrm{V}`, `\frac{1}{2}`) is read as math, with a warning (E-REC-1), instead of being written as is ([#70](https://github.com/matheusmota-dev-br/mathra/issues/70)).
 
-Equations: `\phi \varphi \epsilon \vartheta \varrho \varpi`
+Equations: `\phi \varphi \epsilon \vartheta \varrho \varpi` `\text{H\textsubscript{2}O and {\boldmath $x$} $x$}`
 
 ## 1.6.2 - 2026-10-28
 

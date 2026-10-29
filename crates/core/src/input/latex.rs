@@ -1990,7 +1990,10 @@ impl Reader<'_> {
         // end of the current group. Each entry is the group level and the marker that closes it.
         let mut level = 0usize;
         let mut open_until: Vec<(usize, char)> = Vec::new();
+        // L-TXT-2: \boldmath sets the math that follows in bold, until the end of its group
+        let mut bold_math: Option<usize> = None;
         while i < c.len() {
+            let math_variant = if bold_math.is_some() { Variant::Bold } else { Variant::Italic };
             match c[i] {
                 '$' => {
                     let end = c[i + 1..].iter().position(|&x| x == '$').map(|p| p + i + 1);
@@ -2004,7 +2007,7 @@ impl Reader<'_> {
                     if !current.is_empty() {
                         parts.push(TextPart::Text(std::mem::take(&mut current)));
                     }
-                    parts.push(TextPart::Math(self.sub_reader(&snippet, Variant::Italic)?));
+                    parts.push(TextPart::Math(self.sub_reader(&snippet, math_variant)?));
                     i = end + 1;
                 }
                 '~' => {
@@ -2019,6 +2022,9 @@ impl Reader<'_> {
                     while let Some(&(_, end)) = open_until.last().filter(|(at, _)| *at == level) {
                         open_until.pop();
                         current.push(end);
+                    }
+                    if bold_math == Some(level) {
+                        bold_math = None;
                     }
                     level = level.saturating_sub(1);
                     i += 1;
@@ -2037,7 +2043,7 @@ impl Reader<'_> {
                     if !current.is_empty() {
                         parts.push(TextPart::Text(std::mem::take(&mut current)));
                     }
-                    parts.push(TextPart::Math(self.sub_reader(&snippet, Variant::Italic)?));
+                    parts.push(TextPart::Math(self.sub_reader(&snippet, math_variant)?));
                     i = end + 2;
                 }
                 '\\' => {
@@ -2108,7 +2114,30 @@ impl Reader<'_> {
                             open_until.push((level, MONO_END));
                         }
                         "textit" | "emph" | "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "em" | "small" | "scriptsize"
-                        | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" => {}
+                        | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" | "selectfont" => {}
+                        // L-ENT-3: the size comes from whoever uses the SVG
+                        "fontsize" => {
+                            text_arguments(&c, &mut i, "{{");
+                        }
+                        "boldmath" => bold_math = Some(bold_math.map_or(level, |at| at.min(level))),
+                        "unboldmath" => bold_math = None,
+                        // L-TXT-2: commands that TeX sets as math inside text
+                        "textsubscript" | "textsuperscript" | "ensuremath" => {
+                            let tex = format!("\\{name}{}", text_arguments(&c, &mut i, "{"));
+                            if !current.is_empty() {
+                                parts.push(TextPart::Text(std::mem::take(&mut current)));
+                            }
+                            parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
+                        // E-REC-1: a math command in text is an error in TeX; read as math
+                        other if math_in_text(other).is_some() => {
+                            self.tolerate(rules::E_REC_1, col, format!("math command in text: \\{other}"), "read as math")?;
+                            let tex = format!("\\{other}{}", text_arguments(&c, &mut i, math_in_text(other).unwrap_or_default()));
+                            if !current.is_empty() {
+                                parts.push(TextPart::Text(std::mem::take(&mut current)));
+                            }
+                            parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
                         "quad" => current.push('\u{2003}'),
                         "qquad" => current.push_str("\u{2003}\u{2003}"),
                         "ldots" | "dots" => current.push('…'),
@@ -2832,6 +2861,106 @@ fn negate(c: char) -> Option<char> {
         '∣' => '∤',
         '∥' => '∦',
         '→' => '↛',
+        _ => return None,
+    })
+}
+
+/// The arguments of a command inside text, as written, to read them again with the command: `spec` has
+/// `{` for each mandatory argument, `[` for each optional one and `*` for an optional star, in order. A
+/// mandatory argument without braces is one character or one command, as in TeX.
+fn text_arguments(c: &[char], i: &mut usize, spec: &str) -> String {
+    let mut out = String::new();
+    for kind in spec.chars() {
+        let mut k = *i;
+        while c.get(k) == Some(&' ') {
+            k += 1;
+        }
+        match kind {
+            '*' => {
+                if c.get(k) == Some(&'*') {
+                    out.push('*');
+                    *i = k + 1;
+                }
+            }
+            '[' => {
+                if c.get(k) != Some(&'[') {
+                    continue;
+                }
+                let mut depth = 0usize;
+                let end = (k + 1..c.len()).find(|&j| match c[j] {
+                    '{' => {
+                        depth += 1;
+                        false
+                    }
+                    '}' => {
+                        depth = depth.saturating_sub(1);
+                        false
+                    }
+                    ']' => depth == 0,
+                    _ => false,
+                });
+                if let Some(end) = end {
+                    out.extend(&c[k..=end]);
+                    *i = end + 1;
+                }
+            }
+            _ => match c.get(k) {
+                Some('{') => {
+                    let mut depth = 0usize;
+                    let mut j = k;
+                    while j < c.len() {
+                        match c[j] {
+                            '\\' => j += 1,
+                            '{' => depth += 1,
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    let end = j.min(c.len().saturating_sub(1));
+                    out.extend(&c[k..=end]);
+                    // an unclosed group is closed at the end, as raw_text does
+                    if j >= c.len() {
+                        out.push('}');
+                    }
+                    *i = end + 1;
+                }
+                Some('\\') => {
+                    let mut j = k + 1;
+                    while c.get(j).is_some_and(char::is_ascii_alphabetic) {
+                        j += 1;
+                    }
+                    let end = j.max(k + 2).min(c.len());
+                    out.push('{');
+                    out.extend(&c[k..end]);
+                    out.push('}');
+                    *i = end;
+                }
+                Some(&x) => {
+                    out.push('{');
+                    out.push(x);
+                    out.push('}');
+                    *i = k + 1;
+                }
+                None => {}
+            },
+        }
+    }
+    out
+}
+
+/// Math commands that authors write in text, with their arguments (as for `text_arguments`).
+fn math_in_text(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb" | "mathfrak" | "mathscr" | "mathbfit" | "mathnormal" | "boldsymbol" | "bm" => "{",
+        "frac" | "dfrac" | "tfrac" => "{{",
+        "sqrt" => "[{",
+        "operatorname" => "*{",
         _ => return None,
     })
 }

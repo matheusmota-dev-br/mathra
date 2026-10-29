@@ -86,12 +86,22 @@ An input that starts with a `<math>` element (after an optional XML prolog or co
 
 Commands that belong to the document, not to the equation, are ignored and noted:
 
-- `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG.
+- `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG. In text, `\fontsize{size}{skip}\selectfont` too.
 - `\usepackage{…}`, `\RequirePackage{…}` and MathJax's `\require{…}`, with their optional argument: the supported packages are already loaded.
 
 ### L-TXT-1 · Quotes in text
 
 Inside `\text{…}` (and every text argument), TeX's quote ligatures become typographic quotes: ``` `` ``` → “, `''` → ”, `` ` `` → ‘, `'` → ’. In math mode `'` is still a prime.
+
+### L-TXT-2 · Math inside text
+
+Inside `\text{…}` (and every text argument), these are set as LaTeX sets them:
+
+- `\textsubscript{…}` and `\textsuperscript{…}`: a script of the text before it (`H\textsubscript{2}O`).
+- `\ensuremath{…}`: its argument as math, as `$…$` would.
+- `\boldmath`: the math that follows (`$…$`, `\(…\)`, `\ensuremath`) is bold, until the end of the group it is in; `\unboldmath` ends it.
+
+A math command written in text (`\mathrm{V}`, `\frac{1}{2}`, `\sqrt{2}`) is an error in TeX: strict mode refuses it, and tolerant mode reads it as math, with a warning (E-REC-1).
 
 ## Macros
 
