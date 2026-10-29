@@ -43,7 +43,7 @@ fn assert_valid_svg(svg: &str, tex: &str) {
 /// Composes a hand-built tree (for nodes the reader only produces in rare combinations).
 fn compose_node(node: &Node, e: Style, strict: bool) -> Result<MathBox, Error> {
     let mut registry = Registry::default();
-    let mut ctx = Context { locale: Locale::PtBr, registry: &mut registry, strict };
+    let mut ctx = Context { locale: Locale::PtBr, registry: &mut registry, strict, kerning: Default::default() };
     compose(node, e, &mut ctx)
 }
 
@@ -1099,4 +1099,21 @@ fn dots_are_three_dots_set_as_tex_sets_them() {
     let script = f.script_form(period, 1);
     assert_eq!(glyphs(&inline_box(r"x_{\ldots}"), script), 3);
     assert_eq!(glyphs(&inline_box(r"\cdots"), f.glyph('⋅').unwrap()), 3);
+}
+
+#[test]
+fn text_is_kerned_as_tex_kerns_it() {
+    use mathra::layout::kerning::TextKerning;
+    let width = |tex: &str, kerning: TextKerning| mathra::typeset(tex, &Options { text_kerning: kerning, ..options() }).unwrap().0.width;
+    let plain = width(r"\text{va}", TextKerning::None);
+    let ot1 = width(r"\text{va}", TextKerning::Ot1);
+    let t1 = width(r"\text{va}", TextKerning::T1);
+    // cmr10 kerns `va` by 0.0278 em, ec-lmr10 by twice that
+    assert!(plain > ot1 && ot1 > t1, "{plain} {ot1} {t1}");
+    assert!(((plain - t1) - 2.0 * (plain - ot1)).abs() < 0.01 * plain, "{plain} {ot1} {t1}");
+    // nothing between letters a space apart, nor in math
+    assert_eq!(width(r"\text{v a}", TextKerning::None), width(r"\text{v a}", TextKerning::T1));
+    assert_eq!(width("va", TextKerning::None), width("va", TextKerning::T1));
+    // bold by its own table
+    assert!(width(r"\text{\textbf{AV}}", TextKerning::None) > width(r"\text{\textbf{AV}}", TextKerning::Ot1));
 }

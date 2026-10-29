@@ -6,11 +6,13 @@ Each release has a headline (the line under its title), what changed, and the eq
 
 ## Unreleased
 
-Space and phantoms inside text.
+Space and phantoms inside text, and text kerned as TeX kerns it.
 
 - Inside `\text{…}`, `\hspace{…}` and `\hspace*{…}` add their space, and `\phantom`, `\hphantom` and `\vphantom` leave the room of their argument, instead of being written in red (L-TXT-3, [#79](https://github.com/matheusmota-dev-br/mathra/issues/79)).
+- `Options::text_kerning`: text in `\text{…}` kerned by the pairs of TeX's OT1 Computer Modern (`cmr10`, `cmbx10`) or T1 Latin Modern (`ec-lmr10`, `ec-lmbx10`) fonts, as TeX's tables do (`va`, `AV`, `To`); none by default, as before (#81).
+- Code that builds an `Options` or a `layout::Context` listing every field needs the new one (`..Default::default()`) (#81).
 
-Equations: `\text{a\hspace{1cm}b}`, `\text{a\phantom{xy}b}`
+Equations: `\text{a\hspace{1cm}b}`, `\text{a\phantom{xy}b}`, `\text{AVA Today}`
 
 ## 1.7.1 - 2026-10-29
 

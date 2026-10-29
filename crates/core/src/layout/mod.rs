@@ -4,6 +4,7 @@
 pub mod alphabet;
 mod arithmetic;
 mod diagram;
+pub mod kerning;
 pub mod math_box;
 mod stretch;
 mod table;
@@ -122,6 +123,8 @@ pub struct Context<'a> {
     pub registry: &'a mut Registry,
     /// A missing glyph becomes an error (strict) or a box with a warning (tolerant).
     pub strict: bool,
+    /// How text is kerned.
+    pub kerning: kerning::TextKerning,
 }
 
 /// MATH table constant already at the style's scale.
@@ -244,6 +247,8 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
     let mut bold = 0;
     let mut small_caps = 0;
     let mut mono = 0;
+    // the previous character and its weight, for TeX's kern between the two (none across a change)
+    let mut previous: Option<(char, bool)> = None;
     for c in t.chars() {
         match c {
             BOLD_START => bold += 1,
@@ -255,7 +260,19 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
             _ => {}
         }
         if MARKERS.contains(&c) {
+            previous = None;
             continue;
+        }
+        if small_caps == 0 && mono == 0 {
+            if let Some((p, weight)) = previous {
+                let k = kerning::kern(ctx.kerning, weight, p, c);
+                if k != 0.0 {
+                    math_box.append(&MathBox::space(em(e, k)));
+                }
+            }
+            previous = Some((c, bold > 0));
+        } else {
+            previous = None;
         }
         // small capitals: a lowercase letter is its capital at the height of the x
         if small_caps > 0 && c.is_lowercase() {
