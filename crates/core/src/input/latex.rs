@@ -1205,8 +1205,14 @@ impl Reader<'_> {
                 let unit = if matches!(name, "SIrange" | "qtyrange") { Some(self.raw_text()?) } else { None };
                 let a = self.listed_value(name, &a, unit.as_deref(), col)?;
                 let b = self.listed_value(name, &b, unit.as_deref(), col)?;
-                self.registry.note(rules::L_UNI_2, format!("\\{name}: range written with an en dash"));
-                Node::row(vec![a, Node::Operator { symbol: '–', class: Class::Rel }, b])
+                // siunitx's range-phrase: the language's "to", when the embedded font can write it, as for lists
+                let to = Some(self.locale.phrase("op.–")).filter(|w| w.chars().all(|c| crate::font::font().glyph(c).is_some()));
+                self.registry.note(rules::L_UNI_2, format!("\\{name}: range written with '{}'", to.unwrap_or("–")));
+                let between = match to {
+                    Some(to) => Node::Text { parts: vec![TextPart::Text(format!(" {to} "))] },
+                    None => Node::Operator { symbol: '–', class: Class::Rel },
+                };
+                Node::row(vec![a, between, b])
             }
             "SIlist" | "qtylist" | "numlist" | "anglist" => {
                 self.raw_optional();
@@ -2129,6 +2135,14 @@ impl Reader<'_> {
                             }
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
+                        // L-UNI-4: siunitx typesets its quantities in text as in math
+                        other if siunitx_in_text(other).is_some() => {
+                            let tex = format!("\\{other}{}", text_arguments(&c, &mut i, siunitx_in_text(other).unwrap_or_default()));
+                            if !current.is_empty() {
+                                parts.push(TextPart::Text(std::mem::take(&mut current)));
+                            }
+                            parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
                         // E-REC-1: a math command in text is an error in TeX; read as math
                         other if math_in_text(other).is_some() => {
                             self.tolerate(rules::E_REC_1, col, format!("math command in text: \\{other}"), "read as math")?;
@@ -2954,6 +2968,18 @@ fn text_arguments(c: &[char], i: &mut usize, spec: &str) -> String {
     out
 }
 
+/// The siunitx commands, which work in text as in math, with their arguments (as for `text_arguments`).
+fn siunitx_in_text(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "SI" | "qty" | "SIlist" | "qtylist" | "SIproduct" | "qtyproduct" => "[{{",
+        "si" | "unit" | "ang" | "numlist" | "anglist" | "numproduct" => "[{",
+        "num" => "[{[",
+        "SIrange" | "qtyrange" => "[{{{",
+        "numrange" | "angrange" => "[{{",
+        _ => return None,
+    })
+}
+
 /// Math commands that authors write in text, with their arguments (as for `text_arguments`).
 fn math_in_text(name: &str) -> Option<&'static str> {
     Some(match name {
@@ -3305,7 +3331,17 @@ impl Reader<'_> {
         let saved = self.pos;
         self.skip_spaces();
         let physics = match self.current() {
-            Some('(' | '[' | '|' | '<') => true,
+            Some('(' | '|' | '<') => true,
+            // \qty[options]{value}{unit} is siunitx's; physics's \qty[…] has no braces after it
+            Some('[') => {
+                let _ = self.raw_optional();
+                self.skip_spaces();
+                self.current() != Some('{') || {
+                    let _ = self.raw_text();
+                    self.skip_spaces();
+                    self.current() != Some('{')
+                }
+            }
             Some('{') => {
                 let _ = self.raw_text();
                 self.skip_spaces();

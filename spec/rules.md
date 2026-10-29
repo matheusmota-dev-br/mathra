@@ -52,7 +52,11 @@ In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without
 
 ### L-UNI-2 · Ranges, lists and products
 
-`\SIrange`/`\qtyrange`, `\numrange` and `\angrange` join the two values with an en dash, read as "to" ("a" in pt-BR): `1 kg – 10 kg`. `\SIlist`/`\qtylist`, `\numlist` and `\anglist` separate the values with commas and close with the language's "and" (`1, 2 e 3` in pt-BR); where the embedded font cannot write that word (zh, ja, ko, hi, ar), the last separator is a comma too. `\SIproduct`/`\qtyproduct` and `\numproduct` join with ×. As in siunitx's defaults, the unit is repeated on every value. Options in brackets (`\SI[mode=text]{…}{…}`) are read and ignored.
+`\SIrange`/`\qtyrange`, `\numrange` and `\angrange` join the two values with the language's "to", as siunitx's `range-phrase` does: `1 kg to 10 kg` in en, `1 kg a 10 kg` in pt-BR, `1 kg bis 10 kg` in de (the word is `op.–` in the language's file); where the embedded font cannot write that word (zh, ja, ko, hi, ar), with an en dash: `1 kg – 10 kg`. `\SIlist`/`\qtylist`, `\numlist` and `\anglist` separate the values with commas and close with the language's "and" (`1, 2 e 3` in pt-BR); where the embedded font cannot write that word (zh, ja, ko, hi, ar), the last separator is a comma too. `\SIproduct`/`\qtyproduct` and `\numproduct` join with ×. As in siunitx's defaults, the unit is repeated on every value. Options in brackets (`\SI[mode=text]{…}{…}`) are read and ignored; `\qty[…]{…}{…}`, with two arguments in braces after the brackets, is siunitx's, not physics's `\qty[…]`.
+
+### L-UNI-4 · siunitx in text
+
+The siunitx commands work inside `\text{…}` (and every text argument) as in math, as siunitx typesets them in text too: `\text{at \SI{12}{\volt}}` sets the number upright, a thin space and the unit upright. The same holds for `\qty`, `\si`, `\unit`, `\num`, `\ang` and the ranges, lists and products (L-UNI-2).
 
 ## Chemistry
 
