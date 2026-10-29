@@ -2,7 +2,7 @@
 //! knows, the recovery paths of tolerant mode and, at the end, problem inputs that
 //! must not crash or hang the reader.
 
-use mathra::input::latex::{read_with, undo_doubled_backslashes, NESTING_LIMIT};
+use mathra::input::latex::{read_with, undo_doubled_backslashes, BOLD_END, BOLD_START, MONO_END, MONO_START, NESTING_LIMIT, SMALL_CAPS_END, SMALL_CAPS_START};
 use mathra::input::symbols;
 use mathra::rules::Registry;
 use mathra::{convert, Error, Locale, Node, Options};
@@ -842,6 +842,53 @@ fn l_txt_3_space_inside_text() {
     has(&tree(r"\text{\hphantom{x}}"), &["Math(Phantom", "width: true, height: false"]);
     has(&tree(r"\text{\vphantom{x}}"), &["Math(Phantom", "width: false, height: true"]);
     has(&tree(r"\text{\phantom x}"), &["Math(Phantom", "Text(\"x\")"]);
+}
+
+#[test]
+fn l_txt_3_fills_and_line_breaks_inside_text() {
+    // the box has its natural width: the fill takes no room, the spaces around it stay one
+    has(&tree(r"\text{1 \hfill IA}"), &["Text(\"1 IA\")"]);
+    has(&tree(r"\text{a\hfil b\hss}"), &["Text(\"ab\")"]);
+    // a line break is a space, as \\ is
+    has(&tree(r"\text{a\newline b}"), &["Text(\"a b\")"]);
+    has(&tree(r"\text{a\linebreak[3]b\linebreak c}"), &["Text(\"a b c\")"]);
+}
+
+#[test]
+fn l_txt_4_color_inside_text() {
+    // \color: the rest of its group, math included; the text after the group keeps the page color
+    let t = tree(r"\text{a {\color{red}b $x$} c}");
+    has(&t, &["Text(\"a \")", "Math(Colored { color: \"red\", base: Text { parts: [Text(\"b \"), Math(Identifier", "Text(\" c\")"]);
+    assert!(t.find("Colored").unwrap() < t.find("Text(\" c\")").unwrap(), "{t}");
+    // to the end of the text, with a color model
+    has(&tree(r"\text{a \color[rgb]{0,0,1}b}"), &["Colored { color: \"rgb(0,0,1)\"", "Text(\"b\")"]);
+    // \textcolor: its argument
+    has(&tree(r"\text{\textcolor{blue}{x}y}"), &["Math(Colored { color: \"blue\", base: Text { parts: [Text(\"x\")]", "Text(\"y\")"]);
+    // the colored text stays bold, and its math bold after \boldmath
+    let bold = format!("{BOLD_START}b{BOLD_END}");
+    has(&tree(r"\text{\textbf{a \color{red}b}}"), &["Colored", &format!("Text({bold:?})")]);
+    has(&tree(r"\text{\boldmath\textcolor{red}{$x$}}"), &["Colored", "Bold"]);
+    has(
+        &tree(r"\text{\textsc{\color{red}a} \texttt{\color{red}b}}"),
+        &[&format!("Text({:?})", format!("{SMALL_CAPS_START}a{SMALL_CAPS_END}")), &format!("Text({:?})", format!("{MONO_START}b{MONO_END}"))],
+    );
+    // the group ends at its own brace, past escaped braces and the groups in it
+    has(&tree(r"\text{{\color{red}\{a\} {b}} c}"), &["Text(\"{a} b\")", "Text(\" c\")"]);
+}
+
+#[test]
+fn l_txt_2_math_environments_inside_text() {
+    // a display: math up to its \end, the text around it kept
+    let t = tree(r"\text{so \begin{align*}a&=1\\b&=2\end{align*} done}");
+    has(&t, &["Text(\"so \")", "Math(Table { shape: Aligned", "Text(\" done\")"]);
+    has(&tree(r"\text{\begin{equation*}\begin{equation*}x\end{equation*}\end{equation*}}"), &["Math(Identifier"]);
+    // a math-only environment is an error in TeX's text: read as math, with a warning
+    has(&recovers(r"\text{\begin{pmatrix}1\end{pmatrix}}", "E-REC-1"), &["Math(Table { shape: PMatrix"]);
+    // without its \end: closed at the end of the text
+    has(&recovers(r"\text{\begin{equation}x}", "E-REC-5"), &["Math(Identifier"]);
+    // an environment that does not start math is still written as is
+    recovers(r"\text{\begin{itemize}\end{itemize}}", "E-REC-1");
+    recovers(r"\text{\begin x}", "E-REC-1");
 }
 
 #[test]

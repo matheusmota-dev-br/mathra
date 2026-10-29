@@ -4,6 +4,17 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+Chemistry, color, fills and math environments inside text.
+
+- Inside `\text{…}`, mhchem's `\ce{…}` and `\pu{…}` are read as in math (`\text{water, \ce{H2O}}`), instead of being written as is (L-CHE-1, [#84](https://github.com/matheusmota-dev-br/mathra/issues/84)).
+- Inside `\text{…}`, `\color{…}` (also `\color[model]{…}`) colors the rest of its group and `\textcolor{…}{…}` its argument, math included, keeping the text's bold, small capitals or monospace (L-TXT-4, [#85](https://github.com/matheusmota-dev-br/mathra/issues/85)).
+- Inside `\text{…}`, `\hfill`, `\hfil` and `\hss` take no room, as in a box of natural width, and `\newline` and `\linebreak` are a space, as `\\` is (L-TXT-3, [#86](https://github.com/matheusmota-dev-br/mathra/issues/86)).
+- Inside `\text{…}`, `\begin{equation}`, `align`, `gather`, `multline` and the other displays are read as math up to their `\end`, like `\[…\]`; `array`, `pmatrix`, `cases`, `aligned` and the other math-only environments too, with a warning (E-REC-1), since TeX refuses them in text (L-TXT-2, [#87](https://github.com/matheusmota-dev-br/mathra/issues/87)).
+
+Equations: `\text{water, \ce{H2O}, at \pu{20 mol}}`, `\text{the {\color{red}warm} and {\color{blue}cold} sides}`, `\text{so \begin{align*}a&=1\\b&=2\end{align*}}`
+
 ## 1.8.0 - 2026-10-29
 
 Space and phantoms inside text, and text kerned as TeX kerns it.
