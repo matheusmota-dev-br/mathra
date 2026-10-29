@@ -4,6 +4,14 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+Space and phantoms inside text.
+
+- Inside `\text{…}`, `\hspace{…}` and `\hspace*{…}` add their space, and `\phantom`, `\hphantom` and `\vphantom` leave the room of their argument, instead of being written in red (L-TXT-3, [#79](https://github.com/matheusmota-dev-br/mathra/issues/79)).
+
+Equations: `\text{a\hspace{1cm}b}`, `\text{a\phantom{xy}b}`
+
 ## 1.7.1 - 2026-10-29
 
 Bold text stays bold after math inside it.
