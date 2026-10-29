@@ -108,6 +108,10 @@ Inside `\text{…}` (and every text argument), these are set as LaTeX sets them:
 
 A math command written in text (`\mathrm{V}`, `\frac{1}{2}`, `\sqrt{2}`) is an error in TeX: strict mode refuses it, and tolerant mode reads it as math, with a warning (E-REC-1).
 
+### L-TXT-3 · Space inside text
+
+Inside `\text{…}` (and every text argument), `\hspace{…}` and `\hspace*{…}` add a space of that length (`a\hspace{1cm}b`). `\phantom{…}` leaves the room its argument takes, read as text, without drawing it; `\hphantom{…}` keeps only its width and `\vphantom{…}` only its height.
+
 ## Macros
 
 ### L-MAC-1 · Substitution macros

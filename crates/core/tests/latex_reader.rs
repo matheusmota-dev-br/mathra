@@ -831,6 +831,20 @@ fn l_txt_2_math_commands_in_text_read_as_math() {
 }
 
 #[test]
+fn l_txt_3_space_inside_text() {
+    // \hspace: 1cm is 2.845em of 10pt, between the two letters
+    let t = tree(r"\text{a\hspace{1cm}b}");
+    has(&t, &["Text(\"a\")", "Math(Space { em: 2.845", "Text(\"b\")"]);
+    assert!(t.find("Text(\"a\")").unwrap() < t.find("Space").unwrap() && t.find("Space").unwrap() < t.find("Text(\"b\")").unwrap(), "{t}");
+    has(&tree(r"\text{M \hspace*{5pt}.}"), &["Math(Space { em: 0.5 }"]);
+    // \phantom: the room of its argument, read as text
+    has(&tree(r"\text{a\phantom{xy}b}"), &["Math(Phantom", "Text { parts: [Text(\"xy\")]", "width: true, height: true"]);
+    has(&tree(r"\text{\hphantom{x}}"), &["Math(Phantom", "width: true, height: false"]);
+    has(&tree(r"\text{\vphantom{x}}"), &["Math(Phantom", "width: false, height: true"]);
+    has(&tree(r"\text{\phantom x}"), &["Math(Phantom", "Text(\"x\")"]);
+}
+
+#[test]
 fn all_text_accents_compose() {
     for (mark, letter, expected) in [('`', 'a', 'à'), ('^', 'o', 'ô'), ('"', 'u', 'ü'), ('=', 'a', 'ā'), ('.', 'z', 'ż'), ('u', 'a', 'ă'), ('v', 's', 'š')] {
         assert_eq!(symbols::text_accent(mark, letter), Some(expected), "{mark}{letter}");

@@ -2185,6 +2185,19 @@ impl Reader<'_> {
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
+                        // L-TXT-3: space inside text, set by the math reader, which knows lengths and phantoms
+                        "hspace" => {
+                            let tex = format!("\\hspace{}", text_arguments(&c, &mut i, "*{"));
+                            split_text(&mut parts, &mut current, &open_until);
+                            parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
+                        "phantom" | "hphantom" | "vphantom" => {
+                            // the argument stays text: the room it takes is the text's
+                            let arg = text_arguments(&c, &mut i, "{");
+                            let arg = if arg.starts_with('{') { arg } else { format!("{{{arg}}}") };
+                            split_text(&mut parts, &mut current, &open_until);
+                            parts.push(TextPart::Math(self.sub_reader(&format!("\\{name}{{\\text{arg}}}"), math_variant)?));
+                        }
                         "quad" => current.push('\u{2003}'),
                         "qquad" => current.push_str("\u{2003}\u{2003}"),
                         "ldots" | "dots" => current.push('…'),
