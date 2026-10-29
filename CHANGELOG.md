@@ -4,6 +4,14 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+`\phi` in italic, as TeX sets it.
+
+- `\phi` is in math italic, as TeX sets it, like `\varphi` and the other lowercase Greek letters; so are `\epsilon`, `\vartheta`, `\varkappa`, `\varrho` and `\varpi`, which were upright too ([#66](https://github.com/matheusmota-dev-br/mathra/issues/66)).
+
+Equations: `\phi \varphi \epsilon \vartheta \varrho \varpi`
+
 ## 1.6.2 - 2026-10-28
 
 The limits of an integral sit next to its sign.

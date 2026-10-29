@@ -123,7 +123,7 @@ The input accepts LaTeX's English names and the Brazilian ones (`\sen`, `\tg`, `
 
 ### L-LET-1 · Math italic
 
-Latin letters and lowercase Greek letters are drawn with Unicode's math italic characters (block U+1D400; `h` lives at U+210E). Uppercase Greek letters stay upright, as in TeX.
+Latin letters and lowercase Greek letters are drawn with Unicode's math italic characters (block U+1D400; `h` lives at U+210E). The lowercase Greek variants are lowercase letters too: `\phi` (ϕ), `\epsilon` (ϵ), `\vartheta` (ϑ), `\varkappa` (ϰ), `\varrho` (ϱ) and `\varpi` (ϖ) are in italic, at U+1D716–U+1D71B, as TeX sets them. Uppercase Greek letters stay upright, as in TeX.
 
 ### L-LET-2 · Double-struck letters spoken
 
