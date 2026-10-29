@@ -6,12 +6,13 @@ Each release has a headline (the line under its title), what changed, and the eq
 
 ## Unreleased
 
-`\phi` in italic, as TeX sets it, and the subscripts and math of LaTeX's text commands.
+`\phi` in italic, as TeX sets it, the subscripts and math of LaTeX's text commands, and siunitx's ranges in words.
 
 - `\phi` is in math italic, as TeX sets it, like `\varphi` and the other lowercase Greek letters; so are `\epsilon`, `\vartheta`, `\varkappa`, `\varrho` and `\varpi`, which were upright too ([#66](https://github.com/matheusmota-dev-br/mathra/issues/66)).
 - Inside `\text{…}`: `\textsubscript{…}` and `\textsuperscript{…}` (`H\textsubscript{2}O`), `\ensuremath{…}`, and `\boldmath`, which sets the math that follows in bold until the end of its group; `\fontsize{…}{…}\selectfont` is ignored like the other sizes. A math command written in text (`\mathrm{V}`, `\frac{1}{2}`) is read as math, with a warning (E-REC-1), instead of being written as is ([#70](https://github.com/matheusmota-dev-br/mathra/issues/70)).
+- siunitx ranges read as siunitx sets them: `\qtyrange{1}{5}{\volt}` is `1 V to 5 V`, with the language's word (`1 V a 5 V` in pt-BR), and an en dash only where the font cannot write it. The siunitx commands (`\SI`, `\qty`, `\si`, `\unit`, `\num`, the ranges, lists and products) work inside `\text{…}` as in math, and `\qty[options]{…}{…}` is siunitx's, not physics's ([#71](https://github.com/matheusmota-dev-br/mathra/issues/71)).
 
-Equations: `\phi \varphi \epsilon \vartheta \varrho \varpi` `\text{H\textsubscript{2}O and {\boldmath $x$} $x$}`
+Equations: `\phi \varphi \epsilon \vartheta \varrho \varpi` `\text{H\textsubscript{2}O and {\boldmath $x$} $x$}` `\text{from \qtyrange{1}{5}{\volt}}`
 
 ## 1.6.2 - 2026-10-28
 
