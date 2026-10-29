@@ -4,6 +4,15 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+Letters keep TeX's italic correction at the end of a formula.
+
+- A slanted letter that ends a math list gets its italic correction after it, as TeX does (Appendix G, rule 17). That covers the end of the formula, of a script, a fraction's parts, a radicand, a phantom, a lap and a table cell. In scripts, the base letter's correction stands in at the script's size. `$V$` was 5.83pt wide, TeX gives 8.06pt ([#89](https://github.com/matheusmota-dev-br/mathra/issues/89)).
+- `layout::compose_list`: a math list composed on its own, with that correction.
+
+Equations: `V`, `V_0 + R_1`, `\frac{V}{f}`, `\sqrt{f}`
+
 ## 1.8.0 - 2026-10-29
 
 Space and phantoms inside text, and text kerned as TeX kerns it.
