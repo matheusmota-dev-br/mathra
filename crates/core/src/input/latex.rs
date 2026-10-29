@@ -675,7 +675,7 @@ impl Reader<'_> {
         if self.definition(&name, col)? {
             return Ok(None);
         }
-        let star = if self.current() == Some('*') && matches!(name.as_str(), "operatorname" | "tag" | "smash") {
+        let star = if self.current() == Some('*') && matches!(name.as_str(), "operatorname" | "tag" | "smash" | "resizebox") {
             self.pos += 1;
             true
         } else {
@@ -1382,17 +1382,47 @@ impl Reader<'_> {
                 let base = if name.starts_with("math") { self.argument()? } else { self.text()? };
                 Node::Overlapped { base: Box::new(base), side }
             }
+            // graphicx's boxes, their argument in text mode
             "raisebox" => {
                 let measure = self.raw_text()?;
                 let em = measure_em(&measure).ok_or(Error::Syntax { column: col, message: format!("unrecognized measure: {measure}") })?;
-                self.raw_optional();
-                self.raw_optional();
-                Node::Raised { em, base: Box::new(self.text()?) }
+                let height = self.box_length(col)?;
+                let depth = if height.is_some() { self.box_length(col)? } else { None };
+                Node::Raised { em, height: height.flatten(), depth: depth.flatten(), base: Box::new(self.text()?) }
             }
             "scalebox" => {
-                let factor: f32 = self.raw_text()?.trim().parse().map_err(|_| Error::Syntax { column: col, message: "\\scalebox{factor}{…} takes a number".into() })?;
-                self.raw_optional();
-                Node::Scaled { factor: factor.clamp(0.05, 20.0), base: Box::new(self.text()?) }
+                let factor = |s: &str| s.trim().parse::<f32>().ok().filter(|f| f.is_finite()).map(|f| f.signum() * f.abs().clamp(0.05, 20.0));
+                let x = factor(&self.raw_text()?).ok_or(Error::Syntax { column: col, message: "\\scalebox{factor}{…} takes a number".into() })?;
+                let y = match self.raw_optional() {
+                    Some(y) => Some(factor(&y).ok_or(Error::Syntax { column: col, message: "\\scalebox{h}[v]{…} takes numbers".into() })?),
+                    None => None,
+                };
+                Node::Scaled { factor: x, vertical: y.filter(|y| *y != x), base: Box::new(self.text()?) }
+            }
+            "resizebox" => {
+                let mut size = Vec::with_capacity(2);
+                for _ in 0..2 {
+                    let raw = self.raw_text()?;
+                    size.push(match raw.trim() {
+                        "!" => None,
+                        m => match box_length(m) {
+                            Some(l) => Some(l),
+                            None => return self.error(col, format!("\\resizebox: unrecognized measure: {m}")),
+                        },
+                    });
+                }
+                Node::Resized { width: size[0], height: size[1], total: star, base: Box::new(self.text()?) }
+            }
+            "rotatebox" => {
+                // of the options, origin=…; x=, y= and units= are ignored
+                let options = self.raw_optional().unwrap_or_default();
+                let origin =
+                    options.split(',').find_map(|o| o.trim().strip_prefix("origin")).map(|o| o.trim_start().trim_start_matches('=').trim().to_string()).unwrap_or_default();
+                let origin = if options.contains("origin") && origin.is_empty() { "c".to_string() } else { origin };
+                let angle = self.raw_text()?;
+                let degrees =
+                    angle.trim().parse::<f32>().ok().filter(|a| a.is_finite()).ok_or(Error::Syntax { column: col, message: "\\rotatebox{angle}{…} takes a number".into() })?;
+                Node::Rotated { degrees: degrees % 360.0, origin, base: Box::new(self.text()?) }
             }
             "rule" => {
                 let raise = self.raw_optional().and_then(|m| measure_em(&m)).unwrap_or(0.0);
@@ -1546,6 +1576,19 @@ impl Reader<'_> {
         };
         items.push(node);
         Ok(None)
+    }
+
+    /// The optional `[length]` of a graphicx box: `None` without brackets; `Some(None)` for a length it
+    /// cannot read, ignored in tolerant mode (E-REC-9).
+    fn box_length(&mut self, col: usize) -> R<Option<Option<BoxLength>>> {
+        let Some(raw) = self.raw_optional() else { return Ok(None) };
+        match box_length(&raw) {
+            Some(l) => Ok(Some(Some(l))),
+            None => {
+                self.tolerate(rules::E_REC_9, col, format!("unrecognized measure: {}", raw.trim()), "ignored")?;
+                Ok(Some(None))
+            }
+        }
     }
 
     fn raw_measure(&mut self) -> String {
@@ -2135,9 +2178,9 @@ impl Reader<'_> {
                             }
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
-                        // L-UNI-4: siunitx typesets its quantities in text as in math
-                        other if siunitx_in_text(other).is_some() => {
-                            let tex = format!("\\{other}{}", text_arguments(&c, &mut i, siunitx_in_text(other).unwrap_or_default()));
+                        // L-UNI-4: siunitx typesets its quantities in text as in math; L-BOX-1: graphicx's boxes
+                        other if siunitx_in_text(other).or(graphicx_box(other)).is_some() => {
+                            let tex = format!("\\{other}{}", text_arguments(&c, &mut i, siunitx_in_text(other).or(graphicx_box(other)).unwrap_or_default()));
                             if !current.is_empty() {
                                 parts.push(TextPart::Text(std::mem::take(&mut current)));
                             }
@@ -2980,6 +3023,18 @@ fn siunitx_in_text(name: &str) -> Option<&'static str> {
     })
 }
 
+/// graphicx's box commands, with their arguments (as for `text_arguments`); their content is text.
+fn graphicx_box(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "scalebox" => "{[{",
+        "reflectbox" => "{",
+        "resizebox" => "*{{{",
+        "rotatebox" => "[{{",
+        "raisebox" => "{[[{",
+        _ => return None,
+    })
+}
+
 /// Math commands that authors write in text, with their arguments (as for `text_arguments`).
 fn math_in_text(name: &str) -> Option<&'static str> {
     Some(match name {
@@ -2996,6 +3051,28 @@ fn is_integer(s: &str) -> bool {
 }
 
 /// Converts TeX measures to em (1em = 10pt in the 10pt font).
+/// A graphicx length: a measure (`1cm`, `0pt`) or a multiple of the box's `\width`, `\height`,
+/// `\depth` or `\totalheight` (`2\height`, `-.5\depth`).
+fn box_length(m: &str) -> Option<BoxLength> {
+    let m = m.trim();
+    for (name, l) in [
+        ("\\totalheight", BoxLength { height: 1.0, depth: 1.0, ..BoxLength::default() }),
+        ("\\height", BoxLength { height: 1.0, ..BoxLength::default() }),
+        ("\\depth", BoxLength { depth: 1.0, ..BoxLength::default() }),
+        ("\\width", BoxLength { width: 1.0, ..BoxLength::default() }),
+    ] {
+        if let Some(factor) = m.strip_suffix(name) {
+            let factor = match factor.trim() {
+                "" | "+" => 1.0,
+                "-" => -1.0,
+                f => f.replace(',', ".").parse::<f32>().ok().filter(|f| f.is_finite())?,
+            };
+            return Some(BoxLength { em: 0.0, width: l.width * factor, height: l.height * factor, depth: l.depth * factor });
+        }
+    }
+    measure_em(m).filter(|v| v.is_finite()).map(|em| BoxLength { em, ..BoxLength::default() })
+}
+
 fn measure_em(m: &str) -> Option<f32> {
     let m = m.trim().replace(',', ".");
     let units = [("em", 1.0), ("ex", 0.45), ("pt", 0.1), ("mu", 1.0 / 18.0), ("cm", 2.845), ("mm", 0.2845), ("in", 7.227), ("px", 0.075)];
