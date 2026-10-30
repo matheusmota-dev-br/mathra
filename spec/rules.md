@@ -119,6 +119,12 @@ A text is a box of its natural width, as `\text{…}` is in TeX: `\hfill`, `\hfi
 
 Inside `\text{…}` (and every text argument), `\textcolor{color}{…}` sets its argument in that color, and `\color{color}` the rest of the group it is in (`{\color{red}warm} and cold`), with the color models of math (`\color[rgb]{0.2,0.4,0.6}`). The colored text keeps the bold, small capitals or monospace around it, and the math in it is colored too.
 
+### L-TXT-5 · Italic inside text
+
+Inside `\text{…}` (and every text argument), `\textit{…}` and `\emph{…}` set their argument in italic, and `\itshape`, `\it` and `\em` the rest of their group; `\textit{…}` in math is text in italic. Italic text is a text font: its letters sit side by side, with no italic correction between them, nor after a word. After `\textit{…}` and `\emph{…}` comes the italic correction of their last letter, as LaTeX adds it (`\/`), except before a period or a comma. Italic goes on after math in its group, as bold does, and inside a color.
+
+`\mathit{…}`'s font is a text font too: its letters make one word, with no italic correction between them (TeXbook, Appendix G, rule 17), where the math italic of `$ff$` has one after each letter.
+
 ## Macros
 
 ### L-MAC-1 · Substitution macros

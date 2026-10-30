@@ -4,6 +4,15 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+Italic text set as a text font sets it, and `\mathit`'s letters as one word.
+
+- Inside `\text{…}`, `\textit{…}` and `\emph{…}` set their argument in italic and `\itshape`, `\it` and `\em` the rest of their group, with no italic correction between the letters or after a word; after `\textit{…}` and `\emph{…}` comes their last letter's correction, as LaTeX's `\/`, except before a period or a comma. `\textit{…}` in math is text in italic (L-TXT-5, [#93](https://github.com/matheusmota-dev-br/mathra/issues/93)).
+- `\mathit{…}`'s letters make one word, with no italic correction between them, as in TeX's text font: since 1.9.0 each letter had one, as in math italic ([#92](https://github.com/matheusmota-dev-br/mathra/issues/92)).
+
+Equations: `\text{an \emph{italic} word, {\itshape and more}}`, `\mathit{diff} \ne diff`
+
 ## 1.9.0 - 2026-10-29
 
 Chemistry, color, fills and math environments inside text, and TeX's italic correction at the end of a formula.
