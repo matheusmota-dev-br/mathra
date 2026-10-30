@@ -196,7 +196,12 @@ pub(crate) fn glyph(c: char, e: Style) -> R<MathBox> {
     let f = e.font();
     let id = f.glyph(c).or_else(|| equivalent(c).and_then(|x| f.glyph(x))).ok_or(Error::MissingGlyph { character: c })?;
     // in a script, the font's form for that size (`ssty`), as TeX draws cmr7 rather than cmr10
-    Ok(glyph_id(f.script_form(id, e.script_level()), e.scale(), f))
+    let mut math_box = glyph_id(f.script_form(id, e.script_level()), e.scale(), f);
+    // (with the letter's italic correction when that form has none of its own, as cmmi7's has)
+    if math_box.italic == 0.0 {
+        math_box.italic = f.italic_correction(id) * e.scale();
+    }
+    Ok(math_box)
 }
 
 /// `\ldots` and `\cdots` as TeX sets them: `\mathinner{\ldotp\ldotp\ldotp}`, three dots with a
@@ -364,7 +369,10 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             let lines = table::Lines { verticals, dashed, horizontals, stretch: *stretch };
             table::compose(*kind, rows, columns, &lines, between, intertexts, e, ctx)
         }
-        Node::Multicolumn { base, .. } | Node::Unit { base, .. } => compose(base, e, ctx),
+        // a cell, a lap and a phantom are math lists of their own: a slanted letter that ends them
+        // keeps its italic correction
+        Node::Multicolumn { base, .. } => compose_list(base, e, ctx),
+        Node::Unit { base, .. } => compose(base, e, ctx),
         Node::Raised { em: amount, height, depth, base } => {
             let mut math_box = compose(base, e, ctx)?;
             math_box.shift_vertical(em(e, *amount));
@@ -445,7 +453,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             Ok(math_box)
         }
         Node::Overlapped { base, side } => {
-            let b = compose(base, e, ctx)?;
+            let b = compose_list(base, e, ctx)?;
             let dx = match side {
                 'l' => -b.width,
                 'c' => -b.width / 2.0,
@@ -464,7 +472,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             for p in parts {
                 match p {
                     TextPart::Text(t) => math_box.append(&upright_text(t, e, ctx)?),
-                    TextPart::Math(m) => math_box.append(&compose(m, e.not_display(), ctx)?),
+                    TextPart::Math(m) => math_box.append(&compose_list(m, e.not_display(), ctx)?),
                 }
             }
             math_box.single_glyph = false;
@@ -485,7 +493,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             limits(b, above.as_deref(), below.as_deref(), e, ctx)
         }
         Node::Phantom { base, width, height } => {
-            let mut math_box = compose(base, e, ctx)?;
+            let mut math_box = compose_list(base, e, ctx)?;
             math_box.items.clear();
             if !width {
                 math_box.width = 0.0;
@@ -673,8 +681,8 @@ pub(crate) fn compose_row(children: &[Node], e: Style, ctx: &mut Context, initia
         if let (Some(a), Some(c)) = (previous, class) {
             math_box.append(&MathBox::space(mu_space(a, *c, e.is_script()) * mu));
         }
-        // italic correction between a slanted letter and what follows (Appendix G, rule 17)
-        if pending_italic > 0.0 && !matches!(node, Node::Identifier { .. }) {
+        // italic correction after a slanted letter, before whatever follows (Appendix G, rule 17)
+        if pending_italic > 0.0 {
             math_box.append(&MathBox::space(pending_italic));
         }
         pending_italic = if matches!(node, Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. }) { b.italic } else { 0.0 };
@@ -683,8 +691,33 @@ pub(crate) fn compose_row(children: &[Node], e: Style, ctx: &mut Context, initia
             previous = *class;
         }
     }
+    // and after the row's last letter: TeX ends the list with its kern
+    if pending_italic > 0.0 {
+        math_box.append(&MathBox::space(pending_italic));
+    }
     math_box.single_glyph = false;
     Ok(math_box)
+}
+
+/// A math list on its own (the formula, a script, a numerator, a radicand): a slanted letter that
+/// ends it keeps its italic correction (Appendix G, rule 17), as a row does after its last letter.
+pub fn compose_list(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
+    let mut math_box = compose(node, e, ctx)?;
+    if ends_slanted(node) && math_box.italic > 0.0 {
+        let italic = math_box.italic;
+        math_box.append(&MathBox::space(italic));
+        math_box.single_glyph = false;
+    }
+    Ok(math_box)
+}
+
+/// A single slanted letter, alone or in a row of one: the row adds no kern of its own.
+fn ends_slanted(node: &Node) -> bool {
+    match node {
+        Node::Identifier { name, variant: Variant::Italic | Variant::BoldItalic } => name.chars().count() == 1,
+        Node::Row { children } if children.len() == 1 => ends_slanted(&children[0]),
+        _ => false,
+    }
 }
 
 /// A cell: if it is a row, compose it with an invisible Ord in front (so `&=` gets relation spacing).
@@ -704,8 +737,8 @@ fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, gi
         FractionStyle::Row => e.not_display(),
         FractionStyle::Auto => e,
     };
-    let n = compose(num, e.num(), ctx)?;
-    let d = compose(den, e.den(), ctx)?;
+    let n = compose_list(num, e.num(), ctx)?;
+    let d = compose_list(den, e.den(), ctx)?;
     let display = e.level == Level::Display;
     let axis = k(e, |c| c.axis_height());
     let (mut u, mut v);
@@ -752,7 +785,7 @@ fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, gi
 
 fn compose_root(radicand: &Node, index: Option<&Node>, e: Style, ctx: &mut Context) -> R<MathBox> {
     let f = e.font();
-    let base = compose(radicand, e.cramp(), ctx)?;
+    let base = compose_list(radicand, e.cramp(), ctx)?;
     let thickness = k(e, |c| c.radical_rule_thickness());
     let mut gap = if e.level == Level::Display { k(e, |c| c.radical_display_style_vertical_gap()) } else { k(e, |c| c.radical_vertical_gap()) };
     let extra = k(e, |c| c.radical_extra_ascender());
@@ -828,8 +861,8 @@ fn compose_scripts(base: &Node, sup: Option<&Node>, sub: Option<&Node>, e: Style
         }
     }
     let is_simple = b.single_glyph && !integral;
-    let s = sup.as_ref().map(|n| compose(n, e.sup(), ctx)).transpose()?;
-    let d = sub.map(|n| compose(n, e.sub(), ctx)).transpose()?;
+    let s = sup.as_ref().map(|n| compose_list(n, e.sup(), ctx)).transpose()?;
+    let d = sub.map(|n| compose_list(n, e.sub(), ctx)).transpose()?;
 
     let mut u = 0.0;
     let mut v = 0.0;
