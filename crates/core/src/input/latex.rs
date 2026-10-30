@@ -2172,6 +2172,62 @@ impl Reader<'_> {
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
+                        // L-CHE-1: mhchem typesets its formulas and quantities in text as in math
+                        "ce" | "pu" => {
+                            let tex = format!("\\{name}{}", text_arguments(&c, &mut i, "{"));
+                            split_text(&mut parts, &mut current, &open_until);
+                            parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
+                        // L-TXT-4: \textcolor colors its argument, \color the rest of its group; the
+                        // colored text keeps the bold, small capitals and monospace around it
+                        "textcolor" | "color" => {
+                            let color = text_arguments(&c, &mut i, "[{");
+                            let body = if name == "textcolor" {
+                                let arg = text_arguments(&c, &mut i, "{");
+                                arg[1..arg.len() - 1].to_string()
+                            } else {
+                                let end = group_end(&c, i);
+                                let rest: String = c[i..end].iter().collect();
+                                i = end;
+                                rest
+                            };
+                            let mut styles: String = open_until
+                                .iter()
+                                .map(|&(_, end)| match end {
+                                    BOLD_END => "\\bfseries ",
+                                    SMALL_CAPS_END => "\\scshape ",
+                                    _ => "\\ttfamily ",
+                                })
+                                .collect();
+                            if bold_math.is_some() {
+                                styles.push_str("\\boldmath ");
+                            }
+                            split_text(&mut parts, &mut current, &open_until);
+                            parts.push(TextPart::Math(self.sub_reader(&format!("\\textcolor{color}{{\\text{{{styles}{body}}}}}"), math_variant)?));
+                        }
+                        // L-TXT-3: a text is a box of its natural width, where the fills take no room; a
+                        // line break, which one line of text cannot hold, is a space, as `\\` is
+                        "hfill" | "hfil" | "hss" => {}
+                        "newline" | "linebreak" => {
+                            text_arguments(&c, &mut i, "[");
+                            current.push(' ');
+                        }
+                        // L-TXT-2: an environment that starts math, read as math up to its \end
+                        "begin" if math_environment(&environment_name(&c, i)).is_some() => {
+                            let env = environment_name(&c, i);
+                            if math_environment(&env) == Some(false) {
+                                self.tolerate(rules::E_REC_1, col, format!("math environment in text: {env}"), "read as math")?;
+                            }
+                            let end = environment_end(&c, i, &env);
+                            let mut tex = format!("\\begin{}", c[i..end.unwrap_or(c.len())].iter().collect::<String>());
+                            if end.is_none() {
+                                self.tolerate(rules::E_REC_5, col, format!("\\begin{{{env}}} without \\end{{{env}}}"), "closed at the end")?;
+                                tex.push_str(&format!("\\end{{{env}}}"));
+                            }
+                            i = end.unwrap_or(c.len());
+                            split_text(&mut parts, &mut current, &open_until);
+                            parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
                         // L-UNI-4: siunitx typesets its quantities in text as in math; L-BOX-1: graphicx's boxes
                         other if siunitx_in_text(other).or(graphicx_box(other)).is_some() => {
                             let tex = format!("\\{other}{}", text_arguments(&c, &mut i, siunitx_in_text(other).or(graphicx_box(other)).unwrap_or_default()));
@@ -3065,6 +3121,68 @@ fn math_in_text(name: &str) -> Option<&'static str> {
         "operatorname" => "*{",
         _ => return None,
     })
+}
+
+/// Environments that start math, read in text: `Some(true)` for the displays, which TeX allows in a
+/// paragraph, `Some(false)` for those TeX allows only in math.
+fn math_environment(name: &str) -> Option<bool> {
+    match name.trim_end_matches('*') {
+        "equation" | "align" | "alignat" | "gather" | "multline" | "flalign" | "eqnarray" | "displaymath" | "math" => Some(true),
+        "array" | "matrix" | "pmatrix" | "bmatrix" | "Bmatrix" | "vmatrix" | "Vmatrix" | "smallmatrix" | "cases" | "dcases" | "rcases" | "aligned" | "alignedat" | "gathered"
+        | "split" | "subarray" => Some(false),
+        _ => None,
+    }
+}
+
+/// The name in `{name}` at `c[i]` (after spaces), or nothing.
+fn environment_name(c: &[char], i: usize) -> String {
+    let rest = c[i..].iter().skip_while(|&&x| x == ' ');
+    let mut rest = rest.peekable();
+    if rest.next() != Some(&'{') {
+        return String::new();
+    }
+    rest.take_while(|&&x| x != '}').collect()
+}
+
+/// Where the environment `name` that starts at `c[i]` ends: after its `\end{name}`, counting the ones
+/// nested in it; nothing if it does not end.
+fn environment_end(c: &[char], i: usize, name: &str) -> Option<usize> {
+    let open: Vec<char> = format!("\\begin{{{name}}}").chars().collect();
+    let close: Vec<char> = format!("\\end{{{name}}}").chars().collect();
+    let mut level = 0;
+    let mut k = i;
+    while k < c.len() {
+        if c[k..].starts_with(&open) {
+            level += 1;
+            k += open.len();
+        } else if c[k..].starts_with(&close) {
+            if level == 0 {
+                return Some(k + close.len());
+            }
+            level -= 1;
+            k += close.len();
+        } else {
+            k += 1;
+        }
+    }
+    None
+}
+
+/// Where the group that `c[i]` is in closes: its `}`, or the end of the text.
+fn group_end(c: &[char], i: usize) -> usize {
+    let mut depth = 0usize;
+    let mut k = i;
+    while k < c.len() {
+        match c[k] {
+            '\\' => k += 1,
+            '{' => depth += 1,
+            '}' if depth == 0 => return k,
+            '}' => depth -= 1,
+            _ => {}
+        }
+        k += 1;
+    }
+    c.len()
 }
 
 fn is_integer(s: &str) -> bool {
