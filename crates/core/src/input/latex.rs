@@ -67,8 +67,13 @@ pub const SMALL_CAPS_END: char = '\u{E003}';
 /// Typewriter markers (`\texttt{…}`, `\url{…}`).
 pub const MONO_START: char = '\u{E004}';
 pub const MONO_END: char = '\u{E005}';
+/// Italic markers (`\itshape`); `\textit{…}` and `\emph{…}` close with the second end, after which
+/// LaTeX adds the italic correction of the last letter (none before a period or a comma).
+pub const ITALIC_START: char = '\u{E006}';
+pub const ITALIC_END: char = '\u{E007}';
+pub const ITALIC_CORRECTED_END: char = '\u{E008}';
 /// Every marker, for the outputs that drop them.
-pub const MARKERS: [char; 6] = [BOLD_START, BOLD_END, SMALL_CAPS_START, SMALL_CAPS_END, MONO_START, MONO_END];
+pub const MARKERS: [char; 9] = [BOLD_START, BOLD_END, SMALL_CAPS_START, SMALL_CAPS_END, MONO_START, MONO_END, ITALIC_START, ITALIC_END, ITALIC_CORRECTED_END];
 
 /// L-ENT-1 and L-ENT-2: HTML entities and outer delimiters that arrive with the equation.
 fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
@@ -140,6 +145,22 @@ struct Reader<'a> {
 }
 
 type R<T> = Result<T, Error>;
+
+/// Neighbor letters of one variant as one identifier: a word, as a text font sets it.
+fn words(node: Node) -> Node {
+    let Node::Row { children } = node else { return node };
+    let mut merged: Vec<Node> = Vec::with_capacity(children.len());
+    for child in children {
+        if let (Some(Node::Identifier { name, variant }), Node::Identifier { name: next, variant: v }) = (merged.last_mut(), &child) {
+            if variant == v && name.chars().chain(next.chars()).all(char::is_alphabetic) {
+                name.push_str(next);
+                continue;
+            }
+        }
+        merged.push(child);
+    }
+    Node::row(merged).simplify()
+}
 
 impl Reader<'_> {
     // ---------- utilities ----------
@@ -929,7 +950,7 @@ impl Reader<'_> {
         let _ = (col, start, star);
         let node: Node = match name {
             // text and fonts
-            "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textit" | "textsf" | "emph" | "textmd" | "textsl" | "fbox" | "framebox" => {
+            "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textsf" | "textmd" | "textsl" | "fbox" | "framebox" => {
                 let text = self.text()?;
                 if matches!(name, "fbox" | "framebox") {
                     Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None }
@@ -937,10 +958,11 @@ impl Reader<'_> {
                     text
                 }
             }
-            "textsc" | "textbf" | "texttt" => {
+            "textsc" | "textbf" | "texttt" | "textit" | "emph" => {
                 let (open, close) = match name {
                     "textsc" => (SMALL_CAPS_START, SMALL_CAPS_END),
                     "textbf" => (BOLD_START, BOLD_END),
+                    "textit" | "emph" => (ITALIC_START, ITALIC_CORRECTED_END),
                     _ => (MONO_START, MONO_END),
                 };
                 match self.text()? {
@@ -978,7 +1000,14 @@ impl Reader<'_> {
                     _ => Variant::Fraktur,
                 };
                 let raw = self.raw_text()?;
-                self.sub_reader(&raw, variant)?
+                let node = self.sub_reader(&raw, variant)?;
+                // \mathit's font is a text font (cmti, cmbxti): its letters make words, with no
+                // italic correction between them (TeXbook, Appendix G, rule 17)
+                if matches!(name, "mathit" | "mathbfit") {
+                    words(node)
+                } else {
+                    node
+                }
             }
             "operatorname" => {
                 let raw = self.raw_text()?;
@@ -2158,8 +2187,17 @@ impl Reader<'_> {
                             current.push(MONO_START);
                             open_until.push((level, MONO_END));
                         }
-                        "textit" | "emph" | "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "it" | "rm" | "sf" | "em" | "small" | "scriptsize"
-                        | "footnotesize" | "tiny" | "large" | "normalsize" | "mdseries" | "selectfont" => {}
+                        // L-TXT-5: italic text
+                        "textit" | "emph" => {
+                            current.push(ITALIC_START);
+                            open_until.push((level + 1, ITALIC_CORRECTED_END));
+                        }
+                        "it" | "itshape" | "em" => {
+                            current.push(ITALIC_START);
+                            open_until.push((level, ITALIC_END));
+                        }
+                        "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "rm" | "sf" | "small" | "scriptsize" | "footnotesize" | "tiny" | "large"
+                        | "normalsize" | "mdseries" | "selectfont" => {}
                         // L-ENT-3: the size comes from whoever uses the SVG
                         "fontsize" => {
                             text_arguments(&c, &mut i, "{{");
@@ -2196,6 +2234,7 @@ impl Reader<'_> {
                                 .map(|&(_, end)| match end {
                                     BOLD_END => "\\bfseries ",
                                     SMALL_CAPS_END => "\\scshape ",
+                                    ITALIC_END | ITALIC_CORRECTED_END => "\\itshape ",
                                     _ => "\\ttfamily ",
                                 })
                                 .collect();
@@ -2995,6 +3034,7 @@ fn split_text(parts: &mut Vec<TextPart>, current: &mut String, open: &[(usize, c
     current.extend(open.iter().map(|&(_, end)| match end {
         BOLD_END => BOLD_START,
         SMALL_CAPS_END => SMALL_CAPS_START,
+        ITALIC_END | ITALIC_CORRECTED_END => ITALIC_START,
         _ => MONO_START,
     }));
 }

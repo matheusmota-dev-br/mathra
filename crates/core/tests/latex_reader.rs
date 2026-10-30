@@ -2,7 +2,10 @@
 //! knows, the recovery paths of tolerant mode and, at the end, problem inputs that
 //! must not crash or hang the reader.
 
-use mathra::input::latex::{read_with, undo_doubled_backslashes, BOLD_END, BOLD_START, MONO_END, MONO_START, NESTING_LIMIT, SMALL_CAPS_END, SMALL_CAPS_START};
+use mathra::input::latex::{
+    read_with, undo_doubled_backslashes, BOLD_END, BOLD_START, ITALIC_CORRECTED_END, ITALIC_END, ITALIC_START, MONO_END, MONO_START, NESTING_LIMIT, SMALL_CAPS_END,
+    SMALL_CAPS_START,
+};
 use mathra::input::symbols;
 use mathra::rules::Registry;
 use mathra::{convert, Error, Locale, Node, Options};
@@ -874,6 +877,24 @@ fn l_txt_4_color_inside_text() {
     );
     // the group ends at its own brace, past escaped braces and the groups in it
     has(&tree(r"\text{{\color{red}\{a\} {b}} c}"), &["Text(\"{a} b\")", "Text(\" c\")"]);
+}
+
+#[test]
+fn l_txt_5_italic_inside_text() {
+    // \textit and \emph to their brace, with LaTeX's correction after it; \itshape, \it and \em to the
+    // end of their group, without it
+    let corrected = format!("{ITALIC_START}b{ITALIC_CORRECTED_END}");
+    has(&tree(r"\text{a \textit{b} c}"), &[&format!("Text({:?})", format!("a {corrected} c"))]);
+    has(&tree(r"\text{a \emph{b}}"), &[&format!("Text({:?})", format!("a {corrected}"))]);
+    for shape in ["itshape", "it", "em"] {
+        has(&tree(&format!(r"\text{{a {{\{shape} b}} c}}")), &[&format!("Text({:?})", format!("a {ITALIC_START}b{ITALIC_END} c"))]);
+    }
+    // in math, \textit is text in italic
+    has(&tree(r"\textit{b}"), &[&format!("Text({corrected:?})")]);
+    // italic goes on after math in its group, and keeps a color's text italic
+    let t = tree(r"\text{\textit{a $x$ b}}");
+    has(&t, &[&format!("Text({:?})", format!("{ITALIC_START}a {ITALIC_CORRECTED_END}")), &format!("Text({:?})", format!("{ITALIC_START} b{ITALIC_CORRECTED_END}"))]);
+    has(&tree(r"\text{\itshape \color{red}b}"), &["Colored", &format!("Text({:?})", format!("{ITALIC_START}b{ITALIC_END}"))]);
 }
 
 #[test]

@@ -245,16 +245,20 @@ pub(crate) fn glyph_id(id: ttf_parser::GlyphId, s: f32, f: &Font) -> MathBox {
 /// Size of the capitals that stand for lowercase letters in `\textsc`.
 const SMALL_CAPS_SCALE: f32 = 0.76;
 
-/// Upright text (function names, `\text`, units).
+/// Upright text (function names, `\text`, units), and the italic inside it.
 fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
-    use crate::input::latex::{BOLD_END, BOLD_START, MARKERS, MONO_END, MONO_START, SMALL_CAPS_END, SMALL_CAPS_START};
+    use crate::input::latex::{BOLD_END, BOLD_START, ITALIC_CORRECTED_END, ITALIC_END, ITALIC_START, MARKERS, MONO_END, MONO_START, SMALL_CAPS_END, SMALL_CAPS_START};
     let mut math_box = MathBox::empty();
     let mut bold = 0;
     let mut small_caps = 0;
     let mut mono = 0;
+    let mut italic = 0;
+    // L-TXT-5: the italic correction of the last letter, for the end of a `\textit{…}`
+    let mut last_italic = 0.0;
     // the previous character and its weight, for TeX's kern between the two (none across a change)
     let mut previous: Option<(char, bool)> = None;
-    for c in t.chars() {
+    let chars: Vec<char> = t.chars().collect();
+    for (k, &c) in chars.iter().enumerate() {
         match c {
             BOLD_START => bold += 1,
             BOLD_END => bold -= 1,
@@ -262,13 +266,24 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
             SMALL_CAPS_END => small_caps -= 1,
             MONO_START => mono += 1,
             MONO_END => mono -= 1,
+            ITALIC_START => italic += 1,
+            ITALIC_END => italic -= 1,
+            ITALIC_CORRECTED_END => {
+                italic -= 1;
+                // LaTeX's \/ after the group, unless a period or a comma follows it
+                let next = chars[k + 1..].iter().find(|x| !MARKERS.contains(x));
+                if !matches!(next, Some('.' | ',')) {
+                    math_box.append(&MathBox::space(last_italic));
+                }
+            }
             _ => {}
         }
         if MARKERS.contains(&c) {
             previous = None;
             continue;
         }
-        if small_caps == 0 && mono == 0 {
+        // TeX's kerns are the upright fonts'; italic letters keep none between them
+        if small_caps == 0 && mono == 0 && italic == 0 {
             if let Some((p, weight)) = previous {
                 let k = kerning::kern(ctx.kerning, weight, p, c);
                 if k != 0.0 {
@@ -290,12 +305,15 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
         // typewriter likewise: letters and digits; the font has no typewriter punctuation
         let c = if mono > 0 {
             alphabet::character(c, Variant::Monospace)
+        } else if italic > 0 {
+            alphabet::character(c, if bold > 0 { Variant::BoldItalic } else { Variant::Italic })
         } else if bold > 0 {
             alphabet::character(c, Variant::Bold)
         } else {
             c
         };
         if c == ' ' || c == '\u{00A0}' {
+            last_italic = 0.0;
             math_box.append(&MathBox::space(em(e, e.font.word_space())));
             continue;
         }
@@ -307,7 +325,10 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
             continue;
         }
         match glyph(c, e) {
-            Ok(g) => math_box.append(&g),
+            Ok(g) => {
+                last_italic = if italic > 0 { g.italic } else { 0.0 };
+                math_box.append(&g);
+            }
             Err(Error::MissingGlyph { character }) if !ctx.strict => {
                 ctx.registry.warn(rules::E_REC_8, format!("the font has no '{character}' (U+{:04X}): drew a box", character as u32));
                 math_box.append(&glyph('□', e)?);
@@ -711,10 +732,10 @@ pub fn compose_list(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
     Ok(math_box)
 }
 
-/// A single slanted letter, alone or in a row of one: the row adds no kern of its own.
+/// A slanted letter or word (`\mathit{diff}`), alone or in a row of one: the row adds no kern of its own.
 fn ends_slanted(node: &Node) -> bool {
     match node {
-        Node::Identifier { name, variant: Variant::Italic | Variant::BoldItalic } => name.chars().count() == 1,
+        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
         Node::Row { children } if children.len() == 1 => ends_slanted(&children[0]),
         _ => false,
     }
