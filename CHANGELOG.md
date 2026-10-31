@@ -4,6 +4,18 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## 1.9.3 - 2026-10-31
+
+The site, banner and icon take an identity of their own, and a new demo video.
+
+- A slate board with a wood tray in the banner, the icon and the top of the site, where a derivation writes itself line by line. Around it the site is plain paper, or charcoal in the dark theme.
+- Code blocks are colored on every page, the SVG, the tree and the reference's grammar included.
+- In the reference tables the braille wraps, so the source keeps its room.
+- A new 60-second demo video in the README and on the site.
+- What the packages draw does not change.
+
+Equations: `x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`
+
 ## 1.9.2 - 2026-10-30
 
 `\boldmath` in bold italic, and `\SI`'s values as siunitx prints them.
