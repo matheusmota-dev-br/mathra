@@ -2,9 +2,9 @@
 
 # mathra
 
-Accessible SVG equations from LaTeX, chemistry included, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**, or **[watch the 60-second demo](https://youtu.be/pXuaCwmWaDg)**.
+Accessible SVG equations from LaTeX, chemistry included, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**, or **[watch the 60-second demo](https://youtu.be/Bbz_nwre2BQ)**.
 
-<p align="center"><a href="https://youtu.be/pXuaCwmWaDg"><img src="https://img.youtube.com/vi/pXuaCwmWaDg/maxresdefault.jpg" alt="mathra in 60 seconds: watch the demo on YouTube" width="720"></a></p>
+<p align="center"><a href="https://youtu.be/Bbz_nwre2BQ"><img src="https://img.youtube.com/vi/Bbz_nwre2BQ/maxresdefault.jpg" alt="mathra in 60 seconds: watch the demo on YouTube" width="720"></a></p>
 
 mathra reads math LaTeX (and chemfig structures, reaction schemes and commutative diagrams), builds a **tree of meaning** (what each piece is) and draws it with **explicit rules**, numbered and tested. Every SVG carries the phrase a screen reader says, in 16 languages, and the locale decides the form: in pt-BR `3,14` is a single number and `\sin` comes out as `sen`. All four packages run the same core, so an equation gives the same SVG, byte for byte, wherever it is converted.
 
