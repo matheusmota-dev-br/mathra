@@ -8,10 +8,10 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#fbf9f4">
+<meta name="theme-color" content="#F4F3EF">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Karla:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 <script src="code.js"></script>
@@ -33,8 +33,13 @@
   </div>
 
   <header class="hero">
-    <div class="logo" id="logo" role="img" aria-label="mathra"></div>
-    <p class="tagline">Math LaTeX to <em>accessible</em> SVG.<br>No TeX install. JavaScript, Python, Rust or the terminal.</p>
+    <div class="board">
+      <div>
+        <div class="logo" id="logo" role="img" aria-label="mathra"></div>
+        <p class="tagline">Math LaTeX to <em>accessible</em> SVG.<br>No TeX install. JavaScript, Python, Rust or the terminal.</p>
+      </div>
+      <div class="derivation" id="derivation" aria-hidden="true"></div>
+    </div>
     <p class="sub">mathra reads the equation (LaTeX, MathML or AsciiMath, chemistry and commutative diagrams included), builds a tree of meaning and draws it with numbered, tested rules. Every SVG says the equation out loud to screen readers and carries it in braille.</p>
     <div class="cta">
       <a class="button solid" href="#playground">Try it now</a>
@@ -333,35 +338,26 @@ println!("{}", r.speech);</pre>
   const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps).svg;
   const brailleCode = () => $("braille").value || null;
 
-  // the wordmark, drawn by mathra: the box of each glyph and the baseline, as in docs/banner.svg
+  // the wordmark, drawn by mathra
   function drawLogo() {
-    const svg = convert(String.raw`\mathrm{mathra}`, "en", true, false).svg;
-    const doc = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
-    const [, top, width] = doc.getAttribute("viewBox").split(" ").map(Number);
-    const xs = [...doc.querySelectorAll("use")].map((u) => Number(u.getAttribute("x")));
-    const depth = 230, pad = 260, margin = 60;
-    const ns = "http://www.w3.org/2000/svg";
-    const boxes = document.createElementNS(ns, "g");
-    boxes.setAttribute("class", "boxes");
-    xs.forEach((x, i) => {
-      const r = document.createElementNS(ns, "rect");
-      const w = (xs[i + 1] ?? width) - x;
-      Object.entries({ x, y: top - margin, width: w, height: -top + margin + depth, "vector-effect": "non-scaling-stroke" }).forEach(([k, v]) => r.setAttribute(k, v));
-      boxes.append(r);
-    });
-    const base = document.createElementNS(ns, "line");
-    Object.entries({ class: "base", x1: -pad, y1: 0, x2: width + pad, y2: 0, "vector-effect": "non-scaling-stroke" }).forEach(([k, v]) => base.setAttribute(k, v));
-    const glyphs = doc.querySelector("g[fill]");
-    doc.insertBefore(boxes, glyphs);
-    doc.insertBefore(base, glyphs);
-    const vbw = width + 2 * pad, vbh = -top + 2 * margin + depth;
-    doc.setAttribute("viewBox", `${-pad} ${top - 2 * margin} ${vbw} ${vbh}`);
-    doc.setAttribute("width", `${vbw / 1000}em`);
-    doc.setAttribute("height", `${vbh / 1000}em`);
+    const doc = new DOMParser().parseFromString(convert(String.raw`\mathit{mathra}`, "en", true, false).svg, "image/svg+xml").documentElement;
     doc.removeAttribute("style");
     doc.setAttribute("aria-hidden", "true");
     doc.querySelector("title")?.remove();
     $("logo").replaceChildren(doc);
+    drawSteps();
+  }
+
+  // the board filled in, one line after the other, by mathra's own animation: a derivation, then a bit of everything
+  function drawSteps() {
+    const lines = [String.raw`ax^2 + bx + c = 0`, String.raw`x^2 + \frac{b}{a}x = -\frac{c}{a}`, String.raw`\left(x + \frac{b}{2a}\right)^2 = \frac{b^2 - 4ac}{4a^2}`, String.raw`x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`,
+      String.raw`\int_0^{\infty} e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}`, String.raw`\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}`, String.raw`A = \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}`, String.raw`\ce{2H2 + O2 -> 2H2O}`];
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    lines.forEach((src, i) => {
+      const line = document.createElement("div");
+      $("derivation").append(line);
+      setTimeout(() => { line.innerHTML = convert(src, "en", true, false, "latex", null, !still).svg; }, still ? 0 : i * 900);
+    });
   }
 
   function readHash() {
@@ -562,7 +558,7 @@ println!("{}", r.speech);</pre>
       return;
     }
     const text = { text: last.text, tree: JSON.stringify(last.tree, null, 2), svg: last.svg }[tab];
-    panel.innerHTML = `<pre>${escape(text)}</pre>`;
+    panel.innerHTML = `<pre>${colorCode(text, { tree: "json", svg: "xml" }[tab])}</pre>`;
   }
 
   function load(src, loc, inp = "latex") {
@@ -699,7 +695,7 @@ println!("{}", r.speech);</pre>
     ["Rust", "cargo add mathra"],
   ];
   function showInstall(i) {
-    $("install-cmd").textContent = INSTALL[i][1];
+    $("install-cmd").innerHTML = colorCode(INSTALL[i][1], "sh");
     [...document.querySelectorAll(".installer-tabs button")].forEach((b, j) => b.setAttribute("aria-selected", String(i === j)));
   }
   INSTALL.forEach(([label], i) => {
