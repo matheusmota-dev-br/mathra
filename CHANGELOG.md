@@ -6,8 +6,12 @@ Each release has a headline (the line under its title), what changed, and the eq
 
 ## Unreleased
 
+`\boldmath` in bold italic, and `\SI`'s values as siunitx prints them.
+
 - `\SI{+10}{V}` leaves out the plus and `\SI{.25}{V}` gets its zero, as siunitx does ([#97](https://github.com/matheusmota-dev-br/mathra/issues/97)).
 - `\boldmath` sets letters in bold italic, as TeX's bold math font does, and reaches the text of a `\rotatebox` ([#97](https://github.com/matheusmota-dev-br/mathra/issues/97)).
+
+Equations: `\text{{\boldmath $x$}}`, `\text{{\boldmath \rotatebox{90}{$x$}}}`, `\SI{+10}{V}`, `\SI{.25}{V}`
 
 ## 1.9.1 - 2026-10-29
 
