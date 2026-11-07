@@ -98,6 +98,8 @@
       <div class="messages" id="messages"></div>
       <div class="actions">
         <button class="button solid" id="animate" type="button">▶ Animate</button>
+        <button class="button" id="pen" type="button" title="A pen writes the equation: each glyph's outline, then its fill">✎ Pen</button>
+        <button class="button" id="download-pen" type="button">Pen SVG</button>
         <button class="button" id="download" type="button">Download SVG</button>
         <button class="button" id="download-animated" type="button">Animated SVG</button>
         <button class="button" id="download-gif" type="button">Download GIF</button>
@@ -326,7 +328,7 @@ println!("{}", r.speech);</pre>
   const $ = (id) => document.getElementById(id);
   const tex = $("tex"), inline = $("inline"), strict = $("strict");
   const preview = $("preview"), messages = $("messages"), panel = $("panel");
-  let render = null, last = null, tab = "speech", locale = "en", input = "latex";
+  let render = null, pen = null, last = null, tab = "speech", locale = "en", input = "latex";
 
 
   const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -480,6 +482,7 @@ println!("{}", r.speech);</pre>
     mathraAnimation.showSteps(preview, k);
   }
   function stopAnimation() {
+    stopPen();
     if (!stopLoop) return;
     stopLoop();
     stopLoop = null;
@@ -745,6 +748,32 @@ println!("{}", r.speech);</pre>
     fit();
     $("animate").textContent = "■ Stop";
   };
+  // the equation written by a pen: mathra's SMIL plays by itself, in a loop
+  let penOn = false;
+  const penSvg = () => pen(tex.value, locale, !inline.checked, input, null);
+  function stopPen() {
+    if (!penOn) return;
+    penOn = false;
+    $("pen").textContent = "✎ Pen";
+    if (last) { preview.innerHTML = last.svg; fit(); }
+  }
+  $("pen").onclick = () => {
+    if (penOn) return stopPen();
+    if (!last || !tex.value.trim()) return;
+    stopAnimation();
+    try {
+      preview.innerHTML = penSvg();
+    } catch (e) {
+      alert(`Could not write it: ${String(e.message ?? e)}`);
+      return;
+    }
+    penOn = true;
+    fit();
+    $("pen").textContent = "■ Stop";
+  };
+  $("download-pen").onclick = () => {
+    if (last && tex.value.trim()) save(new Blob([penSvg()], { type: "image/svg+xml" }), "equation-pen.svg");
+  };
   $("download-animated").onclick = () => {
     if (last) save(new Blob([mathraAnimation.withControls(again(true, false))], { type: "image/svg+xml" }), "equation-animated.svg");
   };
@@ -797,6 +826,7 @@ println!("{}", r.speech);</pre>
     .then((module_or_path) => wasm_bindgen({ module_or_path }))
     .then(() => {
       render = wasm_bindgen.render;
+      pen = wasm_bindgen.texToPen;
       $("locale").innerHTML = JSON.parse(wasm_bindgen.locales()).map((l) => `<option value="${l.code}">${escape(l.name)} · ${l.code}</option>`).join("");
       $("locale").value = locale;
       drawLogo();

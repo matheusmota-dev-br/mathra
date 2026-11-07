@@ -240,6 +240,19 @@ pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
     Ok((math_box, registry.warnings))
 }
 
+/// The equation written by a pen: an SVG where a pen tip goes over each glyph's outline, rule and
+/// line, in the order the layout set them, and each fills in once drawn; SMIL, in a loop.
+pub fn pen(tex: &str, options: &Options, pen: &output::pen::Pen) -> Result<String, Error> {
+    let font = font::MathFont::default();
+    let mut registry = rules::Registry::default();
+    let (tree, _) = read(tex, options, &mut registry)?;
+    let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
+    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+    let math_box = layout::compose_list(&tree, style, &mut ctx)?;
+    let speech = output::speech::speak(&tree, options.locale);
+    Ok(output::pen::generate(&math_box, font.get(), tex, &speech, pen))
+}
+
 /// Shortcut with the default locale (English).
 pub fn tex_to_svg(tex: &str) -> Result<String, Error> {
     convert(tex, &Options::default()).map(|r| r.svg)

@@ -84,3 +84,18 @@ pub fn render(
     render_json(tex, locale.as_deref(), display.unwrap_or(true), strict.unwrap_or(false), input.as_deref(), braille.as_deref(), animate.unwrap_or(false), steps.unwrap_or(false))
         .map_err(|e| JsError::new(&e))
 }
+
+/// The equation written by a pen, as an SVG that plays by itself (SMIL). `seconds`: how long the
+/// pen takes; none, from how much it writes.
+pub fn pen_svg(tex: &str, locale: Option<&str>, display: bool, input: Option<&str>, seconds: Option<f64>) -> Result<String, String> {
+    let locale = locale.map_or(Ok(mathra::Locale::default()), str::parse)?;
+    let input = input.map_or(Ok(mathra::Input::default()), str::parse)?;
+    let pen = mathra::output::pen::Pen { seconds, ..Default::default() };
+    mathra::pen(tex, &mathra::Options { locale, display, input, ..Default::default() }, &pen).map_err(|e| e.to_string())
+}
+
+/// The equation written by a pen (see `pen_svg`). `display` defaults to true, `input` to "latex".
+#[wasm_bindgen(js_name = texToPen)]
+pub fn tex_to_pen(tex: &str, locale: Option<String>, display: Option<bool>, input: Option<String>, seconds: Option<f64>) -> Result<String, JsError> {
+    pen_svg(tex, locale.as_deref(), display.unwrap_or(true), input.as_deref(), seconds).map_err(|e| JsError::new(&e))
+}

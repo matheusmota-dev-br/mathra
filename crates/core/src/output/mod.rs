@@ -1,4 +1,5 @@
 pub mod braille;
+pub mod pen;
 pub mod speech;
 pub mod svg;
 pub mod text;

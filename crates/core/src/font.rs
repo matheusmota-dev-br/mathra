@@ -160,6 +160,15 @@ impl Font {
         path.0.trim_end().to_string()
     }
 
+    /// The outline of a glyph as closed polylines in font units, one per contour: its curves as
+    /// short lines of at most `step` units. What a pen follows to draw it.
+    pub fn contours(&self, id: GlyphId, step: f32) -> Vec<Vec<(f32, f32)>> {
+        let mut c = Contours { step: step.max(1.0), done: Vec::new(), line: Vec::new(), first: (0.0, 0.0) };
+        self.face.outline_glyph(id, &mut c);
+        c.finish();
+        c.done
+    }
+
     fn constants(&self) -> Constants<'static> {
         self.face.tables().math.and_then(|m| m.constants).expect("the embedded font has a MATH table")
     }
@@ -289,6 +298,76 @@ impl OutlineBuilder for PathWriter {
     }
     fn close(&mut self) {
         self.0.push_str("Z ");
+    }
+}
+
+/// Collects a glyph's contours as polylines, its curves cut into short lines.
+struct Contours {
+    step: f32,
+    done: Vec<Vec<(f32, f32)>>,
+    line: Vec<(f32, f32)>,
+    first: (f32, f32),
+}
+
+impl Contours {
+    fn finish(&mut self) {
+        if self.line.len() > 1 {
+            self.done.push(std::mem::take(&mut self.line));
+        }
+        self.line.clear();
+    }
+
+    fn last(&self) -> (f32, f32) {
+        self.line.last().copied().unwrap_or(self.first)
+    }
+
+    /// A Bézier from the last point, with its control points and end, as short lines.
+    fn curve(&mut self, points: &[(f32, f32)]) {
+        let p = self.last();
+        let dist = |u: (f32, f32), v: (f32, f32)| (u.0 - v.0).hypot(u.1 - v.1);
+        let mut length = 0.0;
+        let mut prev = p;
+        for &q in points {
+            length += dist(prev, q);
+            prev = q;
+        }
+        let n = ((length / self.step).ceil() as usize).clamp(1, 64);
+        for k in 1..=n {
+            let t = k as f32 / n as f32;
+            let u = 1.0 - t;
+            let at = match *points {
+                [a, q] => (u * u * p.0 + 2.0 * u * t * a.0 + t * t * q.0, u * u * p.1 + 2.0 * u * t * a.1 + t * t * q.1),
+                [a, b, q] => (
+                    u * u * u * p.0 + 3.0 * u * u * t * a.0 + 3.0 * u * t * t * b.0 + t * t * t * q.0,
+                    u * u * u * p.1 + 3.0 * u * u * t * a.1 + 3.0 * u * t * t * b.1 + t * t * t * q.1,
+                ),
+                _ => return,
+            };
+            self.line.push(at);
+        }
+    }
+}
+
+impl OutlineBuilder for Contours {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.finish();
+        self.first = (x, y);
+        self.line.push((x, y));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.line.push((x, y));
+    }
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.curve(&[(x1, y1), (x, y)]);
+    }
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.curve(&[(x1, y1), (x2, y2), (x, y)]);
+    }
+    fn close(&mut self) {
+        if self.last() != self.first {
+            self.line.push(self.first);
+        }
+        self.finish();
     }
 }
 
