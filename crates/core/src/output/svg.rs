@@ -87,7 +87,7 @@ impl Steps {
     }
 }
 
-fn n(v: f32) -> String {
+pub(crate) fn n(v: f32) -> String {
     let rounded = (v * 1000.0).round() / 1000.0;
     if rounded.fract() == 0.0 {
         format!("{}", rounded as i64)
@@ -266,7 +266,7 @@ fn fill(color: &Option<String>) -> String {
     }
 }
 
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
