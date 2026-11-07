@@ -202,9 +202,18 @@ Structural chemistry is the `chem` feature, on by default; `mathra = { version =
 
 ## What it converts
 
-Layout follows the parameters of the embedded font's MATH table. The font is STIX Two Math; with the
+Layout follows the parameters of the font's MATH table. The font is STIX Two Math; with the
 `latin-modern` feature, `convert_in_font` and `typeset_in_font` can also set an equation in Latin
 Modern Math, the OpenType Computer Modern of TeX's own documents (about 430 KB more in the binary).
+
+Any other OpenType math font works too: an `.otf` or `.ttf` with a MATH table, such as Libertinus Math, Fira Math or the TeX Gyre math fonts. Load it from its bytes and set it as `Options::font`. Fonts without a MATH table are refused, because they have no fraction, radical or tall delimiter metrics. A font is kept for as long as the program runs, and the same bytes give the same font. The SVG carries the font's outlines, so check that its license allows that.
+
+```rust
+let font = mathra::font::MathFont::load(std::fs::read("LibertinusMath-Regular.otf")?)?;
+let svg = mathra::convert(r"e^{i\pi} + 1 = 0", &mathra::Options { font, ..Default::default() })?.svg;
+```
+
+The same in each package: `--font file.otf` in the terminal, `loadFont(bytes)` and `{ font }` in JavaScript, `mathra.load_font(path)` and `font=` in Python. The [playground](https://matheusmota-dev-br.github.io/mathra/) loads one from your computer, and the file stays in your browser.
 
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)

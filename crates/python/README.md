@@ -60,6 +60,17 @@ Speech in `<title>` linked with `aria-labelledby`, the source equation and the t
 
 With `animate=True` the equation writes itself in the browser, with CSS alone: each glyph fades in, each rule grows and each line is drawn, in the order the layout set them, in about three seconds (nothing moves with `prefers-reduced-motion`); `steps=True` numbers each element by that order (`data-step`) with no animation. Both are off by default, and without them the SVG is unchanged byte for byte.
 
+## Other math fonts
+
+STIX Two Math is embedded and is the default. Any OpenType math font (an `.otf` or `.ttf` with a MATH table, such as Libertinus Math or Fira Math) can be loaded from a path or its bytes:
+
+```python
+font = mathra.load_font("LibertinusMath-Regular.otf")  # Font(id=0, name='Libertinus Math')
+mathra.tex_to_svg(r"e^{i\pi} + 1 = 0", font=font)
+```
+
+A font without a MATH table raises ValueError. The SVG carries the font's outlines, so check that its license allows that.
+
 ## Also for JavaScript, Rust and the terminal
 
 The same core is an npm package (`@mathlabs/mathra`), a Rust crate and a command-line tool: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.

@@ -16,6 +16,16 @@ export interface Options {
   animate?: boolean;
   /** Each element of the SVG numbered by that order (`data-step`, and `data-steps` on the `<svg>`), with no CSS: for a page that walks through the equation itself. Default false. */
   steps?: boolean;
+  /** The math font the equation is set in: what `loadFont` returned, or its id. Default STIX Two Math. */
+  font?: Font | number;
+}
+
+/** A math font loaded with `loadFont`. */
+export interface Font {
+  /** What `options.font` takes. */
+  id: number;
+  /** The font's family name, as the SVG's `<mathra:font>` carries it. */
+  name: string;
 }
 
 /** A numbered rule from spec/rules.md or spec/tolerance.md, and what it did to this equation. */
@@ -51,6 +61,9 @@ export function texToSvg(tex: string, options?: Options | Locale): string;
 
 /** Converts an equation and returns every output at once. */
 export function render(tex: string, options?: Options | Locale): Result;
+
+/** Loads an OpenType math font (an `.otf` or `.ttf` with a MATH table, such as Libertinus Math or Fira Math) from its bytes, to pass as `options.font`. The same bytes again give the same font. Throws if it is not a font or has no MATH table. */
+export function loadFont(bytes: Uint8Array | ArrayBuffer): Font;
 
 /** The supported languages, English first. */
 export function locales(): { code: string; name: string }[];

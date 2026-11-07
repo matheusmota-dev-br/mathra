@@ -1,6 +1,7 @@
 """The Python package, used the way someone who installed it would."""
 
 import json
+import pathlib
 
 import pytest
 
@@ -100,3 +101,18 @@ def test_animate_and_steps():
     steps = mathra.tex_to_svg("x+1", steps=True)
     assert 'data-steps="3"' in steps and "@keyframes" not in steps
     assert "mr-f" in mathra.render("x", animate=True)["svg"]
+
+
+FONT = pathlib.Path(__file__).resolve().parents[3] / "tools" / "fonts" / "latinmodern-math.otf"
+
+
+def test_a_math_font_from_outside():
+    font = mathra.load_font(FONT)
+    assert font.name == "Latin Modern Math"
+    assert mathra.load_font(FONT.read_bytes()) == font
+    svg = mathra.tex_to_svg(r"\frac{a}{b}", font=font)
+    assert "<mathra:font>Latin Modern Math</mathra:font>" in svg
+    assert svg != mathra.tex_to_svg(r"\frac{a}{b}")
+    assert "Latin Modern Math" in mathra.render("x", font=font)["svg"]
+    with pytest.raises(ValueError, match="not a font"):
+        mathra.load_font(b"not a font")

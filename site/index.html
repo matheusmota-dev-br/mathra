@@ -78,6 +78,13 @@
             <option value="nemeth">Nemeth</option>
           </select>
         </label>
+        <label class="lang">Font
+          <select id="font" title="Any OpenType math font (.otf or .ttf with a MATH table)">
+            <option value="">STIX Two Math</option>
+            <option value="load">Load a font…</option>
+          </select>
+        </label>
+        <input type="file" id="font-file" accept=".otf,.ttf,font/otf,font/ttf" hidden>
         <label><input type="checkbox" id="inline"> Inline</label>
         <label><input type="checkbox" id="strict"> Strict</label>
       </div>
@@ -333,12 +340,14 @@ println!("{}", r.speech);</pre>
 
   const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  function convert(src, loc, display, strictMode, inp = "latex", braille = null, animate = false, steps = false) {
-    return JSON.parse(render(src, loc, display, strictMode, inp, braille, animate, steps));
+  function convert(src, loc, display, strictMode, inp = "latex", braille = null, animate = false, steps = false, font = null) {
+    return JSON.parse(render(src, loc, display, strictMode, inp, braille, animate, steps, font));
   }
   // the equation as now on screen, again with its steps numbered or animated
-  const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps).svg;
+  const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps, fontId()).svg;
   const brailleCode = () => $("braille").value || null;
+  // the font of the playground: STIX Two Math, or the id of one the visitor loaded
+  const fontId = () => { const v = $("font").value; return v === "" || v === "load" ? null : Number(v); };
 
   // the wordmark, drawn by mathra
   function drawLogo() {
@@ -499,7 +508,7 @@ println!("{}", r.speech);</pre>
   }
   async function measure() {
     if (!last) return;
-    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode()];
+    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId()];
     let runs = 0;
     const start = performance.now();
     while (runs < 400 && performance.now() - start < 30) { render(...args); runs++; }
@@ -521,7 +530,7 @@ println!("{}", r.speech);</pre>
     messages.replaceChildren();
     stopAnimation();
     try {
-      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode());
+      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId());
       preview.innerHTML = tex.value.trim() ? last.svg : `<span class="status">Type some ${INPUT_NAMES[input]} on the left.</span>`;
       fit();
       scheduleStats();
@@ -722,6 +731,28 @@ println!("{}", r.speech);</pre>
   }
   $("locale").addEventListener("change", (e) => { setLocale(e.target.value); update(); });
   $("braille").addEventListener("change", update);
+  // a font of the visitor's own: read in the browser, nothing is sent anywhere
+  let fontChoice = "";
+  $("font").addEventListener("change", () => {
+    if ($("font").value !== "load") { fontChoice = $("font").value; update(); return; }
+    $("font").value = fontChoice;
+    $("font-file").click();
+  });
+  $("font-file").addEventListener("change", async () => {
+    const file = $("font-file").files[0];
+    $("font-file").value = "";
+    if (!file) return;
+    try {
+      const { id, name } = JSON.parse(wasm_bindgen.loadFont(new Uint8Array(await file.arrayBuffer())));
+      if (![...$("font").options].some((o) => o.value === String(id))) {
+        $("font").querySelector('option[value="load"]').before(new Option(name, String(id)));
+      }
+      $("font").value = fontChoice = String(id);
+      update();
+    } catch (e) {
+      alert(`${file.name}: ${String(e.message ?? e)}`);
+    }
+  });
   for (const b of document.querySelectorAll("#input button")) b.onclick = () => { setInput(b.dataset.input); update(); };
   for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => { tab = b.dataset.tab; showTab(); };
   tex.addEventListener("input", update);
@@ -750,7 +781,7 @@ println!("{}", r.speech);</pre>
   };
   // the equation written by a pen: mathra's SMIL plays by itself, in a loop
   let penOn = false;
-  const penSvg = () => pen(tex.value, locale, !inline.checked, input, null);
+  const penSvg = () => pen(tex.value, locale, !inline.checked, input, null, fontId());
   function stopPen() {
     if (!penOn) return;
     penOn = false;

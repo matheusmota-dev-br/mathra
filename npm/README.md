@@ -95,6 +95,18 @@ Speech in `<title>` linked with `aria-labelledby`, the source equation and the t
 
 With `{ animate: true }` the equation writes itself, with CSS alone: each glyph fades in, each rule grows and each line is drawn, in the order the layout set them, in about three seconds (nothing moves with `prefers-reduced-motion`). Off by default, and without it the SVG is unchanged byte for byte. The [playground](https://matheusmota-dev-br.github.io/mathra/) turns it into a GIF, a video or an animated SVG with its own play bar.
 
+## Other math fonts
+
+STIX Two Math is embedded and is the default. Any OpenType math font (an `.otf` or `.ttf` with a MATH table, such as Libertinus Math or Fira Math) can be loaded from its bytes:
+
+```js
+import { readFile } from "node:fs/promises";
+const font = loadFont(await readFile("LibertinusMath-Regular.otf")); // { id, name }
+texToSvg(String.raw`e^{i\pi} + 1 = 0`, { font });
+```
+
+A font without a MATH table is refused. The SVG carries the font's outlines, so check that its license allows that.
+
 ## Also for Python, Rust and the terminal
 
 The same core is a Python module, a Rust crate and a command-line tool, and every one gives the same SVG, byte for byte. How to install each: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.

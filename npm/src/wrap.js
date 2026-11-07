@@ -3,7 +3,9 @@
 /** `options` may be an object or, as in earlier versions, just the locale code. */
 function args(options) {
   const o = typeof options === "string" ? { locale: options } : options ?? {};
-  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null];
+  // a font is what `loadFont` returned, or its id
+  const font = typeof o.font === "object" && o.font !== null ? o.font.id : o.font;
+  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null];
 }
 
 export function wrap(raw, isReady) {
@@ -22,6 +24,10 @@ export function wrap(raw, isReady) {
     locales() {
       check();
       return JSON.parse(raw.locales());
+    },
+    loadFont(bytes) {
+      check();
+      return JSON.parse(raw.loadFont(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)));
     },
   };
 }
