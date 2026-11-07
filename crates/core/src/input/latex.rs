@@ -1,6 +1,7 @@
 //! Reader for math LaTeX: the commands and environments listed in the README, plus mathra's extensions
 //! (`\divchave`, `\contaarmada`).
 
+use crate::font::MathFont;
 use crate::locale::Locale;
 use crate::rules::{self, Registry};
 use crate::tree::*;
@@ -18,9 +19,15 @@ pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, 
 
 /// `strict`: refuse invalid LaTeX like TeX does. Without it, recover what is possible and record warnings.
 pub fn read_with(tex: &str, locale: Locale, registry: &mut Registry, strict: bool) -> Result<Node, Error> {
+    read_in_font(tex, locale, registry, strict, MathFont::default())
+}
+
+/// [`read_with`], for an equation set in `font`: the words it writes in the language (a range's
+/// "to", a list's "and") are kept only if that font has their letters.
+pub fn read_in_font(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont) -> Result<Node, Error> {
     let clean = prepare(tex, registry, strict);
     let mut macros = Macros { max_size: clean.chars().count() + MAX_GROWTH, ..Macros::default() };
-    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, variant: Variant::Italic, strict };
+    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, variant: Variant::Italic, strict, font };
     let body = reader.top()?;
     Ok(body)
 }
@@ -142,6 +149,8 @@ struct Reader<'a> {
     /// Current variant, changed by `\bf`, `\rm`, `\mathrm{…}`.
     variant: Variant,
     strict: bool,
+    /// The font the equation will be set in.
+    font: MathFont,
 }
 
 type R<T> = Result<T, Error>;
@@ -302,7 +311,7 @@ impl Reader<'_> {
 
     /// Reads a raw snippet as math, with the current variant.
     fn sub_reader(&mut self, tex: &str, variant: Variant) -> R<Node> {
-        let mut sub = Reader { c: tex.chars().collect(), pos: 0, locale: self.locale, registry: self.registry, macros: self.macros, variant, strict: self.strict };
+        let mut sub = Reader { c: tex.chars().collect(), pos: 0, locale: self.locale, registry: self.registry, macros: self.macros, variant, strict: self.strict, font: self.font };
         let (items, stop) = sub.list()?;
         match stop {
             Stop::Eof => Ok(Node::row(items).simplify()),
@@ -1243,7 +1252,7 @@ impl Reader<'_> {
                 let a = self.listed_value(name, &a, unit.as_deref(), col)?;
                 let b = self.listed_value(name, &b, unit.as_deref(), col)?;
                 // siunitx's range-phrase: the language's "to", when the embedded font can write it, as for lists
-                let to = Some(self.locale.phrase("op.–")).filter(|w| w.chars().all(|c| crate::font::font().glyph(c).is_some()));
+                let to = Some(self.locale.phrase("op.–")).filter(|w| w.chars().all(|c| self.font.get().glyph(c).is_some()));
                 self.registry.note(rules::L_UNI_2, format!("\\{name}: range written with '{}'", to.unwrap_or("–")));
                 let between = match to {
                     Some(to) => Node::Text { parts: vec![TextPart::Text(format!(" {to} "))] },
@@ -1258,7 +1267,7 @@ impl Reader<'_> {
                 let values: Vec<&str> = values.split(';').map(str::trim).filter(|v| !v.is_empty()).collect();
                 // the last separator is the language's "and", when the embedded font can write it (it has
                 // no CJK, Devanagari or Arabic letters); otherwise a comma, like the others
-                let and = Some(self.locale.phrase("list_and")).filter(|w| w.chars().all(|c| crate::font::font().glyph(c).is_some()));
+                let and = Some(self.locale.phrase("list_and")).filter(|w| w.chars().all(|c| self.font.get().glyph(c).is_some()));
                 let mut children = Vec::new();
                 for (i, v) in values.iter().enumerate() {
                     match and {
@@ -1866,7 +1875,16 @@ impl Reader<'_> {
     /// Table read from a braced argument (`\substack{…}`, plain TeX's `\cases{…}`).
     fn argument_table(&mut self, shape: TableKind, col: usize) -> R<Node> {
         let raw = self.raw_text()?;
-        let mut sub = Reader { c: raw.chars().collect(), pos: 0, locale: self.locale, registry: self.registry, macros: self.macros, variant: self.variant, strict: self.strict };
+        let mut sub = Reader {
+            c: raw.chars().collect(),
+            pos: 0,
+            locale: self.locale,
+            registry: self.registry,
+            macros: self.macros,
+            variant: self.variant,
+            strict: self.strict,
+            font: self.font,
+        };
         let (rows, horizontals, intertexts) = sub.table_body(None, col)?;
         Ok(Node::Table { shape, rows, columns: vec![], verticals: vec![], dashed: vec![], horizontals, between: vec![], intertexts, stretch: 1.0 })
     }

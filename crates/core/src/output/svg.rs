@@ -252,7 +252,9 @@ fn item_svg(items: &[Item], id: &str, steps: &mut Steps, out: &mut String) {
 /// Derived from the input (FNV-1a), so the same equation always gets the same ids (D-DET-1).
 fn id_prefix(c: &Content) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in c.source.bytes().chain(c.locale.code().bytes()).chain(VERSION.bytes()) {
+    // a loaded font's hash too; the embedded fonts keep the ids they always had
+    let salt = c.font.id_salt().map(u64::to_le_bytes);
+    for b in c.source.bytes().chain(c.locale.code().bytes()).chain(VERSION.bytes()).chain(salt.into_iter().flatten()) {
         h ^= u64::from(b);
         h = h.wrapping_mul(0x0100_0000_01b3);
     }

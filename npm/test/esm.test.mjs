@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { init, texToSvg, render, locales, version } from "@mathlabs/mathra";
+import { init, texToSvg, render, locales, loadFont, version } from "@mathlabs/mathra";
 
 test("works right away in Node, init is optional", async () => {
   assert.match(texToSvg("x^2"), /^<svg/);
@@ -60,4 +60,18 @@ test("the writing animation and the steps", () => {
   assert.match(steps, /data-steps="3"/);
   assert.doesNotMatch(steps, /@keyframes/);
   assert.match(render("x", { animate: true }).svg, /mr-f/);
+});
+
+test("a math font from outside", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const font = loadFont(await readFile(process.env.MATHRA_TEST_FONT));
+  assert.equal(font.name, "Latin Modern Math");
+  assert.deepEqual(loadFont(await readFile(process.env.MATHRA_TEST_FONT)), font);
+  const svg = texToSvg(String.raw`\frac{a}{b}`, { font });
+  assert.match(svg, /<mathra:font>Latin Modern Math<\/mathra:font>/);
+  assert.equal(svg, texToSvg(String.raw`\frac{a}{b}`, { font: font.id }));
+  assert.notEqual(svg, texToSvg(String.raw`\frac{a}{b}`));
+  assert.match(render("x", { font }).svg, /Latin Modern Math/);
+  assert.throws(() => loadFont(new Uint8Array([1, 2, 3])), /not a font/);
+  assert.throws(() => texToSvg("x", { font: 99 }), /no font loaded/);
 });

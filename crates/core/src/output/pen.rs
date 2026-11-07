@@ -4,7 +4,7 @@
 
 use std::fmt::Write;
 
-use crate::font::Font;
+use crate::font::{Font, MathFont};
 use crate::layout::{Item, MathBox};
 use crate::VERSION;
 
@@ -177,9 +177,10 @@ fn defs(items: &[Item], id: &str, f: &Font, seen: &mut std::collections::HashSet
 }
 
 /// Unique ids per equation, as in the plain SVG, but apart from them: both can share a page.
-fn id_prefix(source: &str) -> String {
+fn id_prefix(source: &str, font: MathFont) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in source.bytes().chain(VERSION.bytes()).chain(*b"pen") {
+    let salt = font.id_salt().map(u64::to_le_bytes);
+    for b in source.bytes().chain(VERSION.bytes()).chain(*b"pen").chain(salt.into_iter().flatten()) {
         h ^= u64::from(b);
         h = h.wrapping_mul(0x0100_0000_01b3);
     }
@@ -187,9 +188,10 @@ fn id_prefix(source: &str) -> String {
 }
 
 /// The SVG of the pen writing `math_box`. `speech` is its accessible name.
-pub fn generate(math_box: &MathBox, f: &Font, source: &str, speech: &str, pen: &Pen) -> String {
+pub fn generate(math_box: &MathBox, font: MathFont, source: &str, speech: &str, pen: &Pen) -> String {
+    let f: &Font = font.get();
     let em = f64::from(f.units_per_em());
-    let id = id_prefix(source);
+    let id = id_prefix(source, font);
     let mut all = Vec::new();
     pieces(&math_box.items, Map::IDENTITY, &id, f, &mut all);
     for p in &mut all {
