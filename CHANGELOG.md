@@ -4,6 +4,16 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## 1.10.0 - 2026-11-07
+
+A pen that writes the equation, and any OpenType math font.
+
+- `mathra::pen` draws an SVG where a pen tip goes over each glyph's outline, rule and line in the order the layout set them, and each one fills in once drawn. It uses SMIL only, plays in a loop and needs no script. Its time follows the length of the ink. wasm gets `texToPen`, and the playground gets a Pen button and a Pen SVG download ([#104](https://github.com/matheusmota-dev-br/mathra/issues/104)).
+- Any OpenType math font (an `.otf` or `.ttf` with a MATH table, such as Libertinus Math, Fira Math or Euler Math) can set an equation. Use `MathFont::load(bytes)` and `Options::font` in Rust, `--font` in the terminal, `loadFont` and `{ font }` in JavaScript, and `load_font` and `font=` in Python. The playground loads one from your computer. A font without a MATH table is refused with a reason. STIX Two Math stays embedded and is the default, and without a font the SVG is unchanged ([#106](https://github.com/matheusmota-dev-br/mathra/issues/106)).
+- Code that builds an `Options` listing every field needs the new one (`..Default::default()`). A missing glyph now reads "the math font has no …" (#106).
+
+Equations: `x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`
+
 ## 1.9.3 - 2026-10-31
 
 The site, banner and icon take an identity of their own, and a new demo video.
