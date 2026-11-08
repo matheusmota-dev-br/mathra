@@ -18,10 +18,11 @@ pub fn convert_with(
     animate: bool,
     steps: bool,
 ) -> Result<mathra::Output, String> {
-    convert_in(tex, locale, display, strict, input, braille, animate, steps, None)
+    convert_in(tex, locale, display, strict, input, braille, animate, steps, None, None)
 }
 
-/// `convert_with`, set in a font loaded with `load_font` (its id), or in STIX Two Math.
+/// `convert_with`, set in a font loaded with `load_font` (its id), or in STIX Two Math, with lines
+/// broken at `max_width` em, if given (L-BRK-1).
 #[allow(clippy::too_many_arguments)]
 pub fn convert_in(
     tex: &str,
@@ -33,12 +34,13 @@ pub fn convert_in(
     animate: bool,
     steps: bool,
     font: Option<u32>,
+    max_width: Option<f32>,
 ) -> Result<mathra::Output, String> {
     let locale = locale.map_or(Ok(mathra::Locale::default()), str::parse)?;
     let input = input.map_or(Ok(mathra::Input::default()), str::parse)?;
     let braille = braille.map(str::parse).transpose()?;
     let font = font_by_id(font)?;
-    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, ..Default::default() }).map_err(|e| e.to_string())
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, max_width, ..Default::default() }).map_err(|e| e.to_string())
 }
 
 /// A font loaded with `load_font`, by the id it gave; none, STIX Two Math.
@@ -70,7 +72,7 @@ pub fn render_json(tex: &str, locale: Option<&str>, display: bool, strict: bool,
     convert_with(tex, locale, display, strict, input, braille, animate, steps).map(|r| r.to_json())
 }
 
-/// `render_json`, set in a loaded font (its id).
+/// `render_json`, set in a loaded font (its id), with lines broken at `max_width` em, if given.
 #[allow(clippy::too_many_arguments)]
 pub fn render_json_in(
     tex: &str,
@@ -82,13 +84,15 @@ pub fn render_json_in(
     animate: bool,
     steps: bool,
     font: Option<u32>,
+    max_width: Option<f32>,
 ) -> Result<String, String> {
-    convert_in(tex, locale, display, strict, input, braille, animate, steps, font).map(|r| r.to_json())
+    convert_in(tex, locale, display, strict, input, braille, animate, steps, font, max_width).map(|r| r.to_json())
 }
 
 /// Converts an equation to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja";
 /// `display` defaults to true, `strict` to false; `input` is "latex" (default), "mathml" or "asciimath";
-/// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math).
+/// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math);
+/// `max_width`, in em, breaks lines wider than that (none: one line).
 #[wasm_bindgen(js_name = texToSvg)]
 #[allow(clippy::too_many_arguments)]
 pub fn tex_to_svg(
@@ -101,6 +105,7 @@ pub fn tex_to_svg(
     animate: Option<bool>,
     steps: Option<bool>,
     font: Option<u32>,
+    max_width: Option<f32>,
 ) -> Result<String, JsError> {
     convert_in(
         tex,
@@ -112,6 +117,7 @@ pub fn tex_to_svg(
         animate.unwrap_or(false),
         steps.unwrap_or(false),
         font,
+        max_width,
     )
     .map(|r| r.svg)
     .map_err(|e| JsError::new(&e))
@@ -135,7 +141,8 @@ pub fn locales() -> String {
 }
 
 /// Every output in one JSON string (see `render_json`). `display` defaults to true, `strict` to false,
-/// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave.
+/// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave; `max_width`,
+/// in em, breaks lines wider than that.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render(
@@ -148,6 +155,7 @@ pub fn render(
     animate: Option<bool>,
     steps: Option<bool>,
     font: Option<u32>,
+    max_width: Option<f32>,
 ) -> Result<String, JsError> {
     render_json_in(
         tex,
@@ -159,6 +167,7 @@ pub fn render(
         animate.unwrap_or(false),
         steps.unwrap_or(false),
         font,
+        max_width,
     )
     .map_err(|e| JsError::new(&e))
 }

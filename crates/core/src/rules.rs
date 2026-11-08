@@ -36,6 +36,9 @@ pub const E_REC_10: &str = "E-REC-10";
 pub const S_BRL_1: &str = "S-BRL-1";
 pub const L_CONTA_1: &str = "L-CONTA-1";
 pub const L_CONTA_2: &str = "L-CONTA-2";
+// Automatic line breaking (spec/rules.md)
+pub const L_BRK_1: &str = "L-BRK-1";
+pub const L_BRK_2: &str = "L-BRK-2";
 
 /// A rule that acted on this equation, with the affected snippet.
 #[derive(Debug, Clone, PartialEq)]

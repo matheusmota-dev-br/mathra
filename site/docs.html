@@ -126,7 +126,7 @@ println!("{}", r.speech);</pre>
 
       <section id="options">
         <h2>Options</h2>
-        <p>The same five options everywhere, under each platform's spelling.</p>
+        <p>The same options everywhere, under each platform's spelling.</p>
         <div class="tablewrap"><table>
           <tr><th>Option</th><th>JavaScript</th><th>Python</th><th>Terminal</th><th>Rust (<code>Options</code>)</th></tr>
           <tr><td>Language</td><td><code>locale: "pt-BR"</code></td><td><code>locale="pt-BR"</code></td><td><code>-l, --locale pt-BR</code></td><td><code>locale: Locale::PtBr</code></td></tr>
@@ -136,6 +136,7 @@ println!("{}", r.speech);</pre>
           <tr><td>Braille code</td><td><code>braille: "cmu"</code></td><td><code>braille="cmu"</code></td><td><code>--braille-code cmu</code></td><td><code>braille: Some(BrailleCode::Cmu)</code></td></tr>
           <tr><td>The SVG writes itself</td><td><code>animate: true</code></td><td><code>animate=True</code></td><td><code>--animate</code></td><td><code>animate: true</code></td></tr>
           <tr><td>Each element numbered by its step</td><td><code>steps: true</code></td><td><code>steps=True</code></td><td><code>--steps</code></td><td><code>steps: true</code></td></tr>
+          <tr><td>Lines no wider than</td><td><code>maxWidth: 30</code></td><td><code>max_width=30</code></td><td><code>--max-width 30em</code></td><td><code>max_width: Some(30.0)</code></td></tr>
         </table></div>
         <ul>
           <li><strong>Language</strong>: <code>en</code> by default. The 16 codes are under <a href="#languages">Languages</a>. A region is accepted (<code>es-MX</code>, <code>zh-CN</code>). In JavaScript, a plain string as the second argument is read as the locale: <code>texToSvg(tex, "fr")</code>.</li>
@@ -143,6 +144,7 @@ println!("{}", r.speech);</pre>
           <li><strong>Strict</strong>: off by default, so broken input is drawn and reported as <a href="#broken">warnings</a>. On, it is refused like TeX does: an exception in JavaScript, <code>ValueError</code> in Python, an <code>Err</code> in Rust, exit code 1 in the terminal.</li>
           <li><strong>Input</strong>: <code>latex</code> by default, <code>mathml</code> or <code>asciimath</code>. MathML passed as LaTeX (starting with <code>&lt;math</code>) is recognized on its own.</li>
           <li><strong>Braille code</strong>: by default the language's: CMU in pt-BR and es, Nemeth elsewhere.</li>
+          <li><strong>Maximum width</strong>, in em: none by default (one line, however wide). A wider equation is broken after a relation (<code>=</code>, <code>≤</code>, <code>→</code>…), and only when relations alone are not enough, after <code>+</code> and <code>−</code> too, at its top level only: never inside a fraction, a root, <code>\left…\right</code>, scripts, a group or a table. The operator is not repeated on the next line, and continuation lines start under the right-hand side of the first relation (2 em in when there is none, or it is more than half the width in). Each line is a <code>&lt;g data-line="k"&gt;</code> of the SVG; speech, text and braille do not change. What cannot be broken (a table, an <code>align</code>, one wide fraction) is drawn as it is, with an <code>L-BRK-2</code> note in <code>applied</code>.</li>
         </ul>
       </section>
 
@@ -216,6 +218,7 @@ echo '&lt;equation&gt;' | mathra [options]</pre>
           <tr><td><code>--braille-code &lt;c&gt;</code></td><td><code>cmu</code> or <code>nemeth</code></td></tr>
           <tr><td><code>--animate</code></td><td>The SVG writes itself in the browser, in the order the layout set it (CSS in the SVG)</td></tr>
           <tr><td><code>--steps</code></td><td>Each element numbered by that order (<code>data-step</code>), with no animation</td></tr>
+          <tr><td><code>--max-width &lt;w&gt;</code></td><td>Break lines wider than <code>w</code> em (<code>30em</code> or <code>30</code>): after a relation first, then after <code>+</code> and <code>−</code></td></tr>
           <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>…; prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line</td></tr>
           <tr><td><code>-V, --version</code>, <code>-h, --help</code></td><td>Version and help</td></tr>
         </table></div>
@@ -242,7 +245,7 @@ $ mathra 'x^2 + 1' --braille                                     # ⠭⠘⠆⠐�
       <section id="converts">
         <h2>What it converts</h2>
         <p>Fractions, roots, scripts and limits, stretchy delimiters, matrices and <code>array</code>, <code>cases</code>, alignments, accents and braces, <code>\text</code>, alphabets, every amssymb symbol and negation, <code>\cancel</code>, <code>\boxed</code>, colors, siunitx, mhchem, physics, braket, tensor, mathtools, <code>\newcommand</code> and friends, commutative diagrams (amscd, tikz-cd, xymatrix), structural chemistry (chemfig structures, reaction schemes and mechanism arrows, read aloud by their molecular formulas), and the computed <code>\divchave</code> and <code>\contaarmada</code>. Every construction, drawn and in braille, is in the <a href="reference.html">reference</a>; the full list is in the <a href="https://github.com/matheusmota-dev-br/mathra#what-it-converts">README</a>.</p>
-        <p><strong>Out of scope</strong>, because mathra is for equations: TikZ and TeX programming (<code>\ifx</code>, <code>\catcode</code>). <strong>Not yet</strong>: automatic line breaking, MathML and PNG output, content MathML.</p>
+        <p><strong>Out of scope</strong>, because mathra is for equations: TikZ and TeX programming (<code>\ifx</code>, <code>\catcode</code>). <strong>Not yet</strong>: MathML and PNG output, content MathML.</p>
       </section>
 
       <section id="more">

@@ -103,6 +103,15 @@ def test_animate_and_steps():
     assert "mr-f" in mathra.render("x", animate=True)["svg"]
 
 
+def test_max_width():
+    tex = "a = b + c + d + e + f + g + h"
+    assert "data-line" not in mathra.tex_to_svg(tex)
+    assert '<g data-line="1">' in mathra.tex_to_svg(tex, max_width=4)
+    r = mathra.render(tex, max_width=4.0)
+    assert r["speech"] == mathra.render(tex)["speech"]
+    assert any(a["rule"] == "L-BRK-1" for a in r["applied"])
+
+
 FONT = pathlib.Path(__file__).resolve().parents[3] / "tools" / "fonts" / "latinmodern-math.otf"
 
 

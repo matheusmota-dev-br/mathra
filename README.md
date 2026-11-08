@@ -138,6 +138,14 @@ With `--animate` (`{ animate: true }` in JavaScript, `animate=True` in Python, `
 $ mathra 'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}' --animate -o quadratic.svg
 ```
 
+### Long equations break into lines
+
+With `--max-width 30em` (`{ maxWidth: 30 }` in JavaScript, `max_width=30` in Python, `max_width: Some(30.0)` in Rust) an equation wider than that is broken into lines, in display and inline style: after a relation (`=`, `≤`, `→`…) first, and only when relations alone are not enough, after `+` and `−` too, as TeX and MathJax do, without repeating the operator. Only the top level of the equation breaks: never a fraction, a root, `\left…\right`, scripts, a group or a table (`align`, `array` and matrices stay whole). Continuation lines start under the right-hand side of the first relation, or 2 em in. Each line is a `<g data-line="k">` of the SVG (S-SVG-12); speech, text and braille do not change, and without the option the SVG is unchanged byte for byte (L-BRK-1). What cannot be broken is drawn as it is, with an `L-BRK-2` note in `applied`.
+
+```console
+$ mathra 'f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3 + a_4 x^4 + a_5 x^5' --max-width 12em -o poly.svg
+```
+
 What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md), and on the site's [evolution page](https://matheusmota-dev-br.github.io/mathra/changelog.html) with the equations drawn live.
 
 ## Install and use
@@ -234,7 +242,7 @@ To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a c
 - commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
 
 ## Benchmark
 

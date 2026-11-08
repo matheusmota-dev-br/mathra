@@ -3,6 +3,7 @@
 
 pub mod alphabet;
 mod arithmetic;
+mod breaking;
 mod diagram;
 pub mod kerning;
 pub mod math_box;
@@ -10,6 +11,7 @@ mod stretch;
 mod table;
 
 pub use alphabet::math_italic;
+pub use breaking::{break_lines, Formula};
 pub use math_box::{Item, MathBox};
 
 use ttf_parser::math::Constants;

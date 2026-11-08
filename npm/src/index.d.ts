@@ -18,6 +18,8 @@ export interface Options {
   steps?: boolean;
   /** The math font the equation is set in: what `loadFont` returned, or its id. Default STIX Two Math. */
   font?: Font | number;
+  /** The widest a line may be, in em. A wider equation is broken after a relation (`=`, `≤`, `→`…), or also after `+` and `−` when relations alone are not enough, only at its top level (never inside a fraction, root, `\left…\right`, scripts or a table), with each line a `<g data-line>` of the SVG. Speech, text and braille do not change. Default: one line, however wide. */
+  maxWidth?: number;
 }
 
 /** A math font loaded with `loadFont`. */

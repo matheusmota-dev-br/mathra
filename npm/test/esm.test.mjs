@@ -62,6 +62,15 @@ test("the writing animation and the steps", () => {
   assert.match(render("x", { animate: true }).svg, /mr-f/);
 });
 
+test("maxWidth breaks the lines", () => {
+  const tex = "a = b + c + d + e + f + g + h";
+  assert.doesNotMatch(texToSvg(tex), /data-line/);
+  assert.match(texToSvg(tex, { maxWidth: 4 }), /<g data-line="1">/);
+  const r = render(tex, { maxWidth: 4 });
+  assert.equal(r.speech, render(tex).speech);
+  assert.ok(r.applied.some((a) => a.rule === "L-BRK-1"));
+});
+
 test("a math font from outside", async () => {
   const { readFile } = await import("node:fs/promises");
   const font = loadFont(await readFile(process.env.MATHRA_TEST_FONT));

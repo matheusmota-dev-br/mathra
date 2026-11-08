@@ -10,6 +10,8 @@ use crate::VERSION;
 
 pub struct Content<'a> {
     pub math_box: &'a MathBox,
+    /// S-SVG-12: the lines of a broken formula, in final coordinates; empty for one line.
+    pub lines: &'a [MathBox],
     pub source: &'a str,
     /// The notation of the source: `latex`, `mathml` or `asciimath`.
     pub input: crate::Input,
@@ -112,9 +114,12 @@ pub fn generate(c: &Content) -> String {
     let (width, total_height) = (right - left, top + bottom);
     // the drawing first: the <svg> carries how many steps it has
     let mut steps = Steps { on: c.steps || c.animate, animate: c.animate, count: 0 };
-    let body = items_svg(math_box, &id, &mut steps);
+    let body = items_svg(math_box, c.lines, &id, &mut steps);
     let animated = if steps.animate && steps.count > 0 { format!("; --mr-step: {}s", n(steps.interval())) } else { String::new() };
-    let counted = if steps.on { format!(r#" data-steps="{}""#, steps.count) } else { String::new() };
+    let mut counted = if steps.on { format!(r#" data-steps="{}""#, steps.count) } else { String::new() };
+    if !c.lines.is_empty() {
+        let _ = write!(counted, r#" data-lines="{}""#, c.lines.len());
+    }
     let _ = write!(
         s,
         r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:mathra="urn:mathra:1" viewBox="{} {} {} {}" width="{}em" height="{}em" style="vertical-align: {}em{animated}" role="img" aria-labelledby="{id}-speech" lang="{}" data-mathra-version="{}"{counted}>"#,
@@ -187,11 +192,18 @@ fn glyph_defs(items: &[Item], id: &str, f: &Font, seen: &mut HashSet<u16>, s: &m
 }
 
 /// S-SVG-5 and S-SVG-10: the drawing, glyphs as `<use>` of their `<path>`, in the order the layout
-/// set them.
-fn items_svg(math_box: &MathBox, id: &str, steps: &mut Steps) -> String {
+/// set them; S-SVG-12: a broken formula, one `<g data-line="k">` per line.
+fn items_svg(math_box: &MathBox, lines: &[MathBox], id: &str, steps: &mut Steps) -> String {
     let mut out = String::new();
     out.push_str(r#"<g fill="currentColor" stroke="none" transform="scale(1,-1)">"#);
-    item_svg(&math_box.items, id, steps, &mut out);
+    if lines.is_empty() {
+        item_svg(&math_box.items, id, steps, &mut out);
+    }
+    for (k, line) in lines.iter().enumerate() {
+        let _ = write!(out, r#"<g data-line="{k}">"#);
+        item_svg(&line.items, id, steps, &mut out);
+        out.push_str("</g>");
+    }
     out.push_str("</g>");
     out
 }

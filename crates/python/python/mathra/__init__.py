@@ -169,7 +169,7 @@ class Language(TypedDict):
     name: str
 
 
-def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None) -> str:
+def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None) -> str:
     """Converts an equation to SVG.
 
     ``locale`` is a language code such as "en", "pt-BR", "fr" or "ja" (see :func:`locales`); ``display``
@@ -178,20 +178,22 @@ def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bo
     the locale's, CMU in pt-BR and es, Nemeth elsewhere). ``animate=True`` makes the SVG write itself in
     the browser, in the order the layout set it (CSS in the SVG); ``steps=True`` numbers each element by
     that order instead (``data-step``, and ``data-steps`` on the ``<svg>``), with no CSS. ``font`` is a
-    math font from :func:`load_font` (default: STIX Two Math). Raises ValueError on input it cannot
-    read.
+    math font from :func:`load_font` (default: STIX Two Math). ``max_width``, in em, breaks a wider
+    equation into lines: after a relation, or also after ``+`` and ``−`` when relations alone are not
+    enough, only at its top level, each line a ``<g data-line>`` of the SVG (default: one line).
+    Raises ValueError on input it cannot read.
     """
-    return _mathra.tex_to_svg(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font))
+    return _mathra.tex_to_svg(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width)
 
 
-def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None) -> str:
+def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None) -> str:
     """The tree of meaning, as a JSON string."""
-    return _mathra.tex_to_tree(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font))
+    return _mathra.tex_to_tree(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width)
 
 
-def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None) -> Result:
+def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None) -> Result:
     """Every output at once: svg, speech, text, braille, braille_code, tree, applied and warnings."""
-    return json.loads(_mathra.render(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font)))
+    return json.loads(_mathra.render(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width))
 
 
 def locales() -> List[Language]:
