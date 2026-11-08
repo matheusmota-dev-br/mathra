@@ -34,11 +34,46 @@ pub fn convert_in(
     steps: bool,
     font: Option<u32>,
 ) -> Result<mathra::Output, String> {
+    convert_document(tex, locale, display, strict, input, braille, animate, steps, font, None, None)
+}
+
+/// `convert_in`, for an equation of a document: `labels` and `citations` are JSON objects from a key to
+/// its number (a string or a number), as `{"eq:a": 3}`, for `\ref`, `\eqref` and `\cite`.
+#[allow(clippy::too_many_arguments)]
+pub fn convert_document(
+    tex: &str,
+    locale: Option<&str>,
+    display: bool,
+    strict: bool,
+    input: Option<&str>,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<u32>,
+    labels: Option<&str>,
+    citations: Option<&str>,
+) -> Result<mathra::Output, String> {
     let locale = locale.map_or(Ok(mathra::Locale::default()), str::parse)?;
     let input = input.map_or(Ok(mathra::Input::default()), str::parse)?;
     let braille = braille.map(str::parse).transpose()?;
     let font = font_by_id(font)?;
-    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, ..Default::default() }).map_err(|e| e.to_string())
+    let labels = numbers(labels, "labels")?;
+    let citations = numbers(citations, "citations")?;
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, labels, citations, ..Default::default() }).map_err(|e| e.to_string())
+}
+
+/// A JSON object from keys to numbers (strings or numbers) as `mathra::Labels`; none, empty.
+pub fn numbers(json: Option<&str>, what: &str) -> Result<mathra::Labels, String> {
+    let Some(json) = json else { return Ok(mathra::Labels::new()) };
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("{what}: {e}"))?;
+    let serde_json::Value::Object(map) = value else { return Err(format!("{what}: an object from keys to numbers, as {{\"eq:a\": 3}}")) };
+    map.into_iter()
+        .map(|(key, n)| match n {
+            serde_json::Value::String(s) => Ok((key, s)),
+            serde_json::Value::Number(n) => Ok((key, n.to_string())),
+            other => Err(format!("{what}: {key} is {other}, not a string or a number")),
+        })
+        .collect()
 }
 
 /// A font loaded with `load_font`, by the id it gave; none, STIX Two Math.
@@ -88,7 +123,8 @@ pub fn render_json_in(
 
 /// Converts an equation to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja";
 /// `display` defaults to true, `strict` to false; `input` is "latex" (default), "mathml" or "asciimath";
-/// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math).
+/// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math);
+/// `labels` and `citations` are JSON objects from keys to numbers (see `convert_document`).
 #[wasm_bindgen(js_name = texToSvg)]
 #[allow(clippy::too_many_arguments)]
 pub fn tex_to_svg(
@@ -101,8 +137,10 @@ pub fn tex_to_svg(
     animate: Option<bool>,
     steps: Option<bool>,
     font: Option<u32>,
+    labels: Option<String>,
+    citations: Option<String>,
 ) -> Result<String, JsError> {
-    convert_in(
+    convert_document(
         tex,
         locale.as_deref(),
         display.unwrap_or(true),
@@ -112,6 +150,8 @@ pub fn tex_to_svg(
         animate.unwrap_or(false),
         steps.unwrap_or(false),
         font,
+        labels.as_deref(),
+        citations.as_deref(),
     )
     .map(|r| r.svg)
     .map_err(|e| JsError::new(&e))
@@ -135,7 +175,8 @@ pub fn locales() -> String {
 }
 
 /// Every output in one JSON string (see `render_json`). `display` defaults to true, `strict` to false,
-/// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave.
+/// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave; `labels` and
+/// `citations` are JSON objects from keys to numbers (see `convert_document`).
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render(
@@ -148,8 +189,10 @@ pub fn render(
     animate: Option<bool>,
     steps: Option<bool>,
     font: Option<u32>,
+    labels: Option<String>,
+    citations: Option<String>,
 ) -> Result<String, JsError> {
-    render_json_in(
+    convert_document(
         tex,
         locale.as_deref(),
         display.unwrap_or(true),
@@ -159,7 +202,10 @@ pub fn render(
         animate.unwrap_or(false),
         steps.unwrap_or(false),
         font,
+        labels.as_deref(),
+        citations.as_deref(),
     )
+    .map(|r| r.to_json())
     .map_err(|e| JsError::new(&e))
 }
 

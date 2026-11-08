@@ -141,6 +141,31 @@ fn batch_one_line_per_equation() {
 }
 
 #[test]
+fn labels_and_citations() {
+    let o = mathra(&[r"\text{by } \eqref{eq:a} \cite{knuth}", "--label", "eq:a=3", "--cite", "knuth=1", "--text", "--strict"], None);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "by (3)[1]");
+    // an unknown label: ?? with a warning, refused in strict mode
+    let o = mathra(&[r"\eqref{eq:a}", "--text"], None);
+    assert_eq!(stdout(&o).trim(), "(??)");
+    assert!(stderr(&o).contains("E-REC-9"), "{}", stderr(&o));
+    assert_eq!(mathra(&[r"\eqref{eq:a}", "--strict"], None).status.code(), Some(1));
+    for bad in ["eq:a", "=3"] {
+        let o = mathra(&["x", "--label", bad], None);
+        assert_eq!(o.status.code(), Some(2), "{bad}");
+        assert!(stderr(&o).contains("key=number"), "{}", stderr(&o));
+    }
+}
+
+#[test]
+fn batch_labels_count_for_the_lines_after_them() {
+    let o = mathra(&["--batch", "--strict"], Some(b"\\eqref{eq:a}\na = b \\label{eq:a} \\tag{3}\n\\text{by } \\eqref{eq:a}\n"));
+    let lines: Vec<String> = stdout(&o).lines().map(str::to_string).collect();
+    assert!(lines[0].starts_with("error\t"), "{lines:?}");
+    assert_eq!(&lines[1..], ["ok", "ok"], "{lines:?}");
+}
+
+#[test]
 fn batch_flags_non_utf8_line_and_continues() {
     let o = mathra(&["--batch"], Some(b"x\n\xff\xfe\ny\n"));
     assert!(o.status.success());

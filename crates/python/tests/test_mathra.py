@@ -57,6 +57,17 @@ def test_display_and_strict():
         mathra.tex_to_svg(r"\vertA\vert", strict=True)
 
 
+def test_labels_and_citations():
+    numbers = dict(labels={"eq:a": 3, "eq:b": "4a"}, citations={"knuth": 1})
+    assert mathra.render(r"\eqref{eq:a} \ref{eq:b} \cite{knuth}", strict=True, **numbers)["text"] == "(3)4a[1]"
+    assert "(3)" in mathra.tex_to_svg(r"\eqref{eq:a}", **numbers)
+    unknown = mathra.render(r"\eqref{eq:z}")
+    assert unknown["text"] == "(??)"
+    assert unknown["warnings"][0]["rule"] == "E-REC-9"
+    with pytest.raises(ValueError, match="no number"):
+        mathra.tex_to_svg(r"\cite{knuth}", strict=True)
+
+
 def test_render_returns_every_output():
     r = mathra.render(r"\frac{3}{4}", locale="fr")
     assert r["speech"] == "trois quarts"

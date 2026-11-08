@@ -11,6 +11,7 @@ mathra renders **equations**. The goal is to convert 100% of equations; what is 
 | Column arithmetic (`\divchave`, `\contaarmada`), factoring with `array` | — | grid of digits |
 | Commutative diagrams: amscd (`CD`), `tikz-cd`, `xymatrix` | `tikz-cd`'s TikZ keys beyond arrows (`\tikzcdset`, nodes placed by coordinates, `\draw` inside the diagram) | a grid of cells plus arrows between them: each arrow is fixed by its two cells, its bend and its style, so no coordinate comes from the author |
 | Substitution macros: `\newcommand`, `\renewcommand`, `\providecommand`, `\def` with `#1…#9`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment` without arguments | `\ifx`, `\expandafter`, `\catcode`, `\def` with delimited parameters | replacing text is reading; conditionals and category changes are running a program |
+| Cross-references: `\ref`, `\eqref` and `\cite` show the numbers the caller gives (`labels`, `citations`), `\tag` numbers its line (L-ENT-5) | numbering equations on their own, bibliographies | the document holds the numbers; an equation converted alone can only show what it is given |
 | — | TikZ, pgfplots, `circuitikz` | drawing with coordinates |
 
 ## The exception: chemistry

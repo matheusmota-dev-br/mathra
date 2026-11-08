@@ -5,7 +5,9 @@ function args(options) {
   const o = typeof options === "string" ? { locale: options } : options ?? {};
   // a font is what `loadFont` returned, or its id
   const font = typeof o.font === "object" && o.font !== null ? o.font.id : o.font;
-  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null];
+  // labels and citations: objects from a key to its number, passed to the wasm as JSON
+  const numbers = (map) => (map == null ? null : JSON.stringify(map));
+  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null, numbers(o.labels), numbers(o.citations)];
 }
 
 // mathfonts: a catalog of math fonts checked with mathra. Nothing is downloaded unless asked for.
