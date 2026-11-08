@@ -1346,7 +1346,7 @@ impl Reader<'_> {
                 let below = self.optional_argument()?;
                 let above = self.argument()?;
                 let above = if empty(&above) { None } else { Some(Box::new(above)) };
-                Node::Arrow { symbol, above, below: below.map(Box::new) }
+                Node::Arrow { symbol, above, below: below.filter(|b| !empty(b)).map(Box::new) }
             }
             "cancel" | "bcancel" | "xcancel" | "sout" => {
                 let kind = match name {
@@ -2435,10 +2435,8 @@ impl Reader<'_> {
                     }
                 }
                 ' ' => i += 1,
-                other => {
-                    self.tolerate(rules::E_REC_9, col, format!("unsupported array column: '{other}'"), "ignored")?;
-                    i += 1;
-                }
+                // anything else, the array package's >{…} and <{…} among it (#177)
+                _ => i = self.other_column(&c, i, col)?,
             }
         }
         Ok(())
@@ -2585,7 +2583,7 @@ impl Reader<'_> {
                             current.push(ITALIC_START);
                             open_until.push((level, ITALIC_END));
                         }
-                        "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "rm" | "sf" | "small" | "scriptsize" | "footnotesize" | "tiny" | "large"
+                        "textrm" | "textsf" | "textsl" | "text" | "mbox" | "textup" | "textnormal" | "rm" | "sf" | "small" | "scriptsize" | "footnotesize" | "tiny" | "large"
                         | "normalsize" | "mdseries" | "selectfont" => {}
                         // L-ENT-3: the size comes from whoever uses the SVG
                         "fontsize" => {
@@ -2600,7 +2598,7 @@ impl Reader<'_> {
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
                         // L-CHE-1: mhchem typesets its formulas and quantities in text as in math
-                        "ce" | "pu" => {
+                        "ce" | "pu" | "cf" => {
                             let tex = format!("\\{name}{}", text_arguments(&c, &mut i, "{"));
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
@@ -2683,8 +2681,8 @@ impl Reader<'_> {
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
-                        "phantom" | "hphantom" | "vphantom" => {
-                            // the argument stays text: the room it takes is the text's
+                        "phantom" | "hphantom" | "vphantom" | "sout" | "textcircled" => {
+                            // the argument stays text: the room it takes is the text's (#177: also what \sout strikes and \textcircled circles)
                             let arg = text_arguments(&c, &mut i, "{");
                             let arg = if arg.starts_with('{') { arg } else { format!("{{{arg}}}") };
                             split_text(&mut parts, &mut current, &open_until);
@@ -3766,6 +3764,109 @@ impl Reader<'_> {
         }
         Ok(node)
     }
+
+    /// #177: colortbl's colors, which mathra's tables have no place for, and the array package's
+    /// `\newcolumntype`, which mathra does not expand: read with their arguments and ignored (E-REC-9).
+    /// MathJax's `\Newextarrow{\cs}{lspace,rspace}{code}` defines `\cs[below]{above}`: an extensible
+    /// arrow mathra knows (`\xrightarrow` and family) when the code is its arrow, else the character
+    /// with the labels over and under it, not stretched (E-REC-9). What is left in place of the command.
+    #[inline(never)]
+    fn table_and_arrow_definitions(&mut self, name: &str, col: usize) -> R<String> {
+        match name {
+            "newcolumntype" => {
+                let letter = self.raw_text()?;
+                self.raw_optional();
+                self.raw_text()?;
+                self.tolerate(rules::E_REC_9, col, format!("\\newcolumntype{{{}}}: new column types are not expanded", letter.trim()), "ignored")?;
+            }
+            "Newextarrow" => {
+                let target = self.raw_text()?.trim().trim_start_matches('\\').to_string();
+                self.raw_text()?;
+                let raw = self.raw_text()?;
+                let code = raw.trim();
+                let symbol = match code.strip_prefix("0x").or_else(|| code.strip_prefix("0X")) {
+                    Some(hex) => u32::from_str_radix(hex, 16).ok(),
+                    None => code.parse::<u32>().ok(),
+                }
+                .and_then(char::from_u32)
+                .ok_or(Error::Syntax { column: col, message: format!("\\Newextarrow: {code} is not a character code") })?;
+                let known = match symbol {
+                    '→' => "xrightarrow",
+                    '←' => "xleftarrow",
+                    '⇒' => "xRightarrow",
+                    '⇐' => "xLeftarrow",
+                    '↔' => "xleftrightarrow",
+                    '⇔' => "xLeftrightarrow",
+                    '⇌' => "xrightleftharpoons",
+                    '⇋' => "xleftrightharpoons",
+                    '↦' => "xmapsto",
+                    '↪' => "xhookrightarrow",
+                    '↩' => "xhookleftarrow",
+                    '↠' => "xtwoheadrightarrow",
+                    '↞' => "xtwoheadleftarrow",
+                    '⇀' => "xrightharpoonup",
+                    '⇁' => "xrightharpoondown",
+                    '↼' => "xleftharpoonup",
+                    '↽' => "xleftharpoondown",
+                    '⇄' => "xtofrom",
+                    '=' => "xlongequal",
+                    _ => "",
+                };
+                let body = if known.is_empty() {
+                    self.tolerate(
+                        rules::E_REC_9,
+                        col,
+                        format!("\\Newextarrow{{\\{target}}}: U+{:04X} has no extensible form in mathra", symbol as u32),
+                        "drawn with its labels over and under it, not stretched",
+                    )?;
+                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{{:X}}}}}}}}}", symbol as u32)
+                } else {
+                    format!("\\{known}[#1]{{#2}}")
+                };
+                self.registry.note(rules::L_MAC_1, format!("macro \\{target} defined with 2 argument(s)"));
+                self.macros.commands.insert(target, Macro { arguments: 2, default_arg: Some(String::new()), body, paired: None });
+            }
+            _ => {
+                self.raw_optional();
+                let color = self.raw_text()?;
+                if matches!(name, "rowcolor" | "columncolor") {
+                    self.raw_optional();
+                    self.raw_optional();
+                }
+                self.tolerate(rules::E_REC_9, col, format!("\\{name}{{{}}}: mathra's tables have no colors", color.trim()), "ignored")?;
+            }
+        }
+        Ok(String::new())
+    }
+
+    /// A character of an array's column specification that is no column mathra knows, at `spec[at]`:
+    /// ignored (E-REC-9); the position after it. #177: the `>{…}` or `<{…}` of the array package,
+    /// declarations put before or after each cell of the column, which mathra does not apply, are
+    /// skipped with their group. Out of line, so the frame of `array_columns`, which `*{n}{…}` nests,
+    /// does not grow.
+    #[inline(never)]
+    fn other_column(&mut self, spec: &[char], at: usize, col: usize) -> R<usize> {
+        if !(matches!(spec[at], '>' | '<') && spec.get(at + 1) == Some(&'{')) {
+            self.tolerate(rules::E_REC_9, col, format!("unsupported array column: '{}'", spec[at]), "ignored")?;
+            return Ok(at + 1);
+        }
+        let mut level = 0;
+        let mut end = at + 1;
+        while end < spec.len() {
+            match spec[end] {
+                '{' => level += 1,
+                '}' => level -= 1,
+                _ => {}
+            }
+            end += 1;
+            if level == 0 {
+                break;
+            }
+        }
+        let group: String = spec[at + 1..end].iter().collect();
+        self.tolerate(rules::E_REC_9, col, format!("{}{group} of an array column: declarations are not applied to the cells", spec[at]), "ignored")?;
+        Ok(end)
+    }
 }
 
 /// The CSS properties `\style` and `\htmlStyle` keep: they change how the content looks, and cannot
@@ -4378,6 +4479,20 @@ impl Reader<'_> {
                 let b = self.optional_braced()?.unwrap_or_else(|| a.clone());
                 format!("\\left| {a} \\right\\rangle\\!\\left\\langle {b} \\right|")
             }
+            // #177: the \Ketbra braket.sty suggests (its comments: each side as tall as both)
+            "Ketbra" => {
+                let a = self.raw_text()?;
+                let b = self.raw_text()?;
+                format!("\\left|{{{a}}}\\vphantom{{{b}}}\\right\\rangle\\left\\langle{{{b}}}\\vphantom{{{a}}}\\right|")
+            }
+            // bm's \hm: heavy bold where a heavy math version exists, \bm otherwise (`\let\hm\bm`)
+            "hm" => format!("\\bm{{{}}}", self.raw_text()?),
+            // MathJax's \data{key=value}{math}, its html extension: KaTeX's \htmlData
+            "data" => "\\htmlData".into(),
+            // mhchem's deprecated \cf, its old name for \ce
+            "cf" => format!("\\ce{{{}}}", self.raw_text()?),
+            // colortbl, the array package's \newcolumntype and MathJax's \Newextarrow
+            "cellcolor" | "rowcolor" | "columncolor" | "arrayrulecolor" | "newcolumntype" | "Newextarrow" => self.table_and_arrow_definitions(name, col)?,
             "expval" | "ev" | "expectationvalue" => {
                 let a = self.raw_text()?;
                 match self.optional_braced()? {

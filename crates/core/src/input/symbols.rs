@@ -697,6 +697,14 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("invneg", '⌐', Rel),
         ("checked", '✓', Ord),
         ("diameter", '⌀', Ord),
+        // #177: wasysym's \smiley; revtex's \openone, the identity drawn as a double-struck one (revsymb
+        // overprints two 1s); unicode-math's \lAngle, \rAngle and \wedgeq, which is mathabx's \corresponds
+        ("smiley", '☺', Ord),
+        ("openone", '𝟙', Ord),
+        ("lAngle", '⟪', Open),
+        ("rAngle", '⟫', Close),
+        ("wedgeq", '≙', Rel),
+        ("corresponds", '≙', Rel),
         // unicode-math
         ("imageof", '⊷', Rel),
         ("origof", '⊶', Rel),
@@ -867,6 +875,16 @@ pub fn greek(name: &str) -> Option<char> {
         "Rho" => 'Ρ',
         "Tau" => 'Τ',
         "Chi" => 'Χ',
+        // #177: the archaic letters, as texvc (LaTeXML's texvc.sty.ltxml) and arevmath (unimathsymbols.txt)
+        // map them: \Coppa is the archaic koppa Ϙ, \Koppa the numeral one Ϟ
+        "Coppa" => 'Ϙ',
+        "coppa" => 'ϙ',
+        "Koppa" => 'Ϟ',
+        "koppa" => 'ϟ',
+        "Stigma" => 'Ϛ',
+        "stigma" => 'ϛ',
+        "Sampi" => 'Ϡ',
+        "sampi" => 'ϡ',
         "upgamma" => 'γ',
         "digamma" => 'ϝ',
         "Digamma" => 'Ϝ',
@@ -1056,6 +1074,9 @@ pub fn delimiter_command(name: &str) -> Option<Option<char>> {
         "Rbag" => '⟆',
         "llparenthesis" => '⦇',
         "rrparenthesis" => '⦈',
+        // #177: unicode-math's double angle brackets
+        "lAngle" => '⟪',
+        "rAngle" => '⟫',
         "rgroup" => '⟯',
         "lmoustache" => '⎰',
         "rmoustache" => '⎱',
