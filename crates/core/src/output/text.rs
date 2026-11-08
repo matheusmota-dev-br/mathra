@@ -93,8 +93,9 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         Node::Scripts { base, sup, sub } => {
             // sin²x, log₂x, ∑_(i = 1)^n i: the scripts stick to the function name or the large
             // operator, and the space goes after them
-            let spaced = matches!(base.as_ref(), Node::Function { .. } | Node::LargeOperator { .. });
-            match base.as_ref() {
+            let base = base.operator_core();
+            let spaced = matches!(base, Node::Function { .. } | Node::LargeOperator { .. });
+            match base {
                 Node::Function { name, .. } => s.push_str(&loc.function_name(name)),
                 Node::LargeOperator { symbol, .. } => s.push(*symbol),
                 other => write_node(other, loc, s),

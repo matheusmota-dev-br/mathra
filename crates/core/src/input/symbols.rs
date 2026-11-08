@@ -759,7 +759,7 @@ pub fn function(name: &str) -> Option<(&'static str, bool)> {
 /// A large operator that takes its limits under and over in display style when nothing says otherwise
 /// (∑, ⋃), as [`large_operator`] gives them; the integrals take them at the side.
 pub fn limits_by_default(c: char) -> bool {
-    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄')
+    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄' | '⨉')
 }
 
 /// Large operators and whether, by default, they take limits below and above in display style.
@@ -777,6 +777,8 @@ pub fn large_operator(name: &str) -> Option<(char, bool)> {
         "bigwedge" => ('⋀', true),
         "bigsqcup" => ('⨆', true),
         "biguplus" => ('⨄', true),
+        // mathtools
+        "bigtimes" => ('⨉', true),
         "int" => ('∫', false),
         // plain TeX's \intop and \ointop: the integral that takes limits
         "intop" => ('∫', true),

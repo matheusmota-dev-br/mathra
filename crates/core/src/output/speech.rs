@@ -314,6 +314,7 @@ impl Speaker {
     }
 
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>) {
+        let base = base.operator_core();
         if let Node::LargeOperator { symbol, .. } = base {
             let name = large_operator(*symbol, self.loc);
             let from = sub.map(|s| self.spoken(s));

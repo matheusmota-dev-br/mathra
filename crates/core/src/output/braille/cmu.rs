@@ -468,6 +468,7 @@ impl Writer {
     }
 
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>) {
+        let base = base.operator_core();
         match base {
             Node::LargeOperator { symbol, .. } => return self.large_operator(*symbol, sub, sup),
             Node::Function { name, .. } if name == "lim" => {

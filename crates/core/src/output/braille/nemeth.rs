@@ -551,6 +551,7 @@ impl Writer {
     }
 
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>, ctx: &Ctx) {
+        let base = base.operator_core();
         // Σ, ∏, lim, max…: limits under and over, as a modified expression (§15)
         let limits = match base {
             // integrals take their bounds as scripts (Ex. 23-16), unless print stacks them (Ex. 23-17)
@@ -1027,7 +1028,7 @@ fn sign(c: char) -> Option<(&'static str, Kind)> {
 fn is_function(n: &Node) -> bool {
     match n {
         Node::Function { .. } => true,
-        Node::Scripts { base, .. } => matches!(**base, Node::Function { .. }),
+        Node::Scripts { base, .. } => matches!(base.operator_core(), Node::Function { .. }),
         _ => false,
     }
 }

@@ -13,6 +13,7 @@ use super::symbols::{self, Symbol};
 mod chemistry;
 mod color;
 mod diagram;
+mod mathtools;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
     read_with(tex, locale, registry, true)
@@ -108,8 +109,18 @@ struct Macro {
     arguments: usize,
     default_arg: Option<String>,
     body: String,
-    /// `\DeclarePairedDelimiter`: opening and closing delimiters.
-    paired: Option<(String, String)>,
+    /// `\DeclarePairedDelimiter` and mathtools' X and XPP forms: the delimiters around the body.
+    paired: Option<Box<Paired>>,
+}
+
+/// The delimiters of a mathtools paired delimiter, and what `\DeclarePairedDelimiterXPP` puts before
+/// and after them.
+#[derive(Clone)]
+struct Paired {
+    open: String,
+    close: String,
+    pre: String,
+    post: String,
 }
 
 /// More than this is almost certainly a macro that calls itself.
@@ -2120,7 +2131,7 @@ impl Reader<'_> {
         if matches!(base, "alignat" | "alignedat" | "flalignat") {
             self.raw_text()?;
         }
-        if matches!(base, "pmatrix" | "bmatrix" | "matrix" | "vmatrix" | "Bmatrix" | "Vmatrix") && name.ends_with('*') {
+        if matches!(base, "pmatrix" | "bmatrix" | "matrix" | "vmatrix" | "Bmatrix" | "Vmatrix" | "smallmatrix") && name.ends_with('*') {
             if let Some(a) = self.raw_optional() {
                 columns = vec![a.trim().chars().next().unwrap_or('c'); 1];
             }
@@ -3930,20 +3941,15 @@ impl Reader<'_> {
 
     fn expand(&mut self, start: usize, m: &Macro, col: usize) -> R<()> {
         self.macros.expansions += 1;
-        if let Some((open, close)) = &m.paired {
-            // \abs{x} → \mathopen{|}x\mathclose{|};  \abs*{x} → \left|x\right|
-            let star = self.current() == Some('*');
+        let mut star = false;
+        let mut size = None;
+        if m.paired.is_some() {
+            // \abs{x} → \mathopen{|}x\mathclose{|};  \abs*{x} → \left|x\right|;  \abs[\big]{x} → \bigl|x\bigr|
+            star = self.current() == Some('*');
             if star {
                 self.pos += 1;
             }
-            let size = self.raw_optional();
-            let x = self.raw_text()?;
-            let text = match (star, size) {
-                (true, _) => format!("\\left{open} {x} \\right{close}"),
-                (false, Some(t)) => format!("{t}l{open} {x} {t}r{close}"),
-                (false, None) => format!("\\mathopen{{{open}}} {x} \\mathclose{{{close}}}"),
-            };
-            return self.inject(start, &text, col);
+            size = self.raw_optional();
         }
         let mut args = Vec::new();
         if let Some(default_arg) = &m.default_arg {
@@ -3959,10 +3965,16 @@ impl Reader<'_> {
             if c[i] == '#' && i + 1 < c.len() {
                 if let Some(d) = c[i + 1].to_digit(10) {
                     // #0 does not exist in TeX: it disappears, like a missing argument
+                    // a paired delimiter's argument goes in as written, as TeX puts it in
                     if let Some(a) = (d as usize).checked_sub(1).and_then(|k| args.get(k)) {
-                        body.push('{');
+                        let braces = m.paired.is_none();
+                        if braces {
+                            body.push('{');
+                        }
                         body.push_str(a);
-                        body.push('}');
+                        if braces {
+                            body.push('}');
+                        }
                     }
                     i += 2;
                     continue;
@@ -3970,6 +3982,17 @@ impl Reader<'_> {
             }
             body.push(c[i]);
             i += 1;
+        }
+        if let Some(p) = &m.paired {
+            // mathtools' \delimsize: the size the delimiters got, \middle with the star
+            let delimsize = if star { "\\middle" } else { size.as_deref().unwrap_or("") };
+            let x = body.replace("\\delimsize", delimsize);
+            let (open, close, pre, post) = (&p.open, &p.close, &p.pre, &p.post);
+            body = match (star, size) {
+                (true, _) => format!("{pre}\\left{open} {x} \\right{close}{post}"),
+                (false, Some(t)) => format!("{pre}{t}l{open} {x} {t}r{close}{post}"),
+                (false, None) => format!("{pre}\\mathopen{{{open}}} {x} \\mathclose{{{close}}}{post}"),
+            };
         }
         // a space keeps the macro from sticking to what follows (\foo x)
         body.push(' ');
@@ -4071,11 +4094,21 @@ impl Reader<'_> {
                 self.macros.commands.insert(target, Macro { arguments: 0, default_arg: None, body, paired: None });
                 Ok(true)
             }
-            "DeclarePairedDelimiter" => {
+            // mathtools: \DeclarePairedDelimiter{\abs}{\lvert}{\rvert}; the X form takes [n] arguments and
+            // a body, where \delimsize is the size of the delimiters; XPP adds what goes before and after
+            "DeclarePairedDelimiter" | "DeclarePairedDelimiterX" | "DeclarePairedDelimiterXPP" => {
                 let target = self.defined_name(col)?;
+                let arguments = match self.raw_optional() {
+                    Some(n) => n.trim().parse::<usize>().map_err(|_| Error::Syntax { column: col, message: format!("invalid number of arguments: {n}") })?,
+                    None => 1,
+                };
+                let pre = if name == "DeclarePairedDelimiterXPP" { self.raw_text()? } else { String::new() };
                 let open = self.raw_text()?.trim().to_string();
                 let close = self.raw_text()?.trim().to_string();
-                self.macros.commands.insert(target, Macro { arguments: 1, default_arg: None, body: String::new(), paired: Some((open, close)) });
+                let post = if name == "DeclarePairedDelimiterXPP" { self.raw_text()? } else { String::new() };
+                let body = if name == "DeclarePairedDelimiter" { "#1".to_string() } else { self.raw_text()? };
+                let paired = Some(Box::new(Paired { open, close, pre, post }));
+                self.macros.commands.insert(target, Macro { arguments, default_arg: None, body, paired });
                 Ok(true)
             }
             "newenvironment" | "renewenvironment" => {
@@ -4491,10 +4524,7 @@ impl Reader<'_> {
                 let u = self.raw_text()?;
                 format!("{v}\\,\\mathrm{{{u}}}")
             }
-            _ => {
-                let _ = col;
-                return Ok(None);
-            }
+            _ => return self.mathtools_expansion(name, col),
         }))
     }
 }
