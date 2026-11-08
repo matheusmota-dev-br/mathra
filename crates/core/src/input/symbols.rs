@@ -318,11 +318,13 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("leftarrow", '←', Rel),
         ("leftrightarrow", '↔', Rel),
         ("Rightarrow", '⇒', Rel),
-        ("implies", '⇒', Rel),
+        // #250: amsmath's \implies, \impliedby and \iff are the long arrows (\;\Longrightarrow\;): the
+        // thick space on each side is added where they are read (`Reader::long_implication`)
+        ("implies", '⟹', Rel),
         ("Leftarrow", '⇐', Rel),
-        ("impliedby", '⇐', Rel),
+        ("impliedby", '⟸', Rel),
         ("Leftrightarrow", '⇔', Rel),
-        ("iff", '⇔', Rel),
+        ("iff", '⟺', Rel),
         ("longrightarrow", '⟶', Rel),
         ("longleftarrow", '⟵', Rel),
         ("longleftrightarrow", '⟷', Rel),

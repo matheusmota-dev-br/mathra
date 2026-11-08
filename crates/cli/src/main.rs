@@ -286,7 +286,9 @@ fn main() -> ExitCode {
     let tex = match args.tex.clone() {
         Some(t) => t,
         None => match io::read_to_string(io::stdin()) {
-            Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
+            // the reader trims the input itself: a form feed that starts it (a \frac JSON ate) or the
+            // space of a control space that ends it (`a\ `, #254) are not whitespace to cut
+            Ok(t) if !t.trim().is_empty() => t,
             _ => {
                 eprint!("{HELP}");
                 return ExitCode::from(2);

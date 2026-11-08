@@ -35,7 +35,7 @@ fn e_rec_1_unknown_command() {
 #[test]
 fn e_rec_2_json_escapes() {
     assert_eq!(tolerant(r"a²+b").text, "a² + b");
-    assert_eq!(warning_rules(r"x\nb) y"), vec!["E-REC-2"]);
+    assert_eq!(warning_rules(r"x\u00b2\nb) y"), vec!["E-REC-2", "E-REC-2"]);
 }
 
 #[test]
@@ -402,9 +402,11 @@ fn real_line_breaks_and_tabs_are_whitespace() {
         assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
         assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
     }
-    // the literal escape is read only without real whitespace: a JSON string has none
-    assert_eq!(warning_rules(r"x\nb) y"), ["E-REC-2"]);
-    assert_eq!(warning_rules("x\\nb)\ny"), ["E-REC-1"]);
+    // the literal escape is read only without real whitespace (a JSON string has none) and with another
+    // sign of JSON (#253)
+    assert_eq!(warning_rules(r"x\u00b2\nb) y"), ["E-REC-2", "E-REC-2"]);
+    assert_eq!(warning_rules("x\u{07}lpha\\nb)\ny"), ["E-REC-2", "E-REC-1"]);
+    assert_eq!(warning_rules(r"x\nb) y"), ["E-REC-1"]);
     // a tab before "h" never rebuilds KaTeX's \th, even when the rest looks JSON-decoded
     assert!(!tolerant("x\u{0C}rac{1}{2}\th").text.contains("tanh"));
 }
@@ -413,7 +415,14 @@ fn real_line_breaks_and_tabs_are_whitespace() {
 /// the letters of a known command.
 #[test]
 fn commands_eaten_by_json_are_still_rebuilt() {
-    for (tex, meant) in [("a \neq b", r"a \neq b"), ("\u{0C}rac{1}{2} \times 3", r"\frac{1}{2} \times 3"), ("x \to y\n", r"x \to y"), ("\\left( x \right)", r"\left( x \right)")] {
+    // (#253: a tab or a line break is rebuilt only when the input shows another sign of JSON, here the form
+    // feed of \frac)
+    for (tex, meant) in [
+        ("\u{0C}rac{1}{2} \neq b", r"\frac{1}{2} \neq b"),
+        ("\u{0C}rac{1}{2} \times 3", r"\frac{1}{2} \times 3"),
+        ("\u{0C}rac{1}{2} \to y\n", r"\frac{1}{2} \to y"),
+        ("\u{0C}rac{1}{2} \\left( x \right)", r"\frac{1}{2} \left( x \right)"),
+    ] {
         let out = tolerant(tex);
         assert_eq!(out.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), ["E-REC-2"], "{tex:?}");
         assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");

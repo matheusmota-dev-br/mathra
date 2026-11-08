@@ -73,12 +73,30 @@ fn lone_trailing_backslash_is_ignored() {
 }
 
 #[test]
+fn a_control_space_that_ends_the_input_is_a_space() {
+    // #254: trimming the input does not cut the space of `\ `; with no warning, in both modes
+    has(&tree(r"a\ "), &["Space { em: 0.333 }"]);
+    for tex in [r"\ B - J\ ", r"\,\ \ 2\Bar{W}\,\ ", "a\\ \n", "a\\\t"] {
+        has(&tree(tex), &["Space { em: 0.333 }"]);
+    }
+    // a doubled backslash at the end is a line break, still trimmed with what follows it
+    assert_eq!(tree(r"a\\ "), tree(r"a\\"));
+}
+
+#[test]
 fn json_control_characters_become_commands() {
-    // \v, \a, \r and \n stored unescaped become VT, BEL, CR and LF
-    for (tex, expected) in [("\u{0B}ec{v}", "Accent"), ("\u{07}lpha", "α"), ("\\left( x \right)", "Delimited"), ("a \neq b", "≠")] {
+    // \v, \a, \r and \n stored unescaped become VT, BEL, CR and LF; a CR or an LF is rebuilt only when the
+    // input shows another sign of JSON (#253): here the BEL of \alpha
+    for (tex, expected) in [("\u{0B}ec{v}", "Accent"), ("\u{07}lpha", "α"), ("\\left( x \right) \u{07}lpha", "Delimited"), ("a \neq b \u{07}lpha", "≠")] {
         let (t, a) = tolerant(tex);
         assert!(t.contains(expected), "{tex:?}: {t}");
         assert!(a.iter().any(|a| a.starts_with("E-REC-2")), "{tex:?}: {a:?}");
+    }
+    // alone, a line break is whitespace, as in TeX: the letters after it are read as written
+    for (tex, meant) in [("x,\nu", "x, u"), ("\\ldots,\ne_n", r"\ldots, e_n"), ("a \neq b", "a eq b")] {
+        let (t, a) = tolerant(tex);
+        assert!(a.is_empty(), "{tex:?}: {a:?}");
+        assert_eq!(t, tolerant(meant).0, "{tex:?}");
     }
 }
 
@@ -1264,8 +1282,9 @@ fn json_escapes_and_backslashes_before_symbols() {
     has(&recovers(r#"\"a"#, "E-REC-1"), &["Accent", "\"a\""]);
     has(&recovers(r#"\"5"#, "E-REC-1"), &["\"5\""]);
     has(&recovers(r"\5", "E-REC-1"), &["\"5\""]);
-    // JSON \t only when the name is short: \tx is tab + x, \txyz is an unknown command
-    has(&recovers(r"a\tx", "E-REC-2"), &["\"x\""]);
+    // JSON \t only when the input shows another sign of JSON (#253, here \u00b2): \tx is tab + x
+    has(&recovers(r"x\u00b2 a\tx", "E-REC-2"), &["\"x\""]);
+    has(&recovers(r"a\tx", "E-REC-1"), &["\\\\tx"]);
     has(&recovers(r"a\txyz", "E-REC-1"), &["\\\\txyz"]);
     assert!(strict_error(r"\foobar").contains("unsupported command"));
 }
@@ -1354,8 +1373,10 @@ fn unknown_negation_of_a_known_relation_is_drawn_whole() {
     has(&t, &["\\\\nlesssim"]);
     let (_, warnings) = tolerant(r"a \nlesssim b");
     assert!(warnings.iter().any(|w| w.contains("drawn in red")), "{warnings:?}");
-    // a \n before something that is not a relation is still a JSON line break
-    has(&recovers(r"x\nb) y", "E-REC-2"), &["\"b\""]);
+    // a \n before something that is not a relation is a JSON line break when the input shows another sign
+    // of JSON (#253, here \u00b2); alone, \nb is a command mathra does not know
+    has(&recovers(r"x\u00b2\nb) y", "E-REC-2"), &["\"b\""]);
+    has(&recovers(r"x\nb) y", "E-REC-1"), &["\\\\nb"]);
     // … when one or two letters follow it; \nfoo has the shape of a command (\numberwithin), #163
     has(&recovers(r"\nfoo", "E-REC-1"), &["\\\\nfoo"]);
 }
@@ -1368,7 +1389,7 @@ fn unknown_commands_starting_with_n_r_t_are_not_json() {
     // (\real, \rArr, \reals, \th, \rowcolor, \newcolumntype and \refeq, the first examples, are read
     // since the enhancements of 2026-11b, and \rrceil since #176: unknown names of the same shapes take
     // their place)
-    for name in ["raisetag", "rrhook", "rescale", "nonscript", "rowsep", "nobreak", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
+    for name in ["raisetag", "rrhook", "rescale", "nonscript", "rowsep", "nointerlineskip", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
         let tex = format!(r"x \{name}");
         let (_, warnings) = tolerant(&tex);
         assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");
@@ -1377,21 +1398,28 @@ fn unknown_commands_starting_with_n_r_t_are_not_json() {
     }
     // \raisetag{z} keeps its first letter: drawn in red, not "aisetagz"
     has(&recovers(r"\raisetag{z}", "E-REC-1"), &["\\\\raisetag", "\"z\""]);
-    // the message names the escape that was read
-    let (_, warnings) = tolerant(r"x\rb");
+    // the message names the escape that was read (the \u00b2 is the sign of JSON #253 asks for)
+    let (_, warnings) = tolerant(r"x\u00b2\rb");
     assert!(warnings.iter().any(|w| w.contains(r"JSON '\r' read as a line break")), "{warnings:?}");
-    let (_, warnings) = tolerant(r"a\tx");
+    let (_, warnings) = tolerant(r"x\u00b2 a\tx");
     assert!(warnings.iter().any(|w| w.contains(r"JSON '\t' read as a space")), "{warnings:?}");
-    let (_, warnings) = tolerant(r"x\nb");
+    let (_, warnings) = tolerant(r"x\u00b2\nb");
     assert!(warnings.iter().any(|w| w.contains(r"JSON '\n' read as a line break")), "{warnings:?}");
-    // the letter alone is always an escape
+    // the letter alone is always an escape: it is never a command
     has(&recovers(r"x\n2", "E-REC-2"), &["\"x\"", "\"2\""]);
-    // a longer run is an escape when the input shows another one that cannot be a command
+    // letters after it are an escape only when the input shows a sign of JSON (#253): a control character
+    // no one types, \" or \u and four hexadecimal digits; another \n is not one
     let (t, warnings) = tolerant(r"a = 1\n b = 2\nwhere");
-    assert_eq!(warnings.iter().filter(|w| w.starts_with("E-REC-2")).count(), 2, "{warnings:?}");
-    has(&t, &["\"w\"", "\"h\""]);
+    assert_eq!(warnings.iter().filter(|w| w.starts_with("E-REC-2")).count(), 1, "{warnings:?}");
+    has(&t, &["\\\\nwhere"]);
     let (_, warnings) = tolerant(r"x\u00b2 \nwhere");
     assert!(warnings.iter().all(|w| w.starts_with("E-REC-2")), "{warnings:?}");
+    for tex in ["\u{0C}rac{1}{2} \\nb", "\u{08}eta \\nb", r#"\"a \nb"#] {
+        let (_, warnings) = tolerant(tex);
+        assert!(warnings.iter().any(|w| w.contains(r"JSON '\n' read as a line break")), "{tex:?}: {warnings:?}");
+    }
+    // #253: alone, one or two letters after \n make a command mathra does not know, in red
+    has(&recovers(r"r_{\nm}", "E-REC-1"), &["\\\\nm"]);
 }
 
 #[test]
@@ -1815,6 +1843,30 @@ fn mathtools_colon_equals_and_centernot() {
     assert_eq!(tree(r"a \centernot= b"), tree(r"a \not= b"));
     // without a negated symbol, \not crosses the arrow out and \centernot sets its slash over the middle (#164)
     assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b").replace("shape: Bar", "shape: CenterNot"));
+}
+
+#[test]
+fn nobreak_and_allowbreak_are_read_and_ignored() {
+    // #255: KaTeX's line break hints, with no warning in both modes; the tree has no node for them
+    assert_eq!(tree(r"a \nobreak b \allowbreak c"), tree(r"a b c"));
+    assert_eq!(tree(r"B_{i}=\nobreak\bigl(B^{\dagger}_{i}\bigr)^{\dagger}"), tree(r"B_{i}=\bigl(B^{\dagger}_{i}\bigr)^{\dagger}"));
+    assert_eq!(tree(r"\{N,\allowbreak N^i,\allowbreak A\}"), tree(r"\{N, N^i, A\}"));
+}
+
+#[test]
+fn implies_impliedby_and_iff_are_spaced_long_arrows() {
+    // #250: amsmath defines them as \;\Longrightarrow\;, \;\Longleftarrow\; and \;\Longleftrightarrow\;
+    for (short, long) in [("implies", "Longrightarrow"), ("impliedby", "Longleftarrow"), ("iff", "Longleftrightarrow")] {
+        assert_eq!(tree(&format!(r"a \{short} b")), tree(&format!(r"a \;\{long}\; b")), "{short}");
+    }
+    has(&tree(r"a \implies b \quad c \impliedby d \quad e \iff f"), &["'⟹'", "'⟸'", "'⟺'"]);
+    // \not strikes the arrow, not the space around it
+    has(&tree(r"a \not\implies b"), &["Canceled { base: Operator { symbol: '⟹'"]);
+    let out = convert(r"a \implies b \quad c \impliedby d \quad e \iff f", &Options::default()).unwrap();
+    assert_eq!(out.text, "a ⟹ b c ⟸ d e ⟺ f");
+    // the speech is the same as for the short arrows
+    let short = convert(r"a \Rightarrow b \quad c \Leftarrow d \quad e \Leftrightarrow f", &Options::default()).unwrap();
+    assert_eq!(out.speech, short.speech);
 }
 
 #[test]

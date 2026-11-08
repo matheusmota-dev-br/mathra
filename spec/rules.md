@@ -128,7 +128,7 @@ A text is a box of its natural width, as `\text{…}` is in TeX: `\hfill`, `\hfi
 
 A line break or a tab inside text is a space, as in TeX; with the spaces around it (the indentation of the next line, a blank line) it is a single space: `\text{can be`, a line break, `  used}` is `can be used`.
 
-A backslash before a line break or a tab of the source is a control space, `\ `, as in plain TeX, in text and in math (`a\` and a line break, then `b`, is `a\ b`); `\\` before a line break is still a line break.
+A backslash before a line break or a tab of the source is a control space, `\ `, as in plain TeX, in text and in math (`a\` and a line break, then `b`, is `a\ b`); `\\` before a line break is still a line break. A control space that ends the input (`a\ `) is a space too: trimming the input does not cut it (#254).
 
 ### L-TXT-4 · Color inside text
 
@@ -285,6 +285,7 @@ Off by default. With a maximum width in em (`Options::max_width`, `--max-width 3
 - **Indent.** Continuation lines start under the right-hand side of the first top-level relation (where the atom after it starts), so they read as more of that side. With no relation, or one whose right-hand side starts more than half the maximum width in, they start 2 em in.
 - **Lines.** Each line's baseline sits below the previous one's as table rows do: a strut of 0.84 em above and 0.36 em below, plus `\jot` (0.3 em) in display style (S-SVG-12). The first line's baseline is the formula's (S-SVG-1).
 - **Not broken.** An equation the author already set in lines (`align`, `gather`, `aligned`… at its top level) is never broken again. Tables (`array`, matrices, `cases`) are atoms: a line breaks around them, never inside.
+- **Hints.** KaTeX's break hints `\nobreak` and `\allowbreak` (and LaTeX's `\nolinebreak`) are read with no warning and ignored (#255): the tree has no node for a break hint, so the breaking does not see them.
 
 Speech, linear text, braille and the tree are the same with and without it. `applied` gets one note: how many lines, and after which operators.
 

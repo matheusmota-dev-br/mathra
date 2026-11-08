@@ -80,6 +80,16 @@ fn equation_from_stdin() {
 }
 
 #[test]
+fn a_control_space_that_ends_the_input_is_kept() {
+    // #254: as an argument and from stdin, `a\ ` is a space at the end, not a lone backslash
+    for o in [mathra(&["a\\ ", "--text"], None), mathra(&["--text"], Some(b"a\\ ")), mathra(&["--text"], Some(b"a\\ \n"))] {
+        assert!(o.status.success());
+        assert_eq!(stdout(&o).trim(), "a");
+        assert!(stderr(&o).is_empty(), "{}", stderr(&o));
+    }
+}
+
+#[test]
 fn output_modes() {
     let o = mathra(&["\\frac{a}{b}", "--tree"], None);
     assert!(stdout(&o).trim_start().starts_with('{'));

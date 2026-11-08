@@ -130,9 +130,10 @@ const SYMBOLS: &[(&str, &str)] = &[
     ("and", "\\text{ and }"),
     ("or", "\\text{ or }"),
     ("not", "\\neg"),
-    ("=>", "\\implies"),
+    // AsciiMath's => and iff are the short arrows ⇒ and ⇔, not amsmath's spaced long ones (#250)
+    ("=>", "\\Rightarrow"),
     ("if", "\\text{ if }"),
-    ("iff", "\\iff"),
+    ("iff", "\\Leftrightarrow"),
     ("AA", "\\forall"),
     ("EE", "\\exists"),
     ("_|_", "\\bot"),
