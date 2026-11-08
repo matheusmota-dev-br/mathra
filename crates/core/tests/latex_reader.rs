@@ -1392,7 +1392,7 @@ fn every_new_symbol_is_in_the_font() {
                  oslash ltimes rtimes leftthreetimes rightthreetimes barwedge veebar curlywedge curlyvee Cap Cup dotplus divideontimes \
                  centerdot lhd rhd unlhd unrhd doublebarwedge sphericalangle Diamond surd hslash triangledown diagup diagdown backprime \
                  Finv Bbbk circledS standardstate hdots digamma Digamma varkappa iiiint varoiint intclockwise varointclockwise \
-                 ointctrclockwise fint sqint idotsint i j";
+                 ointctrclockwise ointclockwise varointctrclockwise fint sqint idotsint dotsint i j";
     for name in names.split_whitespace() {
         let tex = format!(r"a \{name} b");
         let r = convert(&tex, &Options { strict: true, ..Options::default() });
@@ -1409,14 +1409,27 @@ fn greek_variants_dotless_letters_and_arg_max() {
 
 #[test]
 fn more_integrals_keep_their_limits_on_the_side() {
-    for (name, symbol) in [("iiiint", '⨌'), ("varoiint", '∯'), ("intclockwise", '∱'), ("varointclockwise", '∲'), ("ointctrclockwise", '∳'), ("fint", '⨏'), ("sqint", '⨖')]
-    {
+    for (name, symbol) in [
+        ("iiiint", '⨌'),
+        ("varoiint", '∯'),
+        ("intclockwise", '∱'),
+        ("varointclockwise", '∲'),
+        ("ointctrclockwise", '∳'),
+        ("ointclockwise", '∲'),
+        ("varointctrclockwise", '∳'),
+        ("fint", '⨏'),
+        ("sqint", '⨖'),
+    ] {
         has(&tree(&format!(r"\{name}_V f")), &[&format!("LargeOperator {{ symbol: '{symbol}'")]);
         let speech = convert(&format!(r"\{name}_V f"), &Options::default()).unwrap().speech;
         assert!(speech.starts_with("integral over V"), "{name}: {speech}");
     }
     // \idotsint is ∫⋯∫, and the subscript goes on the last integral
     has(&tree(r"\idotsint_V f"), &["LargeOperator { symbol: '∫'", "'⋯'", "sub: Some(Identifier { name: \"V\""]);
+    // esint's \dotsint is the same
+    assert_eq!(tree(r"\dotsint_V f"), tree(r"\idotsint_V f"));
+    // \sqiint (a double integral with a square loop) has no character and no faithful composite: unsupported
+    assert!(convert(r"\sqiint_S F", &Options { strict: true, ..Options::default() }).is_err());
 }
 
 #[test]

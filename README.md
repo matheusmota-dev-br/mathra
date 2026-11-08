@@ -276,7 +276,7 @@ let svg = mathra::convert(r"\text{面积} = \pi r^2", &options)?.svg;
 In each package: `--fallback-font file.otf` (repeatable) in the terminal, `loadFallbackFont(bytes)` and `{ fallbackFonts: [font] }` in JavaScript, `mathra.load_fallback_font(path)` and `fallback_fonts=[font]` in Python; a math font loaded as above can be a fallback too. The terminal and Python try yours first, then the embedded Noto Emoji; the npm package embeds no emoji font, so pass one there.
 
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
-- Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
+- Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family (esint's `\ointclockwise`, `\varointctrclockwise`, `\dotsint`, `\sqint` and `\fint` too; not `\sqiint`, `\landupint` and `\landdownint`, which have no character), `\limits`)
 - `\left … \middle … \right`, `\big` and family, delimiters assembled from parts
 - Matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `smallmatrix`), `cases`, `rcases`, `aligned`, `align`, `gathered`, `split`, `multline` (with `\shoveleft` and `\shoveright`), `array` with `|`, `@{}`, `\hline`, `\cline`, arydshln's dashed `:`, `\hdashline` and `\cdashline`, and `\arraystretch`
 - What LaTeX's own packages add to the KaTeX list: the colons of mathtools and colonequals (`\coloneqq`, `\Colonsim`…), `\varGamma` and family, `\injlim`, `\intop`, `\lgroup`, `\char`, `\xtwoheadrightarrow` and family, text symbols (`\AE`, `\H{o}`, `\textdollar`), `\url` and `\href`; TeX's `\mathchoice`, `\vcenter` and `\above`, and graphicx's `\reflectbox`
