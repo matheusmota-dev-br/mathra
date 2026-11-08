@@ -138,7 +138,6 @@ fn l_che_1_bonds() {
         (r"\ce{A\bond{=}B}", "="),
         (r"\ce{A\bond{#}B}", "≡"),
         (r"\ce{A\bond{3}B}", "≡"),
-        (r"\ce{A\bond{~}B}", "∼"),
     ] {
         has(&tree(tex), &[&format!("Text(\"{bond}\")")]);
     }
@@ -336,4 +335,76 @@ fn l_che_1_command_in_an_isotope_superscript() {
     let out = convert(tex, &Options::default()).unwrap();
     assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1"), "{:?}", out.warnings);
     assert!(!format!("{:?}", out.tree).contains("234\\\\foo"), "{:?}", out.tree);
+}
+
+#[test]
+fn l_che_1_bonds_of_more_than_one_kind_of_line() {
+    // #267: mhchem's \bond{~-}, \bond{~=} (and its spelling ~--), \bond{-~-} and \bond{....}: each its own
+    // symbol, read as the lines it is, named by its \bond in the tree's JSON
+    let cases = [
+        ("~", "bond of a dashed line", "A┄B"),
+        ("~-", "bond of a dashed line over a line", "A≃B"),
+        ("~=", "bond of a dashed line over two lines", "A≅B"),
+        ("~--", "bond of a dashed line over two lines", "A≅B"),
+        ("-~-", "bond of a dashed line between two lines", "A≋B"),
+        ("....", "bond of four dots", "A····B"),
+    ];
+    for (bond, speech, text) in cases {
+        let tex = format!(r"\ce{{A\bond{{{bond}}}B}}", bond = bond);
+        let out = en(&tex);
+        assert_eq!(out.speech, format!("A {speech} B"), "{tex}");
+        assert_eq!(out.text, text, "{tex}");
+        let json = out.tree.to_json();
+        let named = if bond == "~--" { "~=" } else { bond };
+        assert!(json.contains(&format!(r#""symbol":"\\bond{{{named}}}""#)), "{tex}: {json}");
+        assert!(out.svg.contains("<rect") || out.svg.contains("<use"), "{tex}: nothing drawn");
+    }
+    // ~= and ~-- are one drawing; the others differ from each other and from the single bond
+    let tree = |b: &str| en(&format!(r"\ce{{A\bond{{{b}}}B}}")).tree;
+    assert_eq!(tree("~="), tree("~--"));
+    let drawings: Vec<Node> = ["-", "~", "~-", "~=", "-~-", "...."].iter().map(|b| tree(b)).collect();
+    for (i, a) in drawings.iter().enumerate() {
+        assert!(drawings[i + 1..].iter().all(|b| b != a), "two bonds read alike");
+    }
+    // in another language, the language's phrase
+    assert_eq!(read(r"\ce{A\bond{~-}B}", Locale::PtBr).speech, "A ligação de uma linha tracejada sobre uma linha B");
+}
+
+#[test]
+fn l_che_1_arrow_label_between_braces_is_text() {
+    // #268: a label between braces is text, spaces and all
+    let out = en(r"\ce{A ->[{text above}][{text below}] B}");
+    let t = format!("{:?}", out.tree);
+    has(&t, &["Text(\"text above\")", "Text(\"text below\")"]);
+    assert!(!t.contains("'{'"), "{t}");
+    assert_eq!(out.speech, "A right arrow (text above) (text below) B");
+    // with math inside, between dollars
+    has(&tree(r"\ce{A ->[{$\Delta$ heat}] B}"), &["Text(\" heat\")", "\"Δ\""]);
+    // without braces, still read as \ce
+    assert_eq!(en(r"\ce{A ->[above][below] B}").speech, "A right arrow (above) (below) B");
+}
+
+#[test]
+fn l_che_1_math_between_dollars_in_a_script() {
+    // #269: $…$ in a subscript or a superscript is mhchem's escape to math, with no warning
+    let out = en(r"\ce{Fe(CN)_{$\frac{6}{2}$}}");
+    assert_eq!(out.text, "Fe(CN)_(6/2)");
+    assert!(nodes(&out.tree).iter().any(|n| matches!(n, Node::Fraction { .. })), "{:?}", out.tree);
+    let out = en(r"\ce{X^{$n+$}}");
+    assert_eq!(out.text, "X^(n+)");
+    assert!(!out.text.contains('$') && !out.speech.contains('$'), "{}", out.speech);
+}
+
+#[test]
+fn l_che_1_ampersand_and_new_row_go_to_the_alignment() {
+    // #270: & and \\ in a \ce inside an alignment are the alignment's, as mhchem passes them on
+    let out = en("\\begin{align*}\n  \\ce{A &<=>[+e] B \\\\\n      B &<=>[+e] C}\n\\end{align*}");
+    let rows = nodes(&out.tree).into_iter().find_map(|n| if let Node::Table { rows, .. } = n { Some(rows.clone()) } else { None }).expect("a table");
+    assert_eq!(rows.len(), 2, "{:?}", out.tree);
+    assert!(rows.iter().all(|r| r.len() == 2), "{rows:?}");
+    assert_eq!(out.speech, "A in equilibrium with (plus e) B; B in equilibrium with (plus e) C");
+    // an escaped & is a character; without an alignment around, & warns as anywhere else
+    assert_eq!(en(r"\ce{A\&B}").text, "A&B");
+    let out = convert(r"\ce{A & B}", &Options::default()).unwrap();
+    assert!(out.warnings.iter().any(|w| w.description.contains("'&' outside an alignment")), "{:?}", out.warnings);
 }

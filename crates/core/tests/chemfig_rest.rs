@@ -276,3 +276,15 @@ fn mathml_keeps_the_fallback() {
         assert!(back.is_ok(), "{tex}: {}", out.mathml);
     }
 }
+
+#[test]
+fn labels_that_are_no_element_keep_their_order_and_letters() {
+    // #271: the text is in Hill order: C, then the elements alphabetically, then what is no element
+    // as written. In A-B-C, B is boron and C carbon, so CBA is that order, not a reversal
+    assert_eq!(strict(r"\chemfig{A-B-C}").text, "CBA");
+    assert_eq!(strict(r"\chemfig{R-X-Q}").text, "RXQ");
+    assert_eq!(strict(r"\chemfig{Q-X-R}").text, "QXR");
+    // a capital and a lowercase letter that are no element stay whole: Nu is not N with a lost u
+    assert_eq!(strict(r"\chemfig{Nu-C}").text, "CNu");
+    assert_eq!(strict(r"\chemfig{Nu-C}").speech, "structure of C Nu");
+}

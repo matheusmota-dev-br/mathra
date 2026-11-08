@@ -218,7 +218,8 @@ fn label(atom: &Atom, f: &mut Formula) {
                 let two: String = c[i..].iter().take(2).collect();
                 if two.len() == 2 && c[i + 1].is_ascii_lowercase() && ELEMENTS.contains(&two.as_str()) {
                     Some((2, None, ""))
-                } else if ELEMENTS.contains(&ch.to_string().as_str()) {
+                } else if ELEMENTS.contains(&ch.to_string().as_str()) && !c.get(i + 1).is_some_and(char::is_ascii_lowercase) {
+                    // a capital followed by a lowercase letter is one symbol: Nu is not N and a lost u
                     Some((1, None, ""))
                 } else {
                     None
@@ -338,6 +339,10 @@ mod tests {
         assert_eq!(atom("Cl").written(), "Cl");
         assert_eq!(atom("R'").written(), "R'");
         assert_eq!(atom("\\mathrm{Br}").written(), "Br");
+        // a capital and a lowercase letter that are no element are kept whole, not read as the capital
+        assert_eq!(atom("Nu").written(), "Nu");
+        assert_eq!(atom("CNu").written(), "CNu");
+        assert_eq!(atom("Cy").written(), "Cy");
     }
 
     #[test]

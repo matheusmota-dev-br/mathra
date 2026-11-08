@@ -613,6 +613,9 @@ fn letter(name: &str, loc: Locale) -> String {
 fn operator(symbol: char, class: Class, loc: Locale) -> String {
     // #176: a symbol drawn by composition is read as the character whose meaning it has (a short arrow
     // as the arrow), or as its closest text
+    if let Some(key) = crate::composite::speech_key(symbol) {
+        return loc.phrase(key).to_string();
+    }
     if let Some(k) = crate::composite::get(symbol) {
         return k.meaning.map_or_else(|| k.text.to_string(), |m| operator(m, class, loc));
     }
