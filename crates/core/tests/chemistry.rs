@@ -208,6 +208,21 @@ fn l_che_1_physical_units() {
     assert_eq!(en(r"\pu{kg}").text, "kg");
 }
 
+/// `//` in \pu is a fraction bar: mhchem.js' `pu` state makes a `pu-frac`, a \frac in text style (#162).
+#[test]
+fn l_che_1_physical_units_fraction() {
+    let r = en(r"\pu{75.3 J // mol K}");
+    let Node::Quantity { value: Some(v), .. } = &r.tree.children()[0] else { panic!("{:?}", r.tree) };
+    assert_eq!(v, "75.3");
+    assert_eq!(r.text, "75.3 J/(mol K)");
+    // the same drawing as the fraction written by hand, in text style
+    let t = format!("{:?}", r.tree);
+    assert!(t.contains("Fraction") && t.contains("style: Row"), "{t}");
+    assert_eq!(en(r"\pu{1.2 kJ // mol}").text, "1.2 (kJ)/(mol)");
+    // a single slash stays a slash
+    assert_eq!(en(r"\pu{75.3 J/mol K}").text, "75.3 J/mol K");
+}
+
 #[test]
 fn l_che_1_gas_and_precipitate_marks() {
     let r = en(r"\ce{CO2 ^ + AgCl v}");

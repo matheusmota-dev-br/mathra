@@ -278,6 +278,11 @@ impl Writer {
     }
 
     fn identifier(&mut self, name: &str, variant: Variant) {
+        // the double-struck one (\mathbb{1}, 𝟙): the digit, as before it was a symbol; its typeform is an
+        // open question for a transcriber (docs/braille-review.md)
+        if name.len() == 1 && name.as_bytes()[0].is_ascii_digit() {
+            return self.number(name, false);
+        }
         let mut chars = name.chars();
         let (Some(c), None) = (chars.next(), chars.next()) else {
             if matches!(variant, Variant::Italic | Variant::Upright) {
@@ -454,7 +459,9 @@ impl Writer {
         }
         // §3.2.2: a numeric fraction, the numerator in the lower part of the cell after ⠼, the
         // denominator in the upper part without ⠼: 3/4 = ⠼⠒⠙
-        if let Some((n, d)) = numeric_fraction(&Node::Fraction { num: Box::new(num.clone()), den: Box::new(den.clone()), style: FractionStyle::Auto, rule, thickness: None }) {
+        if let Some((n, d)) =
+            numeric_fraction(&Node::Fraction { numerator_align: None, num: Box::new(num.clone()), den: Box::new(den.clone()), style: FractionStyle::Auto, rule, thickness: None })
+        {
             let lower: String = n.chars().map(|c| cells(lower_digit(c))).collect();
             let upper: String = d.chars().map(|c| cells(upper_digit(c))).collect();
             self.push(&format!("⠼{lower}{upper}"));

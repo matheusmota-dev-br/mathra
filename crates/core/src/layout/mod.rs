@@ -436,7 +436,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         }
         Node::LargeOperator { symbol, .. } => large_operator(*symbol, e),
         Node::Row { children } => compose_row(children, e, ctx, false),
-        Node::Fraction { num, den, style, rule, thickness } => compose_fraction(num, den, *style, *rule, *thickness, e, ctx),
+        Node::Fraction { .. } => compose_fraction(node, e, ctx),
         Node::Root { radicand, index } => compose_root(radicand, index.as_deref(), e, ctx),
         Node::Scripts { base, sup, sub } => compose_scripts(base, sup.as_deref(), sub.as_deref(), e, ctx),
         Node::Delimited { open, close, parts, middles } => compose_delimited(*open, *close, parts, middles, e, ctx),
@@ -824,7 +824,9 @@ fn compose_cell(node: &Node, e: Style, ctx: &mut Context, initial_ord: bool) -> 
 // ---------- fractions and roots ----------
 
 #[allow(clippy::too_many_arguments)]
-fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, given: Option<f32>, e: Style, ctx: &mut Context) -> R<MathBox> {
+fn compose_fraction(fraction: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
+    let Node::Fraction { num, den, style, rule, thickness: given, numerator_align } = fraction else { unreachable!("a fraction") };
+    let (style, rule, given) = (*style, *rule, *given);
     let e = match style {
         FractionStyle::Display => Style { level: Level::Display, ..e },
         FractionStyle::Row => e.not_display(),
@@ -868,7 +870,13 @@ fn compose_fraction(num: &Node, den: &Node, style: FractionStyle, rule: bool, gi
     let margin = em(e, 0.12);
     let width = n.width.max(d.width);
     let mut math_box = MathBox::space(width + 2.0 * margin);
-    math_box.place(&n, margin + (width - n.width) / 2.0, u);
+    // \cfrac[l], \cfrac[r]: the numerator at one side
+    let room = match numerator_align {
+        Some('l') => 0.0,
+        Some('r') => width - n.width,
+        _ => (width - n.width) / 2.0,
+    };
+    math_box.place(&n, margin + room, u);
     math_box.place(&d, margin + (width - d.width) / 2.0, -v);
     if rule {
         math_box.place(&MathBox::bar(width, thickness, axis - thickness / 2.0), margin, 0.0);
@@ -1283,7 +1291,20 @@ fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R
     if matches!(kind, Cancel::Backslash | Cancel::X) {
         rule((x0, y1), (x1, y0));
     }
+    if kind == Cancel::CenterNot {
+        center_not(&mut math_box, e, ctx)?;
+    }
     Ok(math_box)
+}
+
+/// centernot's slash: `\not`'s, at its own size, over the middle of the base (centernot.sty kerns half the
+/// base's width, back half the width of `=`, and sets `\not`). MathJax's centernot sets ⧸ (U+29F8) there.
+#[inline(never)]
+fn center_not(math_box: &mut MathBox, e: Style, ctx: &mut Context) -> R<()> {
+    let slash = compose(&Node::Operator { symbol: '⧸', class: Class::Ord }, e, ctx)?;
+    let x = (math_box.width - slash.width) / 2.0;
+    math_box.place(&slash, x, 0.0);
+    Ok(())
 }
 
 /// `sizes`: the padding and the line's thickness the input gave, in em (`\bbox`); LaTeX's otherwise.

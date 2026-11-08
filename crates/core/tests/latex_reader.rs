@@ -429,6 +429,31 @@ fn siunitx_units() {
     has(&tree(r"\unit[3]{m}"), &["\"3\"", "\"m\""]);
 }
 
+/// \raiseto is \tothe's prefix form; a value with an uncertainty is a number, drawn as written (#161).
+#[test]
+fn siunitx_raiseto_and_uncertainties() {
+    // read alike in both modes, with no warning; the text output
+    let text = |tex: &str| {
+        tree(tex);
+        convert(tex, &Options::default()).unwrap().text
+    };
+    assert_eq!(tree(r"\unit{\raiseto{4}\metre}"), tree(r"\unit{\metre\tothe{4}}"));
+    has(&tree(r"\unit{\raiseto{4}\metre}"), &["\"m\"", "\"4\""]);
+    has(&tree(r"\unit{\raiseto{2}\metre\per\raiseto{3}\second}"), &["\"m\"", "\"2\"", "\"s\"", "\"3\""]);
+    assert_eq!(text(r"\unit{\raiseto{4}\metre}"), "m^4");
+    // compact, as written (siunitx's default uncertainty-mode)
+    assert_eq!(text(r"\qty{1.23(4)}{\kilo\gram}"), "1.23(4) kg");
+    assert_eq!(text(r"\num{1.23(4)}"), "1.23(4)");
+    assert_eq!(text(r"\num{1.23(4)e3}"), "1.23(4) × 10^3");
+    // separate, in parentheses before a unit (separate-uncertainty-units = bracket)
+    assert_eq!(text(r"\qty{1.23 \pm 0.04}{\kilo\gram}"), "(1.23 ± 0.04) kg");
+    assert_eq!(text(r"\qty{1.23 +- 0.04}{\metre}"), "(1.23 ± 0.04) m");
+    assert_eq!(text(r"\num{1.23 \pm 0.04}"), "1.23 ± 0.04");
+    // something that is not a number still warns
+    assert!(strict_error(r"\qty{1.23 \pm x}{\kilo\gram}").contains("is not a number"));
+    assert!(strict_error(r"\num{1.23(x)}").contains("is not a number"));
+}
+
 #[test]
 fn every_unit_has_a_symbol() {
     for name in [
@@ -1292,7 +1317,39 @@ fn unknown_negation_of_a_known_relation_reads_as_not() {
     assert!(warnings.iter().any(|w| w.contains(r"read as \not\lesssim")), "{warnings:?}");
     // a \n before something that is not a relation is still a JSON line break
     has(&recovers(r"x\nb) y", "E-REC-2"), &["\"b\""]);
-    has(&recovers(r"\nfoo", "E-REC-2"), &["\"f\""]);
+    // … when one or two letters follow it; \nfoo has the shape of a command (\numberwithin), #163
+    has(&recovers(r"\nfoo", "E-REC-1"), &["\\\\nfoo"]);
+}
+
+/// The JSON reading of E-REC-2 fired on unknown commands starting with n, r or t and dropped their first
+/// letter (#163). The rule (spec/tolerance.md): the letter alone, one or two letters after it unless the
+/// name is a LaTeX text command, or a longer run when the input shows another JSON escape.
+#[test]
+fn unknown_commands_starting_with_n_r_t_are_not_json() {
+    for name in ["real", "rrceil", "rArr", "rowcolor", "refeq", "newcolumntype", "numberwithin", "th", "raise", "noexpand", "reals"] {
+        let tex = format!(r"x \{name}");
+        let (_, warnings) = tolerant(&tex);
+        assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");
+        assert!(warnings.iter().any(|w| w.starts_with("E-REC-1")), "{tex}: {warnings:?}");
+        assert!(strict_error(&tex).contains("unsupported command"), "{tex}");
+    }
+    // \real{z} keeps its first letter: drawn in red, not "ealz"
+    has(&recovers(r"\real{z}", "E-REC-1"), &["\\\\real", "\"z\""]);
+    // the message names the escape that was read
+    let (_, warnings) = tolerant(r"x\rb");
+    assert!(warnings.iter().any(|w| w.contains(r"JSON '\r' read as a line break")), "{warnings:?}");
+    let (_, warnings) = tolerant(r"a\tx");
+    assert!(warnings.iter().any(|w| w.contains(r"JSON '\t' read as a space")), "{warnings:?}");
+    let (_, warnings) = tolerant(r"x\nb");
+    assert!(warnings.iter().any(|w| w.contains(r"JSON '\n' read as a line break")), "{warnings:?}");
+    // the letter alone is always an escape
+    has(&recovers(r"x\n2", "E-REC-2"), &["\"x\"", "\"2\""]);
+    // a longer run is an escape when the input shows another one that cannot be a command
+    let (t, warnings) = tolerant(r"a = 1\n b = 2\nwhere");
+    assert_eq!(warnings.iter().filter(|w| w.starts_with("E-REC-2")).count(), 2, "{warnings:?}");
+    has(&t, &["\"w\"", "\"h\""]);
+    let (_, warnings) = tolerant(r"x\u00b2 \nwhere");
+    assert!(warnings.iter().all(|w| w.starts_with("E-REC-2")), "{warnings:?}");
 }
 
 #[test]
@@ -1701,7 +1758,8 @@ fn mathtools_colon_equals_and_centernot() {
     has(&tree(r"A \coloneq B \eqcolon C \eqqcolon D \Coloneqq E"), &["'≔'", "'≕'", "'⩴'"]);
     // \centernot reads like \not: a negated relation when one exists, a slash otherwise
     assert_eq!(tree(r"a \centernot= b"), tree(r"a \not= b"));
-    assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b"));
+    // without a negated symbol, \not crosses the arrow out and \centernot sets its slash over the middle (#164)
+    assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b").replace("shape: Bar", "shape: CenterNot"));
 }
 
 #[test]

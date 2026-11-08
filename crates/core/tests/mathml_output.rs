@@ -248,6 +248,21 @@ fn s_mml_1_semantics_with_the_source() {
     assert!(!plain.mathml.contains("semantics") && plain.applied.iter().all(|a| a.rule != "S-MML-1"));
 }
 
+/// \mathbb{1} is the symbol 𝟙 in MathML too, and reads back to the same tree; KaTeX's
+/// <mn mathvariant="double-struck">1</mn> reads as the same symbol (#159).
+#[test]
+fn the_double_struck_one() {
+    assert!(mml(r"\mathds{1}_A").contains("<mi>𝟙</mi>"), "{}", mml(r"\mathds{1}_A"));
+    for tex in [r"\mathds{1}_A(x)", r"\mathbb{12}", r"U^\dagger U = \mathbbm{1}"] {
+        let first = convert(tex, &Options::default()).unwrap();
+        let back = convert(&first.mathml, &Options { input: Input::MathMl, ..Options::default() }).unwrap();
+        assert_eq!(back.tree, first.tree, "{tex}");
+    }
+    let katex = r#"<math><mrow><mn mathvariant="double-struck">1</mn></mrow></math>"#;
+    let from_katex = convert(katex, &Options { input: Input::MathMl, ..Options::default() }).unwrap();
+    assert_eq!(from_katex.tree, convert(r"\mathbb{1}", &Options::default()).unwrap().tree);
+}
+
 #[test]
 fn letters_in_their_variant() {
     // MathML Core draws variants as Unicode's mathematical letters; a single letter is italic on its own
