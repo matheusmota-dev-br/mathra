@@ -93,6 +93,14 @@ Commands that belong to the document, not to the equation, are ignored and noted
 - `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG. In text, `\fontsize{size}{skip}\selectfont` too.
 - `\usepackage{…}`, `\RequirePackage{…}` and MathJax's `\require{…}`, with their optional argument: the supported packages are already loaded.
 
+### L-ENT-5 · Cross-references: labels, tags and citations
+
+An equation is converted alone, so the numbers of the document around it come from the caller: `Options::labels` and `Options::citations` (`labels` and `citations` in JavaScript and Python, `--label key=n` and `--cite key=n` in the CLI) map a key to its number.
+
+- `\ref{key}` shows the label's number and `\eqref{key}` the number in parentheses: `(3)`. `\cite{a,b}` shows `[1, 2]`, and `\cite[p.~5]{a}` adds the note, `[1, p. 5]`. They work inside `\text{…}` too. Speech, text and braille say the number, never the key.
+- `\tag{3}` numbers the line it is on (in `equation`, `align`, `gather`, `multline`, `flalign`, `alignat`, `eqnarray` or a loose `\\` line), and a `\label` on the same line takes that number: `\ref` shows the tag as written, `\eqref` in parentheses. The labels an equation numbers this way come back in `Output::labels`, and in `--batch` they count for the lines after it. A `\label` with no `\tag` would take the automatic number of `equation` or `align`, which mathra does not give: equations are not numbered on their own.
+- A key with no number is `??` (`(??)` for `\eqref`) or `?` inside the citation's brackets, as on LaTeX's first run, with an E-REC-9 warning; strict mode refuses it.
+
 ### L-TXT-1 · Quotes in text
 
 Inside `\text{…}` (and every text argument), TeX's quote ligatures become typographic quotes: ``` `` ``` → “, `''` → ”, `` ` `` → ‘, `'` → ’. In math mode `'` is still a prime.

@@ -228,6 +228,55 @@ fn e_rec_9_misplaced_and_extra_alignment_tabs() {
     assert!(strict(r"\begin{array}{cc} \multicolumn{2}{c}{x} & 3 \end{array}").is_err());
 }
 
+fn with_numbers(strict: bool) -> Options {
+    let labels = [("eq:a", "3"), ("eq:b", "4a")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+    let citations = [("knuth", "1"), ("einstein1905", "2")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+    Options { strict, labels, citations, ..Default::default() }
+}
+
+#[test]
+fn l_ent_5_references_take_the_numbers_of_the_document() {
+    for strict in [false, true] {
+        let r = convert(r"\text{by } \eqref{eq:a}, \quad c = \ref{eq:b}", &with_numbers(strict)).unwrap();
+        assert_eq!(r.text, "by (3), c = 4a");
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        // speech and braille say the number, never the key
+        assert!(r.speech.contains("(3)") && !r.speech.contains("eq:a"), "{}", r.speech);
+        assert!(!r.braille.contains('⠿'), "{}", r.braille);
+        let r = convert(r"E = mc^2 \quad \text{\cite{einstein1905}} \cite{knuth,einstein1905} \cite[p.~5]{knuth}", &with_numbers(strict)).unwrap();
+        assert_eq!(r.text, "E = mc^2 [2][1, 2][1, p. 5]");
+    }
+}
+
+#[test]
+fn e_rec_9_unknown_label_or_citation() {
+    // as on LaTeX's first run: ?? for a label, ? for a citation
+    for (tex, text) in [(r"\eqref{eq:z}", "(??)"), (r"\ref{eq:z}", "??"), (r"\cite{nobody}", "[?]"), (r"\cite{knuth,nobody}", "[1, ?]"), (r"\text{see \ref{eq:z}}", "see ??")] {
+        let r = convert(tex, &with_numbers(false)).unwrap();
+        assert_eq!(r.text, text, "{tex}");
+        assert_eq!(r.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), vec!["E-REC-9"], "{tex}");
+        assert!(!r.speech.contains("eq:z") && !r.speech.contains("nobody"), "{tex}: {}", r.speech);
+        assert!(convert(tex, &with_numbers(true)).is_err(), "{tex}");
+    }
+}
+
+#[test]
+fn l_ent_5_a_tag_numbers_the_labels_of_its_line() {
+    let r = strict(r"a = b \label{eq:a} \tag{3}").unwrap();
+    assert_eq!(r.labels.get("eq:a").map(String::as_str), Some("3"));
+    assert_eq!(strict(r"x \label{k} \tag*{A} \quad \ref{k}").unwrap().labels.get("k").map(String::as_str), Some("A"));
+    // per line in a numbered environment; a \label with no \tag has no number
+    let r = strict(r"\begin{align} x &= 1 \label{one} \tag{4} \\ y &= 2 \label{two} \end{align} \eqref{one}").unwrap();
+    assert_eq!(r.labels.len(), 1, "{:?}", r.labels);
+    assert!(r.text.ends_with("(4)"), "{}", r.text);
+    let r = strict(r"\begin{equation} x = 1 \label{e1} \tag{5} \end{equation} \eqref{e1}").unwrap();
+    assert!(r.text.ends_with("(5)"), "{}", r.text);
+    // the \\ inside cases does not end the numbered line
+    let r = strict(r"\label{c} f = \begin{cases} a \\ b \end{cases} \tag{6}").unwrap();
+    assert_eq!(r.labels.get("c").map(String::as_str), Some("6"));
+    assert!(strict(r"x \label{no-tag}").unwrap().labels.is_empty());
+}
+
 #[test]
 fn e_rec_9_percent_starts_a_comment() {
     // TeX: '%' drops the rest of the line, the line break and the next line's leading spaces

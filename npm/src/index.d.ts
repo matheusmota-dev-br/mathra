@@ -18,6 +18,10 @@ export interface Options {
   steps?: boolean;
   /** The math font the equation is set in: what `loadFont` returned, or its id. Default STIX Two Math. */
   font?: Font | number;
+  /** The numbers of the document's labels, which an equation converted alone cannot know: `{ "eq:a": 3 }` makes `\eqref{eq:a}` show `(3)` and `\ref{eq:a}` show `3`. An unknown label is `??`, with a warning (E-REC-9), or an error with `strict`. */
+  labels?: Record<string, string | number>;
+  /** The numbers of the document's citations: `{ knuth: 1 }` makes `\cite{knuth}` show `[1]`. An unknown key is `?`, with a warning (E-REC-9), or an error with `strict`. */
+  citations?: Record<string, string | number>;
 }
 
 /** A math font loaded with `loadFont`. */

@@ -106,7 +106,18 @@ pub struct Options {
     /// The math font the equation is set in: STIX Two Math by default, or one loaded with
     /// [`font::MathFont::load`].
     pub font: font::MathFont,
+    /// The numbers of the document's labels, which an equation converted alone cannot know:
+    /// `{"eq:a": "3"}` makes `\eqref{eq:a}` show `(3)` and `\ref{eq:a}` show `3`. A label missing here
+    /// (and not numbered by a `\tag` in the equation) is `??`, with a warning (E-REC-9; an error in
+    /// strict mode), as on LaTeX's first run.
+    pub labels: Labels,
+    /// The numbers of the document's citations: `{"knuth": "1"}` makes `\cite{knuth}` show `[1]`. A
+    /// key missing here is `?`, with a warning (E-REC-9; an error in strict mode).
+    pub citations: Labels,
 }
+
+/// Keys and the numbers they stand for, for [`Options::labels`] and [`Options::citations`].
+pub use input::latex::Labels;
 
 impl Default for Options {
     fn default() -> Self {
@@ -120,12 +131,14 @@ impl Default for Options {
             steps: false,
             text_kerning: Default::default(),
             font: font::MathFont::StixTwo,
+            labels: Labels::new(),
+            citations: Labels::new(),
         }
     }
 }
 
-/// The tree of meaning of an equation, in the notation `options.input` says.
-fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Result<(Node, Input), Error> {
+/// The tree of meaning of an equation, in the notation `options.input` says, and the labels it numbers.
+fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Result<(Node, Input, Labels), Error> {
     let input = match options.input {
         Input::Latex if input::mathml::looks_like_mathml(source) => {
             registry.note(rules::L_ENT_4, "MathML pasted as LaTeX: read as MathML");
@@ -133,12 +146,12 @@ fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Resu
         }
         other => other,
     };
-    let tree = match input {
-        Input::Latex => input::latex::read_in_font(source, options.locale, registry, options.strict, options.font)?,
-        Input::MathMl => input::mathml::read_with(source, options.locale, registry, options.strict)?,
-        Input::AsciiMath => input::asciimath::read_with(source, options.locale, registry, options.strict)?,
+    let (tree, labels) = match input {
+        Input::Latex => input::latex::read_in_document(source, options.locale, registry, options.strict, options.font, &options.labels, &options.citations)?,
+        Input::MathMl => (input::mathml::read_with(source, options.locale, registry, options.strict)?, Labels::new()),
+        Input::AsciiMath => (input::asciimath::read_with(source, options.locale, registry, options.strict)?, Labels::new()),
     };
-    Ok((tree, input))
+    Ok((tree, input, labels))
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +167,10 @@ pub struct Output {
     pub applied: Vec<Applied>,
     /// Input problems the tolerant mode worked around (empty in strict mode).
     pub warnings: Vec<Applied>,
+    /// The labels this equation numbers itself, a `\label` with a `\tag` on the same line
+    /// (`\label{eq:a} \tag{3}` gives `{"eq:a": "3"}`): add them to [`Options::labels`] to convert the
+    /// equations that come after it, as the CLI's `--batch` does.
+    pub labels: Labels,
 }
 
 impl Output {
@@ -204,7 +221,7 @@ pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
 pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<Output, Error> {
     let options = &Options { font, ..options.clone() };
     let mut registry = rules::Registry::default();
-    let (tree, input) = read(tex, options, &mut registry)?;
+    let (tree, input, labels) = read(tex, options, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let math_box = {
         let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
@@ -234,7 +251,7 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
         steps: options.steps,
         animate: options.animate,
     });
-    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, applied: registry.applied, warnings: registry.warnings })
+    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, applied: registry.applied, warnings: registry.warnings, labels })
 }
 
 /// The composed box, without generating SVG: for callers that draw the equation inside something
@@ -248,7 +265,7 @@ pub fn typeset(tex: &str, options: &Options) -> Result<(layout::MathBox, Vec<App
 pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<(layout::MathBox, Vec<Applied>), Error> {
     let options = &Options { font, ..options.clone() };
     let mut registry = rules::Registry::default();
-    let (tree, _) = read(tex, options, &mut registry)?;
+    let (tree, _, _) = read(tex, options, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
@@ -261,7 +278,7 @@ pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
 pub fn pen(tex: &str, options: &Options, pen: &output::pen::Pen) -> Result<String, Error> {
     let font = options.font;
     let mut registry = rules::Registry::default();
-    let (tree, _) = read(tex, options, &mut registry)?;
+    let (tree, _, _) = read(tex, options, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;

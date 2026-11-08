@@ -25,11 +25,62 @@ pub fn read_with(tex: &str, locale: Locale, registry: &mut Registry, strict: boo
 /// [`read_with`], for an equation set in `font`: the words it writes in the language (a range's
 /// "to", a list's "and") are kept only if that font has their letters.
 pub fn read_in_font(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont) -> Result<Node, Error> {
+    read_in_document(tex, locale, registry, strict, font, &Labels::new(), &Labels::new()).map(|(body, _)| body)
+}
+
+/// Keys and what they stand for: the number of a label (`"eq:a"` → `"3"`) or of a citation.
+pub type Labels = std::collections::BTreeMap<String, String>;
+
+/// [`read_in_font`], for an equation of a document: `\ref` and `\eqref` show the number `labels` gives
+/// their key, `\cite` the number `citations` gives it. Also returns the labels the equation numbers
+/// itself, a `\label` with a `\tag` on the same line, for the equations that come after it.
+pub fn read_in_document(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont, labels: &Labels, citations: &Labels) -> Result<(Node, Labels), Error> {
     let clean = prepare(tex, registry, strict);
     let mut macros = Macros { max_size: clean.chars().count() + MAX_GROWTH, ..Macros::default() };
-    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, variant: Variant::Italic, strict, font };
+    let mut refs = References { given: labels.clone(), citations: citations.clone(), ..References::default() };
+    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, refs: &mut refs, variant: Variant::Italic, strict, font };
     let body = reader.top()?;
-    Ok(body)
+    refs.end_line();
+    Ok((body, refs.defined))
+}
+
+/// The cross-references of the equation (`\label`, `\tag`, `\ref`, `\eqref`, `\cite`).
+#[derive(Default)]
+struct References {
+    /// The numbers of labels the caller knows (the document around the equation).
+    given: Labels,
+    citations: Labels,
+    /// Labels this equation numbers with `\tag`.
+    defined: Labels,
+    /// The `\label`s and the `\tag` of the line being read: they pair when the line ends.
+    line_labels: Vec<String>,
+    line_tag: Option<String>,
+}
+
+impl References {
+    /// The end of a numbered line (`\\` in `align`, the end of `equation` or of the input): a `\tag`
+    /// numbers the `\label`s of its line. A `\label` without a `\tag` would take the automatic number,
+    /// which mathra does not give: it stays unknown.
+    fn end_line(&mut self) {
+        let labels = std::mem::take(&mut self.line_labels);
+        if let Some(tag) = self.line_tag.take() {
+            for label in labels {
+                self.defined.insert(label, tag.clone());
+            }
+        }
+    }
+
+    /// The number of a label: numbered by this equation (on a line already read, or on this line, when
+    /// its `\label` and `\tag` came before), or given by the caller.
+    fn number(&self, key: &str) -> Option<&String> {
+        let this_line = self.line_tag.as_ref().filter(|_| self.line_labels.iter().any(|l| l == key));
+        this_line.or_else(|| self.defined.get(key)).or_else(|| self.given.get(key))
+    }
+}
+
+/// The environments that number their lines (and so take `\tag` and `\label` per line).
+fn numbered_environment(name: &str) -> bool {
+    matches!(name.trim_end_matches('*'), "equation" | "align" | "gather" | "multline" | "flalign" | "alignat" | "eqnarray")
 }
 
 /// Substitution macros defined in the equation itself (`\newcommand`, `\def`, `\let`…).
@@ -155,6 +206,7 @@ struct Reader<'a> {
     locale: Locale,
     registry: &'a mut Registry,
     macros: &'a mut Macros,
+    refs: &'a mut References,
     /// Current variant, changed by `\bf`, `\rm`, `\mathrm{…}`.
     variant: Variant,
     strict: bool,
@@ -207,6 +259,45 @@ impl Reader<'_> {
 
     fn column(&self) -> usize {
         self.pos + 1
+    }
+
+    /// What `\ref{key}` (`name` "ref") or `\eqref{key}` shows: the label's number, `(3)` for `\eqref`.
+    /// A label with no number is `??`, as on LaTeX's first run: a warning, or an error in strict mode.
+    fn label_number(&mut self, name: &str, key: &str, col: usize) -> R<String> {
+        let key = key.trim();
+        let number = match self.refs.number(key).cloned() {
+            Some(n) => n,
+            None => {
+                let shown = if name == "eqref" { "(??)" } else { "??" };
+                self.tolerate(
+                    rules::E_REC_9,
+                    col,
+                    format!("\\{name}{{{key}}}: no number for this label (a \\tag on its line, or the labels option)"),
+                    &format!("drawn as {shown}"),
+                )?;
+                "??".to_string()
+            }
+        };
+        Ok(if name == "eqref" { format!("({number})") } else { number })
+    }
+
+    /// What `\cite[note]{a,b}` shows: `[1, 2, note]`, each key by its number in the citations; a key with
+    /// no number is `?`, as on LaTeX's first run: a warning, or an error in strict mode.
+    fn citation(&mut self, keys: &str, note: Option<&str>, col: usize) -> R<String> {
+        let mut shown = Vec::new();
+        for key in keys.split(',').map(str::trim).filter(|k| !k.is_empty()) {
+            match self.refs.citations.get(key).cloned() {
+                Some(n) => shown.push(n),
+                None => {
+                    self.tolerate(rules::E_REC_9, col, format!("\\cite{{{key}}}: no number for this citation (the citations option)"), "drawn as ?")?;
+                    shown.push("?".to_string());
+                }
+            }
+        }
+        if let Some(note) = note.map(|n| n.replace('~', " ")).filter(|n| !n.trim().is_empty()) {
+            shown.push(note.trim().to_string());
+        }
+        Ok(format!("[{}]", shown.join(", ")))
     }
 
     /// Runs `f` one level deeper. Going past the limit is an error in both modes: there is nothing to recover.
@@ -320,7 +411,17 @@ impl Reader<'_> {
 
     /// Reads a raw snippet as math, with the current variant.
     fn sub_reader(&mut self, tex: &str, variant: Variant) -> R<Node> {
-        let mut sub = Reader { c: tex.chars().collect(), pos: 0, locale: self.locale, registry: self.registry, macros: self.macros, variant, strict: self.strict, font: self.font };
+        let mut sub = Reader {
+            c: tex.chars().collect(),
+            pos: 0,
+            locale: self.locale,
+            registry: self.registry,
+            macros: self.macros,
+            refs: self.refs,
+            variant,
+            strict: self.strict,
+            font: self.font,
+        };
         let (items, stop) = sub.list()?;
         match stop {
             Stop::Eof => Ok(Node::row(items).simplify()),
@@ -349,7 +450,10 @@ impl Reader<'_> {
                     self.tolerate(rules::E_REC_9, self.pos, "'&' outside an alignment", "read as a column of an alignment")?;
                     had_e = true;
                 }
-                Stop::NewRow => rows.push(std::mem::take(&mut cells)),
+                Stop::NewRow => {
+                    rows.push(std::mem::take(&mut cells));
+                    self.refs.end_line();
+                }
                 Stop::CloseBrace => self.tolerate(rules::E_REC_4, self.pos, "'}' without a matching '{'", "ignored")?,
                 Stop::End(n) => self.tolerate(rules::E_REC_5, self.pos, format!("\\end{{{n}}} without a matching \\begin"), "ignored")?,
                 Stop::Right(d) => {
@@ -950,17 +1054,26 @@ impl Reader<'_> {
                 }
                 return Ok(Some(None));
             }
-            "label" | "ref" | "eqref" => {
-                let label = self.raw_text()?;
-                if name == "label" {
-                    return Ok(Some(None));
-                }
-                Node::Text { parts: vec![TextPart::Text(if name == "eqref" { format!("({label})") } else { label })] }
+            "label" => {
+                let key = self.raw_text()?.trim().to_string();
+                self.refs.line_labels.push(key);
+                return Ok(Some(None));
+            }
+            "ref" | "eqref" => {
+                let key = self.raw_text()?;
+                Node::Text { parts: vec![TextPart::Text(self.label_number(name, &key, col)?)] }
+            }
+            "cite" => {
+                let note = self.raw_optional();
+                let keys = self.raw_text()?;
+                Node::Text { parts: vec![TextPart::Text(self.citation(&keys, note.as_deref(), col)?)] }
             }
             "nonumber" | "notag" | "nolinebreak" | "allowbreak" | "displaybreak" | "protect" | "relax" | "noindent" | "centering" | "ensuremath" => return Ok(Some(None)),
             "strut" | "mathstrut" => Node::Phantom { base: Box::new(Node::Operator { symbol: '(', class: Class::Open }), width: false, height: true },
             "tag" => {
                 let label = self.raw_text()?;
+                // \ref of a \label on this line gives the tag as written, \eqref the tag in parentheses
+                self.refs.line_tag = Some(label.trim().to_string());
                 let text = if star { label } else { format!("({label})") };
                 items.push(Node::Space { em: 2.0 });
                 Node::Text { parts: vec![TextPart::Text(text)] }
@@ -1825,6 +1938,9 @@ impl Reader<'_> {
             }
             "equation" | "displaymath" | "math" => {
                 let (items, stop) = self.list()?;
+                if numbered_environment(&name) {
+                    self.refs.end_line();
+                }
                 return match stop {
                     Stop::End(end) if end == name => Ok(Node::row(items)),
                     _ => self.error(col, format!("\\begin{{{name}}} without \\end{{{name}}}")),
@@ -1892,10 +2008,14 @@ impl Reader<'_> {
                 (Stop::Eof, None) => true,
                 _ => false,
             };
+            let numbered = name.is_some_and(numbered_environment);
             if body_end {
                 if !cell.is_empty() || !row.is_empty() {
                     row.push(Node::row(std::mem::take(&mut cell)).simplify());
                     rows.push(row);
+                }
+                if numbered {
+                    self.refs.end_line();
                 }
                 break;
             }
@@ -1904,6 +2024,9 @@ impl Reader<'_> {
                 Stop::NewRow => {
                     row.push(Node::row(std::mem::take(&mut cell)).simplify());
                     rows.push(std::mem::take(&mut row));
+                    if numbered {
+                        self.refs.end_line();
+                    }
                 }
                 Stop::Hline(dashed) => horizontals.push(TableRule { row: rows.len(), from: 0, to: usize::MAX, dashed }),
                 Stop::Cline(from, to, dashed) => horizontals.push(TableRule { row: rows.len(), from, to, dashed }),
@@ -1947,6 +2070,7 @@ impl Reader<'_> {
             locale: self.locale,
             registry: self.registry,
             macros: self.macros,
+            refs: self.refs,
             variant: self.variant,
             strict: self.strict,
             font: self.font,
@@ -2372,6 +2496,14 @@ impl Reader<'_> {
                             let tex = format!("\\{other}{}", text_arguments(&c, &mut i, math_in_text(other).unwrap_or_default()));
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
+                        // cross-references read as in math: a number, as text
+                        "label" | "ref" | "eqref" | "cite" => {
+                            let tex = format!("\\{name}{}", text_arguments(&c, &mut i, if name == "cite" { "[{" } else { "{" }));
+                            let node = self.sub_reader(&tex, math_variant)?;
+                            if let Node::Text { parts: inner } = node {
+                                current.extend(inner.into_iter().filter_map(|p| if let TextPart::Text(t) = p { Some(t) } else { None }));
+                            }
                         }
                         // L-TXT-3: space inside text, set by the math reader, which knows lengths and phantoms
                         "hspace" => {

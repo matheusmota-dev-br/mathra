@@ -275,8 +275,11 @@ fn explicit_limits() {
 #[test]
 fn labels_and_references() {
     has(&tree(r"x \label{eq:1}"), &["\"x\""]);
-    has(&tree(r"\ref{eq:1}"), &["\"eq:1\""]);
-    has(&tree(r"\eqref{eq:1}"), &["\"(eq:1)\""]);
+    // without the labels of the document, a reference has no number: ??, as on LaTeX's first run
+    has(&recovers(r"\ref{eq:1}", "E-REC-9"), &["\"??\""]);
+    has(&recovers(r"\eqref{eq:1}", "E-REC-9"), &["\"(??)\""]);
+    // a \tag numbers the \label on its line
+    has(&tree(r"x \label{eq:1} \tag{2} \quad \eqref{eq:1}"), &["\"(2)\""]);
     has(&tree(r"\strut x \mathstrut"), &["Phantom"]);
 }
 

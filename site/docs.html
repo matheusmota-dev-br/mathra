@@ -126,7 +126,7 @@ println!("{}", r.speech);</pre>
 
       <section id="options">
         <h2>Options</h2>
-        <p>The same five options everywhere, under each platform's spelling.</p>
+        <p>The same options everywhere, under each platform's spelling.</p>
         <div class="tablewrap"><table>
           <tr><th>Option</th><th>JavaScript</th><th>Python</th><th>Terminal</th><th>Rust (<code>Options</code>)</th></tr>
           <tr><td>Language</td><td><code>locale: "pt-BR"</code></td><td><code>locale="pt-BR"</code></td><td><code>-l, --locale pt-BR</code></td><td><code>locale: Locale::PtBr</code></td></tr>
@@ -136,6 +136,8 @@ println!("{}", r.speech);</pre>
           <tr><td>Braille code</td><td><code>braille: "cmu"</code></td><td><code>braille="cmu"</code></td><td><code>--braille-code cmu</code></td><td><code>braille: Some(BrailleCode::Cmu)</code></td></tr>
           <tr><td>The SVG writes itself</td><td><code>animate: true</code></td><td><code>animate=True</code></td><td><code>--animate</code></td><td><code>animate: true</code></td></tr>
           <tr><td>Each element numbered by its step</td><td><code>steps: true</code></td><td><code>steps=True</code></td><td><code>--steps</code></td><td><code>steps: true</code></td></tr>
+          <tr><td>Numbers of labels</td><td><code>labels: { "eq:a": 3 }</code></td><td><code>labels={"eq:a": 3}</code></td><td><code>--label eq:a=3</code></td><td><code>labels: Labels</code> (key → number)</td></tr>
+          <tr><td>Numbers of citations</td><td><code>citations: { knuth: 1 }</code></td><td><code>citations={"knuth": 1}</code></td><td><code>--cite knuth=1</code></td><td><code>citations: Labels</code></td></tr>
         </table></div>
         <ul>
           <li><strong>Language</strong>: <code>en</code> by default. The 16 codes are under <a href="#languages">Languages</a>. A region is accepted (<code>es-MX</code>, <code>zh-CN</code>). In JavaScript, a plain string as the second argument is read as the locale: <code>texToSvg(tex, "fr")</code>.</li>
@@ -143,6 +145,7 @@ println!("{}", r.speech);</pre>
           <li><strong>Strict</strong>: off by default, so broken input is drawn and reported as <a href="#broken">warnings</a>. On, it is refused like TeX does: an exception in JavaScript, <code>ValueError</code> in Python, an <code>Err</code> in Rust, exit code 1 in the terminal.</li>
           <li><strong>Input</strong>: <code>latex</code> by default, <code>mathml</code> or <code>asciimath</code>. MathML passed as LaTeX (starting with <code>&lt;math</code>) is recognized on its own.</li>
           <li><strong>Braille code</strong>: by default the language's: CMU in pt-BR and es, Nemeth elsewhere.</li>
+          <li><strong>Labels and citations</strong>: the numbers of the document's cross-references, which an equation converted alone cannot know. <code>\eqref{eq:a}</code> shows <code>(3)</code>, <code>\ref{eq:a}</code> shows <code>3</code> and <code>\cite{knuth}</code> shows <code>[1]</code>; an unknown key is <code>(??)</code>, <code>??</code> or <code>[?]</code>, as on LaTeX's first run, with a warning (refused with strict). A <code>\label</code> with a <code>\tag</code> on its line is numbered by the tag, and in <code>--batch</code> it counts for the lines after it.</li>
         </ul>
       </section>
 
@@ -216,7 +219,8 @@ echo '&lt;equation&gt;' | mathra [options]</pre>
           <tr><td><code>--braille-code &lt;c&gt;</code></td><td><code>cmu</code> or <code>nemeth</code></td></tr>
           <tr><td><code>--animate</code></td><td>The SVG writes itself in the browser, in the order the layout set it (CSS in the SVG)</td></tr>
           <tr><td><code>--steps</code></td><td>Each element numbered by that order (<code>data-step</code>), with no animation</td></tr>
-          <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>…; prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line</td></tr>
+          <tr><td><code>--label &lt;key=n&gt;</code>, <code>--cite &lt;key=n&gt;</code></td><td>The number of a label (for <code>\ref</code>, <code>\eqref</code>) or of a citation (for <code>\cite</code>); repeat for more</td></tr>
+          <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>…; prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line; a <code>\label</code> with a <code>\tag</code> counts for the lines after it</td></tr>
           <tr><td><code>-V, --version</code>, <code>-h, --help</code></td><td>Version and help</td></tr>
         </table></div>
 <pre data-lang="sh">$ mathra --batch -o out/ &lt; equations.txt

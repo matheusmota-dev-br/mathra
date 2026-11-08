@@ -5,7 +5,7 @@ use mathra_wasm::{convert, tex_to_svg, tex_to_tree};
 
 #[test]
 fn happy_path() {
-    assert!(tex_to_svg("x", None, None, None, None, None, None, None, None).unwrap().starts_with("<svg"));
+    assert!(tex_to_svg("x", None, None, None, None, None, None, None, None, None, None).unwrap().starts_with("<svg"));
     assert!(tex_to_tree("x", Some("pt-BR".into())).unwrap().contains("identifier"));
 }
 
@@ -34,7 +34,7 @@ fn locales_lists_every_language() {
 
 #[test]
 fn input_formats() {
-    assert!(tex_to_svg("sqrt(x)", None, None, None, Some("asciimath".into()), None, None, None, None).unwrap().contains("square root of x"));
+    assert!(tex_to_svg("sqrt(x)", None, None, None, Some("asciimath".into()), None, None, None, None, None, None).unwrap().contains("square root of x"));
     let json: serde_json::Value =
         serde_json::from_str(&mathra_wasm::render_json("<math><mi>x</mi></math>", None, true, true, Some("mathml"), None, false, false).unwrap()).unwrap();
     assert_eq!(json["text"], "x");
@@ -53,14 +53,26 @@ fn braille_in_render() {
 
 #[test]
 fn animate_and_steps() {
-    let plain = tex_to_svg("x+1", None, None, None, None, None, None, None, None).unwrap();
-    let animated = tex_to_svg("x+1", None, None, None, None, None, Some(true), None, None).unwrap();
-    let steps = tex_to_svg("x+1", None, None, None, None, None, None, Some(true), None).unwrap();
+    let plain = tex_to_svg("x+1", None, None, None, None, None, None, None, None, None, None).unwrap();
+    let animated = tex_to_svg("x+1", None, None, None, None, None, Some(true), None, None, None, None).unwrap();
+    let steps = tex_to_svg("x+1", None, None, None, None, None, None, Some(true), None, None, None).unwrap();
     assert!(!plain.contains("data-step"));
     assert!(animated.contains("@keyframes mr-f") && animated.contains(r#"data-steps="3""#));
     assert!(steps.contains(r#"data-steps="3""#) && !steps.contains("@keyframes"));
     let json: serde_json::Value = serde_json::from_str(&mathra_wasm::render_json("x", None, true, false, None, None, true, false).unwrap()).unwrap();
     assert!(json["svg"].as_str().unwrap().contains("mr-f"));
+}
+
+#[test]
+fn labels_and_citations_as_json() {
+    let labels = Some(r#"{"eq:a": 3, "eq:b": "4a"}"#);
+    let citations = Some(r#"{"knuth": 1}"#);
+    let r = mathra_wasm::convert_document(r"\eqref{eq:a} \ref{eq:b} \cite{knuth}", None, true, true, None, None, false, false, None, labels, citations).unwrap();
+    assert_eq!(r.text, "(3)4a[1]");
+    let r = mathra_wasm::convert_document(r"\eqref{eq:z}", None, true, false, None, None, false, false, None, labels, None).unwrap();
+    assert_eq!((r.text.as_str(), r.warnings[0].rule), ("(??)", "E-REC-9"));
+    assert!(mathra_wasm::convert_document(r"\eqref{eq:a}", None, true, false, None, None, false, false, None, Some("[1]"), None).unwrap_err().contains("labels"));
+    assert!(mathra_wasm::convert_document(r"\cite{k}", None, true, false, None, None, false, false, None, None, Some(r#"{"k": [1]}"#)).unwrap_err().contains("citations"));
 }
 
 #[test]

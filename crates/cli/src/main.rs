@@ -2,7 +2,7 @@ use std::process::ExitCode;
 use std::{env, fs, io};
 
 use mathra::font::MathFont;
-use mathra::{convert, BrailleCode, Input, Locale, Options};
+use mathra::{convert, BrailleCode, Input, Labels, Locale, Options};
 
 const HELP: &str = "\
 mathra — equations to SVG, no TeX install
@@ -31,8 +31,13 @@ OPTIONS
       --braille           print only the braille (Unicode cells)
       --braille-code <c>  cmu or nemeth; the default follows the locale
                           (CMU in pt-BR and es, Nemeth elsewhere)
+      --label <key=n>     the number of a label, for \\ref and \\eqref (repeat for more);
+                          an unknown label is ?? with a warning (an error with --strict)
+      --cite <key=n>      the number of a citation, for \\cite (repeat for more);
+                          an unknown key is ? with a warning (an error with --strict)
       --batch             read one equation per input line; with --output <folder>,
-                          write 1.svg, 2.svg…; print ok, warning<TAB>… or error<TAB>… per line
+                          write 1.svg, 2.svg…; print ok, warning<TAB>… or error<TAB>… per line;
+                          a \\label with a \\tag numbers the label for the lines after it
   -V, --version           show the version
   -h, --help              show this help
 
@@ -45,6 +50,7 @@ EXAMPLES
   mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech
   mathra '\\frac{3}{4}' --locale pt-BR --braille
   mathra 'e^{i\\pi} + 1 = 0' --font LibertinusMath-Regular.otf -o euler.svg
+  mathra '\\text{by } \\eqref{eq:a} \\cite{knuth}' --label eq:a=3 --cite knuth=1 --text
 ";
 
 enum Mode {
@@ -68,6 +74,8 @@ struct Args {
     animate: bool,
     steps: bool,
     font: MathFont,
+    labels: Labels,
+    citations: Labels,
     mode: Mode,
 }
 
@@ -82,8 +90,22 @@ impl Args {
             animate: self.animate,
             steps: self.steps,
             font: self.font,
+            labels: self.labels.clone(),
+            citations: self.citations.clone(),
             ..Default::default()
         }
+    }
+}
+
+/// `key=number`, as `--label` and `--cite` take it.
+fn key_number(option: &str, value: Option<String>, into: &mut Labels) -> Result<(), String> {
+    let value = value.ok_or(format!("missing key=number after {option}"))?;
+    match value.split_once('=') {
+        Some((key, number)) if !key.trim().is_empty() => {
+            into.insert(key.trim().to_string(), number.trim().to_string());
+            Ok(())
+        }
+        _ => Err(format!("{option} takes key=number, as in {option} eq:a=3 (got {value})")),
     }
 }
 
@@ -99,6 +121,8 @@ fn read_args() -> Result<Option<Args>, String> {
         animate: false,
         steps: false,
         font: MathFont::default(),
+        labels: Labels::new(),
+        citations: Labels::new(),
         mode: Mode::Svg,
     };
     let mut it = env::args().skip(1);
@@ -130,6 +154,8 @@ fn read_args() -> Result<Option<Args>, String> {
             "--text" => args.mode = Mode::Text,
             "--braille" => args.mode = Mode::Braille,
             "--braille-code" => args.braille = Some(it.next().ok_or("missing code after --braille-code")?.parse()?),
+            "--label" => key_number("--label", it.next(), &mut args.labels)?,
+            "--cite" => key_number("--cite", it.next(), &mut args.citations)?,
             "--batch" => args.mode = Mode::Batch,
             option if option.starts_with("--") => return Err(format!("unknown option: {option} (see mathra --help)")),
             _ if args.tex.is_none() => args.tex = Some(a),
@@ -228,26 +254,28 @@ fn main() -> ExitCode {
 
 fn batch(args: &Args) -> ExitCode {
     use std::io::{BufRead, Write};
-    let options = args.options();
+    let mut options = args.options();
     let mut output = io::BufWriter::new(io::stdout().lock());
     for (i, line) in io::stdin().lock().split(b'\n').enumerate() {
         let Ok(bytes) = line else { break };
         let status = match String::from_utf8(bytes) {
             Err(_) => "error\tthe line is not UTF-8".to_string(),
-            Ok(tex) => batch_status(&tex, i, args, &options),
+            Ok(tex) => batch_status(&tex, i, args, &mut options),
         };
         let _ = writeln!(output, "{status}");
     }
     ExitCode::SUCCESS
 }
 
-/// Status of one batch line: `ok`, `warning<TAB>…` or `error<TAB>…`.
-fn batch_status(tex: &str, i: usize, args: &Args, options: &Options) -> String {
+/// Status of one batch line: `ok`, `warning<TAB>…` or `error<TAB>…`. The labels the line numbers
+/// (`\label` with `\tag`) go into `options` for the lines after it, as in a document.
+fn batch_status(tex: &str, i: usize, args: &Args, options: &mut Options) -> String {
     let tex = tex.strip_suffix('\r').unwrap_or(tex);
     let r = match convert(tex, options) {
         Ok(r) => r,
         Err(e) => return format!("error\t{e}"),
     };
+    options.labels.extend(r.labels.clone());
     if let Some(folder) = &args.output {
         let path = format!("{folder}/{}.svg", i + 1);
         if let Err(e) = fs::write(&path, &r.svg) {

@@ -35,7 +35,7 @@ mathra.render(r"\chemfig{H_3C-*6(=-=-=-)}")["speech"]                     # 'str
 | `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The tree of meaning as JSON. |
 | `locales()` | `[{"code": "en", "name": "English"}, …]`: en, pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar, id, tr, nl, pl. |
 
-`input` is `"latex"`, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own. `braille` is `"cmu"` or `"nemeth"`; by default the locale's (CMU in pt-BR and es, Nemeth elsewhere). Errors are `ValueError`. Types are included (`py.typed`).
+`input` is `"latex"`, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own. `braille` is `"cmu"` or `"nemeth"`; by default the locale's (CMU in pt-BR and es, Nemeth elsewhere). `labels` and `citations` give the numbers of the document's cross-references, which an equation converted alone cannot know: with `labels={"eq:a": 3}` and `citations={"knuth": 1}`, `\eqref{eq:a}` shows `(3)`, `\ref{eq:a}` shows `3` and `\cite{knuth}` shows `[1]`; an unknown key is `(??)`, `??` or `[?]`, as on LaTeX's first run, with a warning (a `ValueError` with `strict=True`). Errors are `ValueError`. Types are included (`py.typed`).
 
 ## What it draws
 
