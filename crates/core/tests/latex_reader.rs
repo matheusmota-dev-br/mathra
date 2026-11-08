@@ -581,6 +581,54 @@ fn colored_boxes_paint_the_background_not_the_text() {
 }
 
 #[test]
+fn bbox_is_a_colorbox_with_padding_and_a_css_border() {
+    // the background alone: no padding, as in MathJax
+    has(&tree(r"\bbox[yellow]{x^2}"), &["Framed", "shape: Fill", "background: Some(\"yellow\")", "border: None", "padding: Some(0.0)", "thickness: None", "Scripts"]);
+    // a padding and a border: a frame of that width and color
+    let t = tree(r"\bbox[5px,border:2px solid red]{E = mc^2}");
+    has(&t, &["shape: Rectangle", "background: None", "border: Some(\"red\")", "padding: Some(0.375)", "thickness: Some(0.15)"]);
+    has(&tree(r"\bbox[yellow,0.5em,border:1pt solid blue]{x}"), &["background: Some(\"yellow\")", "border: Some(\"blue\")", "padding: Some(0.5)", "thickness: Some(0.1)"]);
+    // a border without a color takes the content's, as CSS's currentColor
+    has(&tree(r"\bbox[border:1px solid]{x}"), &["shape: Rectangle", "border: None"]);
+    has(&tree(r"\bbox{x}"), &["shape: Fill", "background: None"]);
+    // what mathra does not draw is a warning, and the rest is kept
+    has(&recovers(r"\bbox[yellow,border-radius:3px]{x}", "E-REC-9"), &["background: Some(\"yellow\")"]);
+    has(&recovers(r"\bbox[2px,border:2px dashed red]{x}", "E-REC-9"), &["border: Some(\"red\")"]);
+    has(&recovers(r"\bbox[yellow,blue]{x}", "E-REC-9"), &["background: Some(\"yellow\")"]);
+    has(&recovers(r"\bbox[re;d]{x}", "E-REC-9"), &["background: None"]);
+}
+
+#[test]
+fn bbox_padding_and_border_take_their_room() {
+    let width = |tex: &str| mathra::typeset(tex, &Options::default()).unwrap().0.width;
+    // \bbox[yellow] fits the content (the italic correction of a lone x aside); a padding is on both sides
+    let fitted = width(r"\bbox[yellow]{x}");
+    assert!(fitted <= width("x") && fitted > 0.9 * width("x"), "{fitted}");
+    let padded = width(r"\bbox[yellow,10px]{x}");
+    let em = mathra::typeset(r"\hspace{1em}", &Options::default()).unwrap().0.width;
+    assert!((padded - fitted - 2.0 * 0.75 * em).abs() < 1.0, "{padded} {fitted} {em}");
+    // the border's width is drawn: thicker border, wider box
+    assert!(width(r"\bbox[border:4px solid red]{x}") > width(r"\bbox[border:1px solid red]{x}"));
+}
+
+#[test]
+fn enclose_draws_the_menclose_notations() {
+    has(&tree(r"\enclose{circle}{7}"), &["shape: Circle"]);
+    has(&tree(r"\enclose{updiagonalstrike,downdiagonalstrike}{x}"), &["Canceled", "shape: X"]);
+    has(&tree(r"\enclose{updiagonalstrike downdiagonalstrike}{x}"), &["shape: X"]);
+    has(&tree(r"\enclose{box}{x}"), &["shape: Rectangle"]);
+    has(&tree(r"\enclose{radical}{x}"), &["Root"]);
+    has(&tree(r"\enclose{roundedbox}[mathcolor=red]{a+b}"), &["Colored { color: \"red\", base: Framed"]);
+    has(&tree(r"\enclose{box}[mathbackground=yellow]{a}"), &["shape: Fill", "background: Some(\"yellow\")"]);
+    // a notation mathra does not draw: the content as it is
+    let t = recovers(r"\enclose{longdiv}{x}", "E-REC-9");
+    assert!(!t.contains("Framed"), "{t}");
+    has(&recovers(r"\enclose{circle,madruwb}{x}", "E-REC-9"), &["shape: Circle"]);
+    has(&recovers(r"\enclose{box}[mathcolor=re;d]{x}", "E-REC-9"), &["shape: Rectangle"]);
+    has(&recovers(r#"\enclose{box}[style="x"]{x}"#, "E-REC-9"), &["shape: Rectangle"]);
+}
+
+#[test]
 fn square_brackets_and_arrows_under_and_over() {
     has(&tree(r"\overbracket{abc}"), &["Brace", "above: true", "bracket: true"]);
     has(&tree(r"\underbracket{abc}_{n}"), &["above: false", "label: Some(Identifier { name: \"n\"", "bracket: true"]);

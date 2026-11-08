@@ -155,6 +155,13 @@ pub enum Node {
         /// `\fcolorbox`: color of the frame line.
         #[serde(skip_serializing_if = "Option::is_none")]
         border: Option<String>,
+        /// Space between the content and the frame, in em, when the input gives one (`\bbox[5px]`);
+        /// the `\fboxsep` of LaTeX otherwise.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        padding: Option<f32>,
+        /// Thickness of the frame line, in em, when the input gives one (`\bbox[border:2px solid]`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thickness: Option<f32>,
     },
     /// Arrow that stretches to fit its text: `\xrightarrow[below]{above}`.
     Arrow {

@@ -501,7 +501,9 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         }
         Node::Space { em: amount } => Ok(MathBox::space(em(e, *amount))),
         Node::Canceled { base, shape: kind } => compose_canceled(base, *kind, e, ctx),
-        Node::Framed { base, shape, background, border } => compose_frame(base, *shape, background.as_deref(), border.as_deref(), e, ctx),
+        Node::Framed { base, shape, background, border, padding, thickness } => {
+            compose_frame(base, *shape, background.as_deref(), border.as_deref(), (*padding, *thickness), e, ctx)
+        }
         Node::Colored { color, base } => {
             let mut math_box = compose(base, e, ctx)?;
             math_box.colorize(color);
@@ -1204,12 +1206,16 @@ fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R
     Ok(math_box)
 }
 
-fn compose_frame(base: &Node, shape: Frame, background: Option<&str>, border: Option<&str>, e: Style, ctx: &mut Context) -> R<MathBox> {
+/// `sizes`: the padding and the line's thickness the input gave, in em (`\bbox`); LaTeX's otherwise.
+fn compose_frame(base: &Node, shape: Frame, background: Option<&str>, border: Option<&str>, sizes: (Option<f32>, Option<f32>), e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, e, ctx)?;
-    let t = em(e, 0.04);
+    let (padding, thickness) = sizes;
+    let t = em(e, thickness.unwrap_or(0.04));
     match shape {
         Frame::Rectangle | Frame::Fill => {
-            let p = em(e, 0.3);
+            // a given padding is all the space there is: no room for a line that is not drawn
+            let t = if shape == Frame::Fill && padding.is_some() { 0.0 } else { t };
+            let p = em(e, padding.unwrap_or(0.3));
             let width = b.width + 2.0 * (p + t);
             let top = b.height + p + t;
             let bottom = b.depth + p + t;

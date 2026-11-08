@@ -1284,6 +1284,9 @@
      "tex": "\\colorbox{yellow}{x} \\fcolorbox{red}{yellow}{y}"
     },
     {
+     "tex": "\\bbox[yellow,5px,border:2px solid red]{x^2} \\enclose{circle}{7} \\enclose{updiagonalstrike}{x}"
+    },
+    {
      "tex": "\\overleftharpoon{AB} \\quad \\overrightharpoon{AB} \\quad \\utilde{AB}"
     },
     {

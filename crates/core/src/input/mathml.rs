@@ -233,7 +233,7 @@ impl Reader<'_> {
             out = Node::Colored { color: color.to_string(), base: Box::new(out) };
         }
         if let Some(background) = node.attribute("mathbackground").or(node.attribute("background")).filter(|c| valid(c)) {
-            out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background.to_string()), border: None };
+            out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background.to_string()), border: None, padding: None, thickness: None };
         }
         out
     }
@@ -382,30 +382,7 @@ impl Reader<'_> {
     fn enclose(&mut self, node: Xml, variant: Variant) -> R<Node> {
         let base = self.row(node, variant)?;
         let notation = node.attribute("notation").unwrap_or("longdiv");
-        let has = |n: &str| notation.split_whitespace().any(|x| x == n);
-        let mut out = base;
-        if has("updiagonalstrike") && has("downdiagonalstrike") {
-            out = Node::Canceled { base: Box::new(out), shape: Cancel::X };
-        } else if has("updiagonalstrike") || has("horizontalstrike") {
-            out = Node::Canceled { base: Box::new(out), shape: Cancel::Bar };
-        } else if has("downdiagonalstrike") {
-            out = Node::Canceled { base: Box::new(out), shape: Cancel::Backslash };
-        }
-        if has("top") || has("actuarial") {
-            out = Node::Bar { base: Box::new(out), above: true };
-        }
-        if has("bottom") {
-            out = Node::Bar { base: Box::new(out), above: false };
-        }
-        if has("radical") {
-            out = Node::Root { radicand: Box::new(out), index: None };
-        }
-        if has("box") || has("roundedbox") {
-            out = Node::Framed { base: Box::new(out), shape: Frame::Rectangle, background: None, border: None };
-        } else if has("circle") {
-            out = Node::Framed { base: Box::new(out), shape: Frame::Circle, background: None, border: None };
-        }
-        Ok(out)
+        Ok(enclose(base, notation))
     }
 
     fn table(&mut self, node: Xml, variant: Variant) -> R<Node> {
@@ -952,4 +929,38 @@ fn entity(name: &str) -> Option<char> {
         "sigmaf" => 'ς',
         _ => return None,
     })
+}
+
+/// The `menclose` notations mathra draws; the others (`longdiv`, `left`, `right`…) leave the content
+/// as it is.
+pub(crate) const ENCLOSE_NOTATIONS: [&str; 10] =
+    ["box", "roundedbox", "circle", "updiagonalstrike", "downdiagonalstrike", "horizontalstrike", "top", "bottom", "actuarial", "radical"];
+
+/// `menclose`, and LaTeX's `\enclose` (MathJax), which draws the same: the notations, separated by
+/// spaces or commas, around `base`.
+pub(crate) fn enclose(base: Node, notation: &str) -> Node {
+    let has = |n: &str| notation.split(|c: char| c.is_whitespace() || c == ',').any(|x| x == n);
+    let mut out = base;
+    if has("updiagonalstrike") && has("downdiagonalstrike") {
+        out = Node::Canceled { base: Box::new(out), shape: Cancel::X };
+    } else if has("updiagonalstrike") || has("horizontalstrike") {
+        out = Node::Canceled { base: Box::new(out), shape: Cancel::Bar };
+    } else if has("downdiagonalstrike") {
+        out = Node::Canceled { base: Box::new(out), shape: Cancel::Backslash };
+    }
+    if has("top") || has("actuarial") {
+        out = Node::Bar { base: Box::new(out), above: true };
+    }
+    if has("bottom") {
+        out = Node::Bar { base: Box::new(out), above: false };
+    }
+    if has("radical") {
+        out = Node::Root { radicand: Box::new(out), index: None };
+    }
+    if has("box") || has("roundedbox") {
+        out = Node::Framed { base: Box::new(out), shape: Frame::Rectangle, background: None, border: None, padding: None, thickness: None };
+    } else if has("circle") {
+        out = Node::Framed { base: Box::new(out), shape: Frame::Circle, background: None, border: None, padding: None, thickness: None };
+    }
+    out
 }

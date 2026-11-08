@@ -163,6 +163,37 @@ fn decorations_over_and_under() {
     assert!(matches!(first("<mover><mi>x</mi><mo>⎴</mo></mover>"), Node::Brace { above: true, bracket: true, .. }));
 }
 
+/// The drawing of an SVG (glyphs and what uses them), without the ids, which follow the source.
+fn drawing(svg: &str) -> String {
+    let id = svg.split("aria-labelledby=\"").nth(1).and_then(|s| s.split("-speech").next()).unwrap();
+    svg.split("<defs>").nth(1).unwrap().replace(id, "")
+}
+
+#[test]
+fn latex_enclose_meets_menclose_in_the_same_tree() {
+    for (notation, latex_notation) in [
+        ("box", "box"),
+        ("roundedbox", "roundedbox"),
+        ("circle", "circle"),
+        ("updiagonalstrike downdiagonalstrike", "updiagonalstrike,downdiagonalstrike"),
+        ("horizontalstrike", "horizontalstrike"),
+        ("downdiagonalstrike", "downdiagonalstrike"),
+        ("top bottom", "top bottom"),
+        ("actuarial", "actuarial"),
+        ("radical", "radical"),
+    ] {
+        let a = mml(&format!("<menclose notation=\"{notation}\"><mi>x</mi><mo>+</mo><mn>1</mn></menclose>"));
+        let b = latex(&format!(r"\enclose{{{latex_notation}}}{{x+1}}"));
+        assert_eq!(a.tree, b.tree, "{notation}");
+        assert_eq!(drawing(&a.svg), drawing(&b.svg), "{notation}: the same drawing");
+    }
+    // mathcolor colors the notation and the content, as MathML's attribute on menclose
+    let a = mml("<menclose notation=\"roundedbox\" mathcolor=\"red\"><mi>a</mi></menclose>");
+    let b = latex(r#"\enclose{roundedbox}[mathcolor="red"]{a}"#);
+    assert_eq!(a.tree, b.tree);
+    assert!(matches!(b.tree.single(), Node::Colored { color, base } if color == "red" && matches!(base.as_ref(), Node::Framed { .. })), "{:?}", b.tree);
+}
+
 #[test]
 fn enclose_style_and_wrappers() {
     assert!(matches!(first("<menclose notation=\"box\"><mi>x</mi></menclose>"), Node::Framed { shape: Frame::Rectangle, .. }));
