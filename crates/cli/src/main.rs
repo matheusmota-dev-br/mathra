@@ -21,6 +21,8 @@ OPTIONS
   -f, --from <format>     latex (default), mathml or asciimath; MathML pasted as
                           LaTeX (starting with <math) is recognized on its own
       --inline            inline style, as in $…$; the default is display style
+      --max-width <w>     break lines wider than w em (30em or 30), after a relation
+                          first, then after + and −; the default is one line
       --strict            refuse invalid LaTeX, like TeX (the default recovers and warns)
       --font <file>       set the equation in this OpenType math font (.otf or .ttf with a
                           MATH table); the default is STIX Two Math
@@ -54,6 +56,7 @@ EXAMPLES
   mathra 'sum_(i=1)^n i^2' --from asciimath
   mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech
   mathra '\\frac{3}{4}' --locale pt-BR --braille
+  mathra 'f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3' --max-width 12em -o long.svg
   mathra 'e^{i\\pi} + 1 = 0' --font LibertinusMath-Regular.otf -o euler.svg
 ";
 
@@ -78,6 +81,7 @@ struct Args {
     animate: bool,
     steps: bool,
     font: MathFont,
+    max_width: Option<f32>,
     mode: Mode,
     /// `--png`: PNG in place of the SVG, also in a batch's folder.
     png: bool,
@@ -97,6 +101,7 @@ impl Args {
             animate: self.animate,
             steps: self.steps,
             font: self.font,
+            max_width: self.max_width,
             ..Default::default()
         }
     }
@@ -153,6 +158,7 @@ fn read_args() -> Result<Option<Args>, String> {
         animate: false,
         steps: false,
         font: MathFont::default(),
+        max_width: None,
         mode: Mode::Svg,
         png: false,
         dpi: 300.0,
@@ -177,6 +183,7 @@ fn read_args() -> Result<Option<Args>, String> {
             "--animate" => args.animate = true,
             "--steps" => args.steps = true,
             "--inline" => args.display = false,
+            "--max-width" => args.max_width = Some(max_width(&it.next().ok_or("missing width after --max-width")?)?),
             "--strict" => args.strict = true,
             "--font" => {
                 let path = it.next().ok_or("missing file after --font")?;
@@ -202,6 +209,15 @@ fn read_args() -> Result<Option<Args>, String> {
         }
     }
     Ok(Some(args))
+}
+
+/// `30em` or `30`: a positive number of em.
+fn max_width(text: &str) -> Result<f32, String> {
+    let number = text.trim().strip_suffix("em").unwrap_or(text.trim()).trim();
+    match number.parse::<f32>() {
+        Ok(w) if w.is_finite() && w > 0.0 => Ok(w),
+        _ => Err(format!("invalid width after --max-width: {text} (use a positive number of em, such as 30em)")),
+    }
 }
 
 fn main() -> ExitCode {

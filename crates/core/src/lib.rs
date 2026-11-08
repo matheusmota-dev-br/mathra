@@ -110,6 +110,11 @@ pub struct Options {
     /// The math font the equation is set in: STIX Two Math by default, or one loaded with
     /// [`font::MathFont::load`].
     pub font: font::MathFont,
+    /// The widest a line may be, in em: a wider formula is broken after a relation, or after `+`
+    /// and `−` when relations alone are not enough, at its top level only (L-BRK-1); each line is
+    /// a `<g data-line>` of the SVG (S-SVG-12). `None` (the default): one line, however wide.
+    /// [`convert`] breaks lines; [`typeset`] and [`pen`] draw one line.
+    pub max_width: Option<f32>,
 }
 
 impl Default for Options {
@@ -124,6 +129,7 @@ impl Default for Options {
             steps: false,
             text_kerning: Default::default(),
             font: font::MathFont::StixTwo,
+            max_width: None,
         }
     }
 }
@@ -227,6 +233,17 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
         let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
         layout::compose_list(&tree, style, &mut ctx)?
     };
+    finish(tex, options, tree, input, style, math_box, registry)
+}
+
+/// What follows the layout: the lines (L-BRK-1), the speech, text and braille, and the SVG. A frame
+/// of its own, not on the stack while the deep recursions of reading and layout run.
+#[inline(never)]
+fn finish(tex: &str, options: &Options, tree: Node, input: Input, style: layout::Style, math_box: layout::MathBox, mut registry: rules::Registry) -> Result<Output, Error> {
+    let formula = {
+        let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+        layout::break_lines(&tree, math_box, style, &mut ctx, options.max_width)?
+    };
     let speech = output::speech::speak(&tree, options.locale);
     let text = output::text::linear(&tree, options.locale);
     let braille_code = options.braille.unwrap_or(BrailleCode::for_locale(options.locale));
@@ -237,7 +254,8 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
     let tree_json = tree.to_json();
     registry.dedup();
     let svg = output::svg::generate(&output::svg::Content {
-        math_box: &math_box,
+        math_box: &formula.math_box,
+        lines: &formula.lines,
         source: tex,
         input,
         tree_json: &tree_json,
@@ -247,7 +265,7 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
         braille_code,
         locale: options.locale,
         warnings: &registry.warnings,
-        font,
+        font: options.font,
         steps: options.steps,
         animate: options.animate,
     });

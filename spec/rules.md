@@ -230,6 +230,24 @@ graphicx's box commands set their argument in text mode, and work in math and in
 
 The lengths take any TeX unit and the box's own `\width`, `\height`, `\depth` and `\totalheight`, with a factor (`2\height`); in `\raisebox`, those of the raised box. A length that cannot be read is an error in `\raisebox{lift}` and `\resizebox`; in `\raisebox`'s optional arguments it is ignored in tolerant mode (E-REC-9). Turned and unevenly scaled boxes are drawn through an SVG `matrix()` (S-SVG-5).
 
+## Line breaking
+
+### L-BRK-1 · Automatic line breaking
+
+Off by default. With a maximum width in em (`Options::max_width`, `--max-width 30em`, `{ maxWidth: 30 }`, `max_width=30`), a formula wider than it is broken into lines, in display and inline style alike:
+
+- **Where.** Only between the atoms of the formula's top-level row, so never inside a fraction, a root, `\left…\right`, scripts, a group (`{…}`) or a table. After a relation (`=`, `≤`, `→`, an extensible arrow) first: if breaking only after relations makes every line fit, no other break is taken. Otherwise after a relation or a binary `+`, `−`, `±` or `∓` (a unary minus is not binary, L-ESP-2; `·`, `×` and punctuation are never break points), each line taking as much as fits (first fit, as TeX's and MathJax's breaks without a penalty search). Never after a relation that another relation follows, as TeX's `\relpenalty` goes only after the last.
+- **The operator.** It ends its line and is not repeated at the start of the next, as TeX and MathJax do, in every locale. Spaces at the start of a line are dropped, as TeX discards glue after a break.
+- **Indent.** Continuation lines start under the right-hand side of the first top-level relation (where the atom after it starts), so they read as more of that side. With no relation, or one whose right-hand side starts more than half the maximum width in, they start 2 em in.
+- **Lines.** Each line's baseline sits below the previous one's as table rows do: a strut of 0.84 em above and 0.36 em below, plus `\jot` (0.3 em) in display style (S-SVG-12). The first line's baseline is the formula's (S-SVG-1).
+- **Not broken.** An equation the author already set in lines (`align`, `gather`, `aligned`… at its top level) is never broken again. Tables (`array`, matrices, `cases`) are atoms: a line breaks around them, never inside.
+
+Speech, linear text, braille and the tree are the same with and without it. `applied` gets one note: how many lines, and after which operators.
+
+### L-BRK-2 · What cannot be broken
+
+A formula, a line or a table that cannot be made narrower than the maximum width (a single wide fraction, a long alignment, a run without break points) is drawn as it is, overflowing, and `applied` notes by how much (`the table cannot be broken within 3em: drawn 4.2em wider`). It is a fact about the layout, not a problem of the input: it goes in `applied`, as the full braille cell of S-BRL-1 does, not in `warnings`, which hold what tolerant mode fixed and stay empty in strict mode (`tolerance.md`); so it does not show on the terminal's stderr or as `warning` in `--batch`, only in `--explain`.
+
 ## Measured coverage
 
 `cargo run --release -p mathra --example bench` runs the hand-written constructions in `corpus/` in both modes and prints how many convert; the README has the numbers of one run. The constructions strict mode refuses are not equations: TeX programming (`\ifx`, `\expandafter`, `\catcode`) and drawings with coordinates (`\tikz`). Strict mode also "accepts" LaTeX escaped twice (`\\cdot`), because it is valid for TeX (a line break followed by the letters "cdot"); tolerant mode reads what the author meant and warns (E-REC-2).

@@ -5,7 +5,7 @@ function args(options) {
   const o = typeof options === "string" ? { locale: options } : options ?? {};
   // a font is what `loadFont` returned, or its id
   const font = typeof o.font === "object" && o.font !== null ? o.font.id : o.font;
-  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null];
+  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null, o.maxWidth ?? null];
 }
 
 // mathfonts: a catalog of math fonts checked with mathra. Nothing is downloaded unless asked for.

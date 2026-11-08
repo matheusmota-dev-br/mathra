@@ -33,10 +33,10 @@ open("euler.png", "wb").write(png)
 
 | | |
 |---|---|
-| `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The SVG as a string. |
-| `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
+| `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False, max_width=None)` | The SVG as a string. |
+| `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False, max_width=None)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
 | `tex_to_png(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, font=None, dpi=300, background=None, color="#111")` | The PNG as bytes. |
-| `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The tree of meaning as JSON. |
+| `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False, max_width=None)` | The tree of meaning as JSON. |
 | `locales()` | `[{"code": "en", "name": "English"}, …]`: en, pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar, id, tr, nl, pl. |
 
 `input` is `"latex"`, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own. `braille` is `"cmu"` or `"nemeth"`; by default the locale's (CMU in pt-BR and es, Nemeth elsewhere). `tex_to_png` is for where SVG is not accepted (e-mail, some editors and LMSs): `dpi` is over a 12pt body, so an em is `dpi * 12 / 72` pixels (50 at 300 dpi), each side rounded up to a whole pixel; `background` (transparent by default) and `color`, the ink, are CSS colors, and colors set in the equation keep their own. A PNG is only the drawing, with no speech or source: give it the speech as its alt text. Errors are `ValueError`. Types are included (`py.typed`).
@@ -63,6 +63,8 @@ chemfig works inside any equation: structures (rings, wedges, Lewis marks), reac
 Speech in `<title>` linked with `aria-labelledby`, the source equation and the tree of meaning in `<metadata>`, color from the page (`currentColor`), size in `em`, a selectable text layer and ids unique to each equation. The same input always gives the same bytes, in Python and in every other package.
 
 With `animate=True` the equation writes itself in the browser, with CSS alone: each glyph fades in, each rule grows and each line is drawn, in the order the layout set them, in about three seconds (nothing moves with `prefers-reduced-motion`); `steps=True` numbers each element by that order (`data-step`) with no animation. Both are off by default, and without them the SVG is unchanged byte for byte.
+
+With `max_width=30` (in em) an equation wider than that is broken into lines: after a relation (`=`, `≤`, `→`…), and only when relations alone are not enough, after `+` and `−` too, only at its top level (never inside a fraction, a root, `\left…\right`, scripts or a table). Each line is a `<g data-line>` of the SVG; speech, text and braille do not change.
 
 ## Other math fonts
 

@@ -29,6 +29,8 @@ Coordinates in font units, with the baseline at y = 0. `width` and `height` in `
 
 The view covers the equation's box and every bit of ink that passes it: an SVG clips what falls outside its view, and some ink does pass the box TeX measures (the hook of a bold f at the end of an equation, the tail of ρ at its start, the line of `\cancel`). Where no ink passes, the view is the box, starting at x = 0; where it does, the view starts before 0 or ends after the width by exactly that much, never by a fixed margin.
 
+A formula broken into lines (S-SVG-12) keeps the same rules: the baseline at y = 0 is the first line's, and `vertical-align` lines it up with the text; the height is what rises above it, and the depth covers every line below, so `height` spans all the lines. The width is the widest line, indent included.
+
 ### S-SVG-2 · Speech
 
 `role="img"` and `aria-labelledby` pointing to a `<title>` with the phrase in the locale's language.
@@ -85,3 +87,18 @@ What comes from the input is made safe before it reaches the SVG, and what is dr
 - a style keeps only `color`, `background`, `background-color` and `opacity`, with plain values (letters, digits, `#(),.% -`): no `url(`, no `expression(`, no quotes, `;`, `<` or `>`.
 
 A style's `color` also colors the content, as `\color` does, so the glyphs carry it as `fill` and outputs without CSS have it too. An id is the author's: two equations with the same `\cssId` on one page share it.
+
+### S-SVG-12 · Lines
+
+Off by default: only with a maximum width (`max_width`, `--max-width`, `{ maxWidth }`) and only when the formula is wider than it is broken (L-BRK-1); otherwise the SVG is the same, byte for byte. A broken formula draws each line in its own group, in order, inside the drawing's `<g>`, and the `<svg>` carries `data-lines` with their count:
+
+```xml
+<svg … data-lines="2">
+  …
+  <g fill="currentColor" stroke="none" transform="scale(1,-1)">
+    <g data-line="0"><use …/> …</g>
+    <g data-line="1"><use …/> …</g>
+  </g>
+```
+
+Lines are numbered from 0, as steps are (S-SVG-10), and the steps run on across them. The glyphs of every line are in the one `<defs>`. Each line's baseline sits below the previous one by its depth and the next line's height, each at least a strut's (0.36 em and 0.84 em, `\baselineskip` 12pt at 10pt), plus `\jot` (0.3 em) in display style, as amsmath's `multline` and `split` space their lines: 1.5 em between plain lines in display style, 1.2 em inline. The speech, the metadata and the text layer (S-SVG-6, still as wide as the drawing) do not change.

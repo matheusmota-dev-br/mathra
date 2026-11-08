@@ -244,6 +244,30 @@ fn animate_and_steps() {
 }
 
 #[test]
+fn max_width_breaks_lines() {
+    let tex = "a = b + c + d + e + f + g + h";
+    let plain = stdout(&mathra(&[tex], None));
+    assert!(!plain.contains("data-line"));
+    for width in ["4em", "4", " 4 em "] {
+        let o = mathra(&[tex, "--max-width", width], None);
+        assert!(o.status.success(), "{width}: {}", stderr(&o));
+        assert!(stdout(&o).contains(r#"<g data-line="1">"#), "{width}");
+        // a layout fact, not a warning: nothing on stderr
+        assert!(stderr(&o).is_empty());
+    }
+    let explained = stdout(&mathra(&[tex, "--max-width", "4em", "--explain"], None));
+    assert!(explained.contains("L-BRK-1"), "{explained}");
+    // the speech does not change
+    assert_eq!(stdout(&mathra(&[tex, "--max-width", "4em", "--speech"], None)), stdout(&mathra(&[tex, "--speech"], None)));
+    for bad in ["wide", "0", "-3em", "em"] {
+        let o = mathra(&[tex, "--max-width", bad], None);
+        assert!(!o.status.success() && stderr(&o).contains("--max-width"), "{bad}");
+    }
+    assert!(!mathra(&[tex, "--max-width"], None).status.success());
+    assert!(stdout(&mathra(&["--help"], None)).contains("--max-width"));
+}
+
+#[test]
 fn a_math_font_from_a_file() {
     let font = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/fonts/latinmodern-math.otf");
     let o = mathra(&[r"\frac{a}{b}", "--font", font], None);
