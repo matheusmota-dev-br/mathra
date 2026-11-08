@@ -92,7 +92,8 @@ An input that starts with a `<math>` element (after an optional XML prolog or co
 
 Commands that belong to the document, not to the equation, are ignored and noted:
 
-- `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG. In text, `\fontsize{size}{skip}\selectfont` too.
+- `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG. In text, `\fontsize{size}{skip}\selectfont` too. Written as an environment in math (`\begin{tiny} x \end{tiny}`), each one is the command over its body, `{\tiny x}`, and is ignored the same way.
+- Plain TeX's fonts of its smaller sizes are not document sizes: they set the math one or two steps smaller, for the rest of the group, as plain.tex loads them beside 10-point text. `\sevenrm` (cmr7) is `\scriptstyle\rm`, `\fiverm` (cmr5) `\scriptscriptstyle\rm`, and `\sevenbf`, `\fivebf` the same in bold.
 - `\usepackage{…}`, `\RequirePackage{…}` and MathJax's `\require{…}`, with their optional argument: the supported packages are already loaded.
 
 ### L-ENT-5 · Cross-references: labels, tags and citations
