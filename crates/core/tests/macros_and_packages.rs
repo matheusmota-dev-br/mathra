@@ -247,6 +247,28 @@ fn double_struck_one() {
     assert_eq!(en(r"\mathbb{R}").speech, "the real numbers");
 }
 
+/// mathtools' cases* (and dcases*, rcases*, drcases*): the second column is text, `$…$` for math in it;
+/// smallmatrix*[r] aligns its columns as pmatrix*[r] does (#160).
+#[test]
+fn mathtools_starred_cases_and_smallmatrix() {
+    let starred = en(r"f(x)=\begin{cases*} 1 & if $x>0$ \\ 0 & otherwise \end{cases*}");
+    assert_eq!(starred.text, "f(x) = {1, if x > 0; 0, otherwise");
+    assert_eq!(starred.tree, en(r"f(x)=\begin{cases} 1 & \text{if $x>0$} \\ 0 & \text{otherwise} \end{cases}").tree);
+    assert_eq!(
+        en(r"\begin{dcases*} \frac12 & when $n$ is even \\ 0 & otherwise \end{dcases*}").tree,
+        en(r"\begin{dcases} \frac12 & \text{when $n$ is even} \\ 0 & \text{otherwise} \end{dcases}").tree
+    );
+    assert_eq!(en(r"\begin{rcases*} a & first \\ b & second \end{rcases*}").tree, en(r"\begin{rcases} a & \text{first} \\ b & \text{second} \end{rcases}").tree);
+    assert_eq!(en(r"\begin{drcases*} a & first \end{drcases*}").tree, en(r"\begin{drcases} a & \text{first} \end{drcases}").tree);
+    // nested environments and \& stay where they are: only the row's own & starts the text
+    assert_eq!(en(r"\begin{cases*} \begin{matrix} a & b \end{matrix} & x \& y \\ x^{2} & z \end{cases*}").text, "{[[a, b]], x & y; x^2, z");
+    // smallmatrix*[r]: the alignment, not a cell
+    let tree = format!("{:?}", en(r"\begin{smallmatrix*}[r] -1 & 2 \\ 3 & -40 \end{smallmatrix*}").tree);
+    assert!(tree.contains("shape: SmallMatrix") && tree.contains("columns: ['r', 'r']"), "{tree}");
+    assert_eq!(en(r"\begin{smallmatrix*}[r] -1 & 2 \\ 3 & -40 \end{smallmatrix*}").text, "[[−1, 2], [3, −40]]");
+    assert_eq!(en(r"\begin{smallmatrix*} a & b \end{smallmatrix*}").tree, en(r"\begin{smallmatrix} a & b \end{smallmatrix}").tree);
+}
+
 #[test]
 fn physics_derivatives_differentials_and_evaluation() {
     assert_eq!(en(r"\fdv{F}{\phi}").text, "(δF)/(δϕ)");

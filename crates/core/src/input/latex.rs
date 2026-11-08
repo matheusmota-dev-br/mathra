@@ -2079,6 +2079,9 @@ impl Reader<'_> {
 
     fn environment(&mut self, col: usize) -> R<Node> {
         let name = self.raw_text()?.trim().to_string();
+        if matches!(name.as_str(), "cases*" | "dcases*" | "rcases*" | "drcases*") {
+            return self.text_column_cases(&name, col);
+        }
         let base = name.trim_end_matches('*');
         let mut columns: Vec<char> = Vec::new();
         let mut verticals = Vec::new();
@@ -2131,7 +2134,7 @@ impl Reader<'_> {
         if matches!(base, "alignat" | "alignedat" | "flalignat") {
             self.raw_text()?;
         }
-        if matches!(base, "pmatrix" | "bmatrix" | "matrix" | "vmatrix" | "Bmatrix" | "Vmatrix") && name.ends_with('*') {
+        if matches!(base, "pmatrix" | "bmatrix" | "matrix" | "vmatrix" | "Bmatrix" | "Vmatrix" | "smallmatrix") && name.ends_with('*') {
             if let Some(a) = self.raw_optional() {
                 columns = vec![a.trim().chars().next().unwrap_or('c'); 1];
             }
@@ -2156,6 +2159,15 @@ impl Reader<'_> {
             columns = vec![a; n];
         }
         Ok(Node::Table { shape: kind, rows, columns, verticals, dashed, horizontals, between, intertexts, stretch: self.array_stretch() })
+    }
+
+    /// mathtools' `cases*`, `dcases*`, `rcases*` and `drcases*`: the second column is text, with `$…$` for
+    /// math in it. The body is read as the unstarred environment with that column in `\text{…}`.
+    #[inline(never)]
+    fn text_column_cases(&mut self, name: &str, col: usize) -> R<Node> {
+        let raw = self.environment_body(name, col)?;
+        let base = name.trim_end_matches('*');
+        self.sub_reader(&format!("\\begin{{{base}}}{}\\end{{{base}}}", text_second_column(&raw)), self.variant)
     }
 
     /// `\arraystretch` as the input defined it (`\def`, `\renewcommand`), or 1.
@@ -3513,6 +3525,64 @@ fn split_text(parts: &mut Vec<TextPart>, current: &mut String, open: &[(usize, c
 }
 
 /// The arguments of a command inside text, as written, to read them again with the command: `spec` has
+/// The body of a `cases*` with its second column in `\text{…}`: the text after the first `&` of each row, up
+/// to the row's `\\` (or a further `&`), outside braces and nested environments. Spaces at the ends of the
+/// text go, as TeX skips them in an alignment cell.
+fn text_second_column(raw: &str) -> String {
+    let c: Vec<char> = raw.chars().collect();
+    let mut out = String::new();
+    let (mut braces, mut environments, mut in_text, mut i) = (0usize, 0usize, false, 0);
+    let close = |out: &mut String, in_text: &mut bool| {
+        if *in_text {
+            out.truncate(out.trim_end().len());
+            out.push('}');
+            *in_text = false;
+        }
+    };
+    while i < c.len() {
+        let top = braces == 0 && environments == 0;
+        match c[i] {
+            '\\' if top && c.get(i + 1) == Some(&'\\') => {
+                close(&mut out, &mut in_text);
+                out.push_str("\\\\");
+                i += 2;
+                continue;
+            }
+            '\\' => {
+                let name: String = c[i + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
+                match name.as_str() {
+                    "begin" => environments += 1,
+                    "end" => environments = environments.saturating_sub(1),
+                    "cr" if top => close(&mut out, &mut in_text),
+                    _ => {}
+                }
+                // the command, or the character after the backslash (\{, \&)
+                let n = name.chars().count().max(1);
+                out.extend(&c[i..(i + 1 + n).min(c.len())]);
+                i += 1 + n;
+                continue;
+            }
+            '{' => braces += 1,
+            '}' => braces = braces.saturating_sub(1),
+            '&' if top && in_text => close(&mut out, &mut in_text),
+            '&' if top => {
+                out.push_str("&\\text{");
+                in_text = true;
+                i += 1;
+                while c.get(i).is_some_and(|c| c.is_whitespace()) {
+                    i += 1;
+                }
+                continue;
+            }
+            _ => {}
+        }
+        out.push(c[i]);
+        i += 1;
+    }
+    close(&mut out, &mut in_text);
+    out
+}
+
 /// `{` for each mandatory argument, `[` for each optional one and `*` for an optional star, in order. A
 /// mandatory argument without braces is one character or one command, as in TeX.
 fn text_arguments(c: &[char], i: &mut usize, spec: &str) -> String {
