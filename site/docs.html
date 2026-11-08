@@ -159,7 +159,7 @@ println!("{}", r.speech);</pre>
           <tr><td><code>applied</code></td><td>The numbered rules that changed something in this equation, as <code>{rule, description}</code>, in the order they acted.</td></tr>
           <tr><td><code>warnings</code></td><td>What tolerant mode fixed (<code>E-REC-*</code>), as <code>{rule, description}</code>. Always empty in strict mode.</td></tr>
         </table></div>
-        <p>Also: <code>locales()</code> lists the languages as <code>{code, name}</code>, and <code>version</code> (JavaScript), <code>core_version</code> (Python) or <code>mathra::VERSION</code> (Rust) give the version of the core inside the package. Python also has <code>tex_to_tree</code>, the tree as a JSON string.</p>
+        <p>Also: <code>locales()</code> lists the languages as <code>{code, name}</code>, and <code>version</code> (JavaScript), <code>core_version</code> (Python) or <code>mathra::VERSION</code> (Rust) give the version of the core inside the package. Python also has <code>tex_to_tree</code>, the tree as a JSON string, and <code>tex_to_png</code>, a <a href="#page">PNG</a> as bytes.</p>
       </section>
 
       <section id="page">
@@ -174,6 +174,10 @@ println!("{}", r.speech);</pre>
         </ul>
         <h3>As an image</h3>
         <p><code>&lt;img src="equation.svg" alt="…"&gt;</code> works too, but an image cannot see the page: it draws in a fixed dark ink (<code>#111</code>), and nothing in it is selectable. Give the <code>&lt;img&gt;</code> the speech as its <code>alt</code>.</p>
+        <h3>As a PNG</h3>
+        <p>Where SVG is not accepted (e-mail, some editors and LMSs), the terminal and the Python package write a PNG of the same drawing, rasterized in Rust with resvg: <code>-o equation.png</code> or <code>--png</code>, <code>mathra.tex_to_png(tex)</code> (bytes), and <code>Output::png</code> in Rust with the <code>png</code> feature. The size is <code>--dpi</code> (<code>dpi=</code>, 300 by default) over a 12pt body, so an em is dpi × 12 / 72 pixels (50 at 300 dpi), each side rounded up to a whole pixel. The background is transparent and the ink <code>#111</code>; <code>--background</code> and <code>--color</code> (<code>background=</code>, <code>color=</code>) take any CSS color, and colors set in the equation keep their own. A PNG is only the drawing: no speech, source or text layer, so give it the speech as its <code>alt</code>. The npm package leaves it out: in a browser, draw the SVG on a canvas.</p>
+<pre data-lang="sh">$ mathra 'e^{i\pi} + 1 = 0' -o euler.png
+$ mathra 'e^{i\pi} + 1 = 0' --png --dpi 600 --background white &gt; euler.png</pre>
         <h3>What else travels inside</h3>
         <p><code>role="img"</code> and <code>aria-labelledby</code> point to the <code>&lt;title&gt;</code> with the speech. <code>&lt;metadata&gt;</code> keeps the source with its notation, the tree, the braille, the font name and any warnings, so the equation can be recovered from the file. The same input always gives the same bytes. The full contract is <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/svg.md">spec/svg.md</a>.</p>
       </section>
@@ -206,7 +210,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 echo '&lt;equation&gt;' | mathra [options]</pre>
         <div class="tablewrap"><table>
           <tr><th>Option</th><th>What it does</th></tr>
-          <tr><td><code>-o, --output &lt;file&gt;</code></td><td>Write the SVG to a file instead of printing it</td></tr>
+          <tr><td><code>-o, --output &lt;file&gt;</code></td><td>Write the SVG to a file instead of printing it; a <code>.png</code> file gets a <a href="#page">PNG</a></td></tr>
           <tr><td><code>-l, --locale &lt;code&gt;</code></td><td>The language (<code>en</code> by default)</td></tr>
           <tr><td><code>-f, --from &lt;format&gt;</code></td><td><code>latex</code> (default), <code>mathml</code> or <code>asciimath</code></td></tr>
           <tr><td><code>--inline</code></td><td>Inline style, as in <code>$…$</code></td></tr>
@@ -216,7 +220,10 @@ echo '&lt;equation&gt;' | mathra [options]</pre>
           <tr><td><code>--braille-code &lt;c&gt;</code></td><td><code>cmu</code> or <code>nemeth</code></td></tr>
           <tr><td><code>--animate</code></td><td>The SVG writes itself in the browser, in the order the layout set it (CSS in the SVG)</td></tr>
           <tr><td><code>--steps</code></td><td>Each element numbered by that order (<code>data-step</code>), with no animation</td></tr>
-          <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>…; prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line</td></tr>
+          <tr><td><code>--png</code></td><td>Write a PNG instead of the SVG, to <code>-o</code> or to stdout</td></tr>
+          <tr><td><code>--dpi &lt;n&gt;</code></td><td>PNG resolution over a 12pt body: an em is n × 12 / 72 pixels (300 by default: 50 pixels per em)</td></tr>
+          <tr><td><code>--background &lt;c&gt;</code>, <code>--color &lt;c&gt;</code></td><td>PNG background (transparent by default) and ink (<code>#111</code>), as CSS colors</td></tr>
+          <tr><td><code>--batch</code></td><td>One equation per input line; with <code>-o &lt;folder&gt;</code> (it must exist), writes <code>1.svg</code>, <code>2.svg</code>… (<code>1.png</code>, <code>2.png</code>… with <code>--png</code>); prints <code>ok</code>, <code>warning⇥…</code> or <code>error⇥…</code> per line</td></tr>
           <tr><td><code>-V, --version</code>, <code>-h, --help</code></td><td>Version and help</td></tr>
         </table></div>
 <pre data-lang="sh">$ mathra --batch -o out/ &lt; equations.txt
@@ -242,7 +249,7 @@ $ mathra 'x^2 + 1' --braille                                     # ⠭⠘⠆⠐�
       <section id="converts">
         <h2>What it converts</h2>
         <p>Fractions, roots, scripts and limits, stretchy delimiters, matrices and <code>array</code>, <code>cases</code>, alignments, accents and braces, <code>\text</code>, alphabets, every amssymb symbol and negation, <code>\cancel</code>, <code>\boxed</code>, colors, siunitx, mhchem, physics, braket, tensor, mathtools, <code>\newcommand</code> and friends, commutative diagrams (amscd, tikz-cd, xymatrix), structural chemistry (chemfig structures, reaction schemes and mechanism arrows, read aloud by their molecular formulas), and the computed <code>\divchave</code> and <code>\contaarmada</code>. Every construction, drawn and in braille, is in the <a href="reference.html">reference</a>; the full list is in the <a href="https://github.com/matheusmota-dev-br/mathra#what-it-converts">README</a>.</p>
-        <p><strong>Out of scope</strong>, because mathra is for equations: TikZ and TeX programming (<code>\ifx</code>, <code>\catcode</code>). <strong>Not yet</strong>: automatic line breaking, MathML and PNG output, content MathML.</p>
+        <p><strong>Out of scope</strong>, because mathra is for equations: TikZ and TeX programming (<code>\ifx</code>, <code>\catcode</code>). <strong>Not yet</strong>: automatic line breaking, MathML output, content MathML.</p>
       </section>
 
       <section id="more">

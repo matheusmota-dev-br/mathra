@@ -26,16 +26,20 @@ mathra.tex_to_svg(r"\sum_{n=1}^{\infty} \frac{1}{n^2}", display=False)   # inlin
 mathra.tex_to_svg(r"\vertA\vert", strict=True)                           # ValueError, like TeX
 mathra.render("sqrt(x)/2", input="asciimath")["speech"]                   # also input="mathml"
 mathra.render(r"\chemfig{H_3C-*6(=-=-=-)}")["speech"]                     # 'structure of C7 H8, with 1 aromatic ring'
+
+png = mathra.tex_to_png(r"e^{i\pi} + 1 = 0", background="white")           # PNG bytes, 300 dpi
+open("euler.png", "wb").write(png)
 ```
 
 | | |
 |---|---|
 | `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The SVG as a string. |
 | `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
+| `tex_to_png(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, font=None, dpi=300, background=None, color="#111")` | The PNG as bytes. |
 | `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The tree of meaning as JSON. |
 | `locales()` | `[{"code": "en", "name": "English"}, …]`: en, pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar, id, tr, nl, pl. |
 
-`input` is `"latex"`, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own. `braille` is `"cmu"` or `"nemeth"`; by default the locale's (CMU in pt-BR and es, Nemeth elsewhere). Errors are `ValueError`. Types are included (`py.typed`).
+`input` is `"latex"`, `"mathml"` or `"asciimath"`; MathML passed as LaTeX, starting with `<math`, is recognized on its own. `braille` is `"cmu"` or `"nemeth"`; by default the locale's (CMU in pt-BR and es, Nemeth elsewhere). `tex_to_png` is for where SVG is not accepted (e-mail, some editors and LMSs): `dpi` is over a 12pt body, so an em is `dpi * 12 / 72` pixels (50 at 300 dpi), each side rounded up to a whole pixel; `background` (transparent by default) and `color`, the ink, are CSS colors, and colors set in the equation keep their own. A PNG is only the drawing, with no speech or source: give it the speech as its alt text. Errors are `ValueError`. Types are included (`py.typed`).
 
 ## What it draws
 

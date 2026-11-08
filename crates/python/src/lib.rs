@@ -29,6 +29,30 @@ fn tex_to_svg(tex: &str, locale: &str, display: bool, strict: bool, input: &str,
     convert(tex, locale, display, strict, input, braille, animate, steps, font).map(|r| r.svg)
 }
 
+/// The equation as PNG bytes: `dpi` over a 12pt body (an em is dpi × 12 / 72 pixels), `background`
+/// and `color` as CSS colors (transparent and `#111` by default).
+#[pyfunction]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111"))]
+#[allow(clippy::too_many_arguments)]
+fn tex_to_png(
+    py: Python<'_>,
+    tex: &str,
+    locale: &str,
+    display: bool,
+    strict: bool,
+    input: &str,
+    braille: Option<&str>,
+    font: Option<usize>,
+    dpi: f32,
+    background: Option<String>,
+    color: &str,
+) -> PyResult<Py<pyo3::types::PyBytes>> {
+    let options = mathra::PngOptions { dpi, background, color: color.to_string() };
+    options.check().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let png = convert(tex, locale, display, strict, input, braille, false, false, font)?.png(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(pyo3::types::PyBytes::new(py, &png).unbind())
+}
+
 /// Tree of meaning as JSON.
 #[pyfunction]
 #[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None))]
@@ -55,6 +79,7 @@ fn locales() -> Vec<(&'static str, &'static str)> {
 #[pyo3(name = "_mathra")]
 fn mathra_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tex_to_svg, m)?)?;
+    m.add_function(wrap_pyfunction!(tex_to_png, m)?)?;
     m.add_function(wrap_pyfunction!(tex_to_tree, m)?)?;
     m.add_function(wrap_pyfunction!(render, m)?)?;
     m.add_function(wrap_pyfunction!(locales, m)?)?;

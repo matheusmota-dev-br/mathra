@@ -16,3 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 mathra.workspace = true
+
+[features]
+default = ["png"]
+# PNG output (`-o file.png`, `--png`); a build without it refuses .png instead of writing an SVG there
+png = ["mathra/png"]

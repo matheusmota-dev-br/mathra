@@ -20,6 +20,8 @@
 //!   `\chemfig` and `\schemestart` are unsupported commands.
 //! - `latin-modern`: Latin Modern Math as a second font, chosen with [`convert_in_font`]; some 700 KB
 //!   more in the binary.
+//! - `png`: PNG output, [`Output::png`] (the SVG rasterized with resvg, no fonts loaded); off by
+//!   default here, on in the command line and the Python package.
 
 #[cfg(feature = "chem")]
 pub mod chem;
@@ -35,6 +37,8 @@ use std::fmt;
 
 pub use locale::Locale;
 pub use output::braille::BrailleCode;
+#[cfg(feature = "png")]
+pub use output::png::{PngError, PngOptions};
 pub use rules::Applied;
 pub use tree::{Class, Node};
 
@@ -173,6 +177,19 @@ impl Output {
             "warnings": rules(&self.warnings),
         })
         .to_string()
+    }
+
+    /// The SVG as a PNG, at `options.dpi` over a 12pt body (50 pixels per em at 300 dpi), transparent
+    /// and in `#111` ink by default; see [`output::png`]. The `png` feature.
+    ///
+    /// ```
+    /// let r = mathra::convert(r"e^{i\pi} + 1 = 0", &mathra::Options::default()).unwrap();
+    /// let png = r.png(&mathra::PngOptions { dpi: 150.0, ..Default::default() }).unwrap();
+    /// assert!(png.starts_with(b"\x89PNG"));
+    /// ```
+    #[cfg(feature = "png")]
+    pub fn png(&self, options: &PngOptions) -> Result<Vec<u8>, PngError> {
+        output::png::from_svg(&self.svg, options)
     }
 }
 

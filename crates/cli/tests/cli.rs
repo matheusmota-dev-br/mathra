@@ -241,3 +241,92 @@ fn a_math_font_from_a_file() {
     let o = mathra(&["x", "--font", "no-such-font.otf"], None);
     assert!(!o.status.success() && stderr(&o).contains("cannot read"), "{}", stderr(&o));
 }
+
+// --- PNG ---
+
+/// Width and height from a PNG's IHDR chunk.
+#[cfg(feature = "png")]
+fn png_size(bytes: &[u8]) -> (u32, u32) {
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "not a PNG");
+    let be = |i: usize| u32::from_be_bytes(bytes[i..i + 4].try_into().unwrap());
+    (be(16), be(20))
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn png_by_extension_or_flag() {
+    let p = folder("png");
+    let file = p.join("euler.PNG");
+    let o = mathra(&["e^{i\\pi} + 1 = 0", "-o", file.to_str().unwrap()], None);
+    assert!(o.status.success(), "{}", stderr(&o));
+    let (w, h) = png_size(&std::fs::read(&file).unwrap());
+    // 300 dpi by default: 50 pixels per em; --dpi 600 doubles each side (give or take the rounding up)
+    let o = mathra(&["e^{i\\pi} + 1 = 0", "--png", "--dpi", "600"], None);
+    assert!(o.status.success());
+    let (w2, h2) = png_size(&o.stdout);
+    assert!(w2.abs_diff(2 * w) <= 1 && h2.abs_diff(2 * h) <= 1, "{w}×{h} and {w2}×{h2}");
+    // --png wins over another extension; any other extension is still an SVG
+    let o = mathra(&["x", "--png", "-o", p.join("x.img").to_str().unwrap()], None);
+    assert!(o.status.success());
+    png_size(&std::fs::read(p.join("x.img")).unwrap());
+    let o = mathra(&["x", "-o", p.join("x.jpg").to_str().unwrap()], None);
+    assert!(o.status.success());
+    assert!(std::fs::read_to_string(p.join("x.jpg")).unwrap().starts_with("<svg"));
+    // the other outputs are text, whatever the file is called
+    let o = mathra(&["x", "--speech", "-o", p.join("speech.png").to_str().unwrap()], None);
+    assert!(o.status.success());
+    assert_eq!(std::fs::read_to_string(p.join("speech.png")).unwrap().trim(), "x");
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn png_colors_and_bad_options() {
+    let white = mathra(&["x", "--png", "--background", "white", "--color", "#c00"], None);
+    assert!(white.status.success());
+    let clear = mathra(&["x", "--png"], None);
+    assert_ne!(white.stdout, clear.stdout);
+    assert_eq!(png_size(&white.stdout), png_size(&clear.stdout));
+    for (args, snippet) in [
+        (&["x", "--png", "--color", "nope"][..], "not a color: nope"),
+        (&["x", "--png", "--background", "#12"][..], "not a color"),
+        (&["x", "--png", "--dpi", "0"][..], "--dpi takes a positive number"),
+        (&["x", "--png", "--dpi", "abc"][..], "--dpi takes a positive number"),
+        (&["x", "--png", "--dpi"][..], "missing number after --dpi"),
+        (&["--batch", "--png", "--color", "nope"][..], "not a color"),
+    ] {
+        let o = mathra(args, Some(b"x\n"));
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+        assert!(stderr(&o).contains(snippet), "{args:?}: {}", stderr(&o));
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn batch_writes_pngs_with_png() {
+    let p = folder("batch-png");
+    let o = mathra(&["--batch", "--png", "--dpi", "150", "-o", p.to_str().unwrap()], Some(b"x^2\n\\frac{1}{2}\n"));
+    assert_eq!(stdout(&o), "ok\nok\n");
+    for name in ["1.png", "2.png"] {
+        png_size(&std::fs::read(p.join(name)).unwrap());
+    }
+    assert!(!p.join("1.svg").exists());
+}
+
+/// A build without the `png` feature (`cargo test -p mathra-cli --no-default-features`) refuses PNG
+/// output rather than write an SVG into a .png file.
+#[cfg(not(feature = "png"))]
+#[test]
+fn without_the_png_feature_png_is_refused() {
+    let p = folder("no-png");
+    for args in [&["x", "-o", p.join("x.png").to_str().unwrap()][..], &["x", "--png"][..], &["--batch", "--png", "-o", p.to_str().unwrap()][..]] {
+        let o = mathra(args, Some(b"x\n"));
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+        assert!(stderr(&o).contains("PNG output is not supported in this build; use .svg"), "{args:?}: {}", stderr(&o));
+        assert!(o.stdout.is_empty(), "{args:?}");
+    }
+    assert!(!p.join("x.png").exists() && !p.join("1.png").exists());
+    // any other extension is still an SVG
+    let o = mathra(&["x", "-o", p.join("x.jpg").to_str().unwrap()], None);
+    assert!(o.status.success());
+    assert!(std::fs::read_to_string(p.join("x.jpg")).unwrap().starts_with("<svg"));
+}

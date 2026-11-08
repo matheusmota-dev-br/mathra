@@ -13,5 +13,6 @@ name = "mathra_python"
 crate-type = ["cdylib"]
 
 [dependencies]
-mathra.workspace = true
+# PNG output (tex_to_png); the wasm package leaves it out, since the browser rasterizes
+mathra = { workspace = true, features = ["png"] }
 pyo3 = { version = "0.25", features = ["extension-module", "abi3-py39"] }
