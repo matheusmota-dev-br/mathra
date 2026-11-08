@@ -108,8 +108,9 @@ struct Macros {
     depth: usize,
     /// mathtools' `\shortvdotswithin` wrote the `\vdotswithin` that comes next: that one is short.
     short_row: bool,
-    /// The input, as it came, shows a JSON escape that cannot be a command (E-REC-2, `json_elsewhere`).
-    json_text: bool,
+    /// E-REC-2, [`json_elsewhere`]: `None` when the input has a real tab or line break (a JSON string has
+    /// none, so it shows no escape); otherwise, does it show a JSON escape that cannot be a command.
+    json_text: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -5444,18 +5445,23 @@ impl Reader<'_> {
     fn json_escape<'n>(&self, name: &'n str) -> Option<(char, &'n str)> {
         let escape = name.chars().next().filter(|c| matches!(c, 'n' | 'r' | 't'))?;
         let remainder = &name[1..];
+        let elsewhere = self.macros.json_text?;
         let json = match remainder.chars().count() {
             0 => true,
             1 | 2 => !SHORT_TEXT_COMMANDS.contains(&name),
-            _ => self.macros.json_text,
+            _ => elsewhere,
         };
         json.then_some((escape, remainder))
     }
 }
 
 /// Does the text show a JSON escape that cannot be a command: `\n`, `\r` or `\t` before something that is
-/// not a letter, `\"`, or `\u` and four hexadecimal digits?
-fn json_elsewhere(c: &[char]) -> bool {
+/// not a letter, `\"`, or `\u` and four hexadecimal digits? `None` when it has a real tab or line break: a
+/// JSON string never has one, so the text is not JSON and shows no escape (#208).
+fn json_elsewhere(c: &[char]) -> Option<bool> {
+    if c.iter().any(|x| matches!(x, '\t' | '\r' | '\n')) {
+        return None;
+    }
     let mut i = 0;
     while i + 1 < c.len() {
         if c[i] != '\\' {
@@ -5471,12 +5477,12 @@ fn json_elsewhere(c: &[char]) -> bool {
             _ => false,
         };
         if escape {
-            return true;
+            return Some(true);
         }
         // a doubled backslash is one token (a line break, or an escaped backslash)
         i += if next == '\\' { 2 } else { 1 };
     }
-    false
+    Some(false)
 }
 
 /// Does mathra know this command? Used to recover `\vertA` as `\vert A`.
@@ -5596,8 +5602,10 @@ pub fn undo_doubled_backslashes(s: &str) -> Option<String> {
 }
 
 /// `\frac` stored in JSON without escaping the backslash becomes form feed + "rac"; `\begin` becomes backspace + "egin";
-/// `\times`, `\right`, `\neq` become tab, CR and line feed. Rebuilds the command when the following
-/// letters form a known command; otherwise the control character becomes a space.
+/// `\times`, `\right`, `\neq` become tab, CR and line feed. Rebuilds the command when the letters that follow
+/// it make a known command (KaTeX's texvc aliases aside: a tab before `h` is not `\th`); otherwise the control
+/// character becomes a space. A tab or a line break is whitespace, as in TeX, unless the input looks
+/// JSON-decoded ([`json_decoded`]); the other control characters are never the author's whitespace.
 fn repair_controls(s: &str) -> Option<String> {
     let letter_of = |c: char| match c {
         '\u{0C}' => Some('f'),
@@ -5613,16 +5621,19 @@ fn repair_controls(s: &str) -> Option<String> {
         return None;
     }
     let c: Vec<char> = s.chars().collect();
+    let whitespace_rebuilt = json_decoded(&c);
     let mut output = String::with_capacity(s.len() + 8);
     let mut changed = false;
     for (i, ch) in c.iter().enumerate() {
-        let Some(letter) = letter_of(*ch) else {
+        let letter = letter_of(*ch).filter(|_| whitespace_rebuilt || !matches!(ch, '\t' | '\r' | '\n'));
+        let Some(letter) = letter else {
             output.push(*ch);
             continue;
         };
         let following: String = c[i + 1..].iter().take_while(|x| x.is_ascii_alphabetic()).collect();
         let name = format!("{letter}{following}");
-        let rebuild = (1..=name.len()).rev().any(|n| known(&name[..n]) && n > 1);
+        // the whole run of letters, as TeX reads a command: "and" + line break + "exhaust" is not \ne xhaust
+        let rebuild = name.len() > 1 && known(&name) && !TEXVC_ALIASES.contains(&name.as_str());
         if rebuild {
             output.push('\\');
             output.push(letter);
@@ -5632,6 +5643,32 @@ fn repair_controls(s: &str) -> Option<String> {
         }
     }
     changed.then_some(output)
+}
+
+/// KaTeX's texvc aliases a lost backslash could rebuild (#172): short names that ordinary text after a tab
+/// or a line break also makes (`\th` from a tab and `h`).
+const TEXVC_ALIASES: [&str; 9] = ["alef", "alefsym", "arcctg", "bull", "rang", "rarr", "rArr", "real", "th"];
+
+/// Does the text look JSON-decoded with its backslashes lost (#208)? Only when every tab and line break
+/// stands where a lost backslash would, right before a letter (none ends a line, makes a blank line or
+/// indents the next one; the whitespace that ends the input aside), and no command starting with `n`, `r`
+/// or `t` kept its backslash: JSON would have eaten that one too (`\to` becomes tab + "o").
+fn json_decoded(c: &[char]) -> bool {
+    let end = c.iter().rposition(|x| !x.is_whitespace()).map_or(0, |e| e + 1);
+    let c = &c[..end];
+    let mut i = 0;
+    while i < c.len() {
+        let next = c.get(i + 1).copied();
+        match c[i] {
+            '\t' | '\r' | '\n' if !next.is_some_and(|n| n.is_ascii_alphabetic()) => return false,
+            '\\' if matches!(next, Some('n' | 'r' | 't')) => return false,
+            // a doubled backslash is one token (a line break, or an escaped backslash)
+            '\\' if next == Some('\\') => i += 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    true
 }
 
 /// The plain character of a Unicode superscript or subscript: every character whose Unicode

@@ -352,3 +352,40 @@ fn a_muskip_register_alone_is_an_ignored_assignment() {
         assert!(strict(tex).is_err(), "{tex}");
     }
 }
+
+/// #208: a real line break or tab is whitespace, as in TeX. The JSON readings (a control character in
+/// place of the backslash, `\n` + letters) apply only when the input looks JSON-decoded, and a lost
+/// backslash never rebuilds one of KaTeX's texvc aliases (`\th`).
+#[test]
+fn real_line_breaks_and_tabs_are_whitespace() {
+    for (tex, meant) in [
+        // a command kept its \t: JSON would have eaten it, so the line break is real (not \nu)
+        ("a \\to\nu b", r"a \to u b"),
+        // indentation (not \th)
+        ("a,\n\t\th(x)=1", "a, h(x)=1"),
+        // a line break that ends a line, before a word (not \ne xhaust)
+        ("a, b, and\nexhaust", "a, b, and exhaust"),
+        ("a\n  \\neq b", r"a \neq b"),
+    ] {
+        let out = tolerant(tex);
+        assert!(out.warnings.is_empty(), "{tex:?}: {:?}", out.warnings);
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+        assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
+    }
+    // the literal escape is read only without real whitespace: a JSON string has none
+    assert_eq!(warning_rules(r"x\nb) y"), ["E-REC-2"]);
+    assert_eq!(warning_rules("x\\nb)\ny"), ["E-REC-1"]);
+    // a tab before "h" never rebuilds KaTeX's \th, even when the rest looks JSON-decoded
+    assert!(!tolerant("x\u{0C}rac{1}{2}\th").text.contains("tanh"));
+}
+
+/// #208: JSON-decoded text still has its commands rebuilt: every line break or tab stands right before
+/// the letters of a known command.
+#[test]
+fn commands_eaten_by_json_are_still_rebuilt() {
+    for (tex, meant) in [("a \neq b", r"a \neq b"), ("\u{0C}rac{1}{2} \times 3", r"\frac{1}{2} \times 3"), ("x \to y\n", r"x \to y"), ("\\left( x \right)", r"\left( x \right)")] {
+        let out = tolerant(tex);
+        assert_eq!(out.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), ["E-REC-2"], "{tex:?}");
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+    }
+}
