@@ -1048,6 +1048,9 @@
     },
     {
      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}"
+    },
+    {
+     "tex": "\\begin{aligned} a &= b \\\\ &\\vdotswithin{=} \\\\ &= c \\\\ \\shortvdotswithin{=} &= d \\end{aligned}"
     }
    ]
   },

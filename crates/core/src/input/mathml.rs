@@ -182,29 +182,7 @@ impl Reader<'_> {
             }
             "munder" | "mover" | "munderover" => self.under_over(node, variant)?,
             "mmultiscripts" => self.multiscripts(node, variant)?,
-            "mfenced" => {
-                let open = node.attribute("open").unwrap_or("(").trim().chars().next();
-                let close = node.attribute("close").unwrap_or(")").trim().chars().next();
-                let separators: Vec<char> = node.attribute("separators").unwrap_or(",").chars().filter(|c| !c.is_whitespace()).collect();
-                let mut inner = Vec::new();
-                for (i, child) in Self::elements(node).into_iter().enumerate() {
-                    if i > 0 {
-                        if let Some(&s) = separators.get(i - 1).or(separators.last()) {
-                            inner.push(operator(&s.to_string()));
-                        }
-                    }
-                    inner.push(self.element(child, variant)?);
-                }
-                let inner = Node::row(inner).simplify();
-                if matches!(inner, Node::Table { .. }) {
-                    // a table between the fences: a matrix or cases, as in an mrow
-                    let fence = |c: Option<char>| c.map_or(Node::row(vec![]), |c| operator(&c.to_string()));
-                    let children = [fence(open), inner, fence(close)].into_iter().filter(|n| *n != Node::row(vec![])).collect();
-                    fences(children)
-                } else {
-                    Node::Delimited { open, close, parts: vec![inner], middles: vec![] }
-                }
-            }
+            "mfenced" => self.fenced(node, variant)?,
             "menclose" => self.enclose(node, variant)?,
             "mtable" => self.table(node, variant)?,
             "mtr" | "mlabeledtr" => {
@@ -223,6 +201,32 @@ impl Reader<'_> {
         };
         // mstyle already painted itself, around its style
         Ok(if name == "mstyle" { node_out } else { self.paint(node, node_out) })
+    }
+
+    /// `<mfenced>`. In a function of its own: `element_unguarded` recurses once per level of
+    /// nesting, and the nodes this one holds would widen each of its stack frames.
+    fn fenced(&mut self, node: Xml, variant: Variant) -> R<Node> {
+        let open = node.attribute("open").unwrap_or("(").trim().chars().next();
+        let close = node.attribute("close").unwrap_or(")").trim().chars().next();
+        let separators: Vec<char> = node.attribute("separators").unwrap_or(",").chars().filter(|c| !c.is_whitespace()).collect();
+        let mut inner = Vec::new();
+        for (i, child) in Self::elements(node).into_iter().enumerate() {
+            if i > 0 {
+                if let Some(&s) = separators.get(i - 1).or(separators.last()) {
+                    inner.push(operator(&s.to_string()));
+                }
+            }
+            inner.push(self.element(child, variant)?);
+        }
+        let inner = Node::row(inner).simplify();
+        Ok(if matches!(inner, Node::Table { .. }) {
+            // a table between the fences: a matrix or cases, as in an mrow
+            let fence = |c: Option<char>| c.map_or(Node::row(vec![]), |c| operator(&c.to_string()));
+            let children = [fence(open), inner, fence(close)].into_iter().filter(|n| *n != Node::row(vec![])).collect();
+            fences(children)
+        } else {
+            Node::Delimited { open, close, parts: vec![inner], middles: vec![] }
+        })
     }
 
     /// `mathcolor` and `mathbackground`, on any element that carries them.
