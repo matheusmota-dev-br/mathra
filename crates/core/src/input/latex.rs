@@ -45,6 +45,8 @@ struct Macros {
     warned_excess: bool,
     /// Groups, commands and scripts open right now: protects the stack from inputs like `{{{{…`.
     depth: usize,
+    /// mathtools' `\shortvdotswithin` wrote the `\vdotswithin` that comes next: that one is short.
+    short_row: bool,
 }
 
 #[derive(Clone)]
@@ -785,6 +787,41 @@ impl Reader<'_> {
         };
         items.push(node);
         Ok(Some(None))
+    }
+
+    /// mathtools' `\vdotswithin` and `\shortvdotswithin`, asked by `mod_command`: not in `structure_command`,
+    /// which is on the path of every nested environment, where arms widen its stack frame.
+    fn vdots_command(&mut self, name: &str, col: usize, start: usize, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
+        match name {
+            "vdotswithin" => items.push(self.vdots_within()?),
+            "shortvdotswithin" => self.short_vdots_within(start, col)?,
+            _ => return Ok(None),
+        }
+        Ok(Some(None))
+    }
+
+    /// mathtools' `\vdotswithin{=}`: ⋮ centered in a box as wide as `{}={}`, so that it sits under
+    /// the symbol of the line above (a relation with its spaces). Short when `\shortvdotswithin`
+    /// wrote it.
+    fn vdots_within(&mut self) -> R<Node> {
+        let short = std::mem::take(&mut self.macros.short_row);
+        // read as a list, not as a group: `=` keeps its class, and its spaces
+        let raw = self.raw_text()?;
+        let symbol = self.sub_reader(&raw, self.variant)?;
+        Ok(Node::VdotsWithin { symbol: Box::new(symbol), short })
+    }
+
+    /// mathtools' `\shortvdotswithin{=}`: a row of its own, `&\vdotswithin{=}\\` (`\vdotswithin{=}&\\`
+    /// with the star, in the first column), set close to the rows around it.
+    fn short_vdots_within(&mut self, start: usize, col: usize) -> R<()> {
+        let starred = self.current() == Some('*');
+        if starred {
+            self.pos += 1;
+        }
+        let symbol = self.raw_text()?;
+        self.macros.short_row = true;
+        let row = if starred { format!("\\vdotswithin{{{symbol}}}&\\\\") } else { format!("&\\vdotswithin{{{symbol}}}\\\\") };
+        self.inject(start, &row, col)
     }
 
     fn space_command(&mut self, name: &str, col: usize, start: usize, star: bool, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
@@ -1572,6 +1609,9 @@ impl Reader<'_> {
 
     fn mod_command(&mut self, name: &str, col: usize, start: usize, star: bool, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
         let _ = (col, start, star);
+        if let Some(done) = self.vdots_command(name, col, start, items)? {
+            return Ok(Some(done));
+        }
         let mu = |m: f32| Node::Space { em: m / 18.0 };
         let node: Node = match name {
             // modular arithmetic, with amsmath's spacing

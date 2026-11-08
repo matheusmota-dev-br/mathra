@@ -274,6 +274,14 @@ pub enum Node {
         height: bool,
         depth: bool,
     },
+    /// mathtools' `\vdotswithin{=}`: ⋮ centered in a box as wide as `{}={}`, so that it sits under
+    /// the symbol of the line above. `short` (`\shortvdotswithin`): its table row is set close to
+    /// the rows around it, with no strut.
+    VdotsWithin {
+        symbol: Box<Node>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        short: bool,
+    },
     /// `\mathllap`, `\mathclap`, `\mathrlap`: draws without taking width. Side: 'l', 'c' or 'r'.
     Overlapped {
         base: Box<Node>,
@@ -595,6 +603,9 @@ pub enum TableKind {
 }
 
 impl Node {
+    /// The ⋮ of `\vdotswithin`: what speech, text and braille read for it.
+    pub const VDOTS: Node = Node::Operator { symbol: '⋮', class: Class::Ord };
+
     pub fn children(&self) -> &[Node] {
         match self {
             Node::Row { children } => children,

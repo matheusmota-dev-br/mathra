@@ -303,6 +303,7 @@ impl Writer {
             | Node::Overlapped { base, .. }
             | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base, ctx),
+            Node::VdotsWithin { .. } => self.node(&Node::VDOTS, ctx),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(ctx, *symbol),
             #[cfg(feature = "chem")]

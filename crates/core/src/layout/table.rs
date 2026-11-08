@@ -95,7 +95,13 @@ pub fn compose(kind: TableKind, rows: &[Vec<Node>], columns: &[char], lines: &Li
     let jot = if matches!(kind, Aligned | Centered) { em(e, 0.3) } else { 0.0 };
     let mut heights = Vec::new();
     let mut depths = Vec::new();
+    // a row of `\shortvdotswithin` (its ⋮ and empty cells) has no strut
+    let short = |row: &[Cell]| {
+        let mut filled = row.iter().filter(|c| !matches!(&c.node, Node::Row { children } if children.is_empty())).peekable();
+        filled.peek().is_some() && filled.all(|c| matches!(c.node, Node::VdotsWithin { short: true, .. }))
+    };
     for row in &cells {
+        let (strut_height, strut_depth) = if short(row) { (0.0, 0.0) } else { (strut_height, strut_depth) };
         heights.push(row.iter().map(|c| c.math_box.height).fold(strut_height, f32::max));
         depths.push(row.iter().map(|c| c.math_box.depth).fold(strut_depth, f32::max));
     }

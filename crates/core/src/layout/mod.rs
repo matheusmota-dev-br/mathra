@@ -390,6 +390,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             let lines = table::Lines { verticals, dashed, horizontals, stretch: *stretch };
             table::compose(*kind, rows, columns, &lines, between, intertexts, e, ctx)
         }
+        Node::VdotsWithin { symbol, .. } => compose_vdots_within(symbol, e, ctx),
         // a cell, a lap and a phantom are math lists of their own: a slanted letter that ends them
         // keeps its italic correction
         Node::Multicolumn { base, .. } => compose_list(base, e, ctx),
@@ -1028,6 +1029,14 @@ fn compose_delimited(open: Option<char>, close: Option<char>, parts: &[Node], mi
 
 fn combining(c: char) -> bool {
     matches!(c as u32, 0x0300..=0x036F | 0x20D0..=0x20FF)
+}
+
+/// `\vdotswithin{=}`: the phantom of `{}={}`, and ⋮ drawn without taking width, centered on the
+/// phantom's middle (a phantom box after it, the two centered together on the end of the first).
+fn compose_vdots_within(symbol: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
+    let within = || Node::Phantom { base: Box::new(Node::row(vec![Node::row(vec![]), symbol.clone(), Node::row(vec![])])), width: true, height: false };
+    let drawn = Node::row(vec![within(), Node::Overlapped { base: Box::new(Node::row(vec![Node::VDOTS, within()])), side: 'c' }]);
+    compose(&drawn, e, ctx)
 }
 
 fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Style, ctx: &mut Context) -> R<MathBox> {

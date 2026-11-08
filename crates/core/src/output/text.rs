@@ -261,6 +261,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         | Node::Rotated { base, .. }
         | Node::Reflected { base }
         | Node::Overlapped { base, .. } => write_node(base, loc, s),
+        Node::VdotsWithin { .. } => write_node(&Node::VDOTS, loc, s),
         Node::Rule { .. } => {}
         Node::VerticalArrow { symbol, .. } => {
             s.push(' ');

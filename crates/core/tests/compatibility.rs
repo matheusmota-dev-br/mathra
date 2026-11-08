@@ -776,3 +776,79 @@ fn overgroup_covers_a_base_wider_than_the_widest_size_of_the_font() {
     let drawn = wide.items.iter().filter(|i| matches!(i, Item::Line { .. } | Item::Rule { .. })).count();
     assert_eq!(drawn, 3, "{:?}", wide.items);
 }
+
+// ---------- mathtools' \vdotswithin (#120) ----------
+
+/// Middles (x of the ink's center) of the glyphs of `c` in a box, top to bottom.
+fn glyph_middles(b: &MathBox, c: char) -> Vec<(f32, f32)> {
+    let f = font::font();
+    let id = f.glyph(c).unwrap();
+    let mut found: Vec<(f32, f32)> = b
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Glyph { id: g, x, y, scale, .. } if *g == id => {
+                let (x0, _, x1, _) = f.limits(id);
+                Some((x + (x0 + x1) / 2.0 * scale, *y))
+            }
+            _ => None,
+        })
+        .collect();
+    found.sort_by(|a, b| b.1.total_cmp(&a.1));
+    found
+}
+
+#[test]
+fn vdotswithin_centers_the_dots_under_the_symbol_above() {
+    for (tex, symbol) in [
+        (r"\begin{align*} a &= b \\ &\vdotswithin{=} \\ &= c \end{align*}", '='),
+        (r"\begin{align*} x + y &\le z \\ &\vdotswithin{\le} \\ &\le w \end{align*}", '≤'),
+        (r"\begin{align*} a &= b \\ \shortvdotswithin{=} &= c \end{align*}", '='),
+    ] {
+        let b = math_box(tex);
+        let symbols = glyph_middles(&b, symbol);
+        let dots = glyph_middles(&b, '⋮');
+        assert_eq!((symbols.len(), dots.len()), (2, 1), "{tex}");
+        assert!((dots[0].0 - symbols[0].0).abs() < 1.0, "{tex}: ⋮ at {}, {symbol} at {}", dots[0].0, symbols[0].0);
+        // between the two lines
+        assert!(symbols[0].1 > dots[0].1 && dots[0].1 > symbols[1].1, "{tex}");
+        assert_ink_inside(tex, &Options::default());
+    }
+    // the box is as wide as the symbol with its spaces, `{}={}`
+    assert_eq!(math_box(r"\vdotswithin{=}").width, math_box(r"{}={}").width);
+    // read as "and so on", as \vdots
+    let out = read(r"\begin{align*} a &= b \\ &\vdotswithin{=} \\ &= c \end{align*}");
+    assert_eq!(out.speech, "a equals b; and so on; equals c");
+    assert_eq!(out.text, "a = b; ⋮; = c");
+}
+
+#[test]
+fn shortvdotswithin_is_a_row_of_its_own_set_closer() {
+    let short = read(r"\begin{align*} a &= b \\ \shortvdotswithin{=} &= c \end{align*}");
+    let long = read(r"\begin{align*} a &= b \\ &\vdotswithin{=} \\ &= c \end{align*}");
+    assert_eq!(short.speech, long.speech);
+    let Node::Table { rows, .. } = short.tree.children().first().unwrap_or(&short.tree) else { panic!("{:?}", short.tree) };
+    assert_eq!(rows.len(), 3);
+    assert!(matches!(&rows[1][1], Node::VdotsWithin { short: true, .. }), "{:?}", rows[1]);
+    let Node::Table { rows, .. } = long.tree.children().first().unwrap_or(&long.tree) else { panic!("{:?}", long.tree) };
+    assert!(matches!(&rows[1][1], Node::VdotsWithin { short: false, .. }), "{:?}", rows[1]);
+    // the short row ends with its own row: a \vdotswithin after it is not short
+    let after = read(r"\begin{align*} a &= b \\ \shortvdotswithin{=} &= c \\ &\vdotswithin{=} \\ &= d \end{align*}");
+    let Node::Table { rows, .. } = after.tree.children().first().unwrap_or(&after.tree) else { panic!("{:?}", after.tree) };
+    assert!(matches!(&rows[3][1], Node::VdotsWithin { short: false, .. }), "{:?}", rows[3]);
+    let (s, l) = (math_box(r"\begin{align*} a &= b \\ \shortvdotswithin{=} &= c \end{align*}"), math_box(r"\begin{align*} a &= b \\ &\vdotswithin{=} \\ &= c \end{align*}"));
+    assert!(s.height + s.depth < l.height + l.depth - 100.0, "{} vs {}", s.height + s.depth, l.height + l.depth);
+    assert_eq!(s.width, l.width);
+    // the star puts the dots in the first column, under a symbol that ends it
+    let b = math_box(r"\begin{align*} a = {} &b \\ \shortvdotswithin*{=} c = {} &d \end{align*}");
+    let (symbols, dots) = (glyph_middles(&b, '='), glyph_middles(&b, '⋮'));
+    assert!((dots[0].0 - symbols[0].0).abs() < 1.0, "⋮ at {}, = at {}", dots[0].0, symbols[0].0);
+}
+
+#[test]
+fn a_tree_node_stays_small() {
+    // every level of nesting holds nodes on the stack: a bigger node makes the deep-nesting cases
+    // overflow the 1 MiB and 2 MiB stacks of the tests (176 bytes when \vdotswithin came)
+    let size = std::mem::size_of::<Node>();
+    assert!(size <= 176, "Node is {size} bytes");
+}
