@@ -26,7 +26,11 @@ Only the elements of [MathML Core](https://www.w3.org/TR/mathml-core/), the part
 | matrices, cases, aligned, gather, array | `<mtable>` between its delimiters; alignment as `columnalign` and as CSS `text-align` on each cell (Chrome ignores `columnalign`), `columnlines` and `rowlines` as MathML 3 attributes (drawn by Firefox and Safari, not by Chrome); `\multicolumn` is `columnspan` |
 | accents, bars, braces, `\xrightarrow` | `<mover>`/`<munder>` with the mark as an `<mo>` (`accent` written out), the label of a brace in an outer element, a stretchy arrow with its text |
 | text | `<mtext>`, spaces as no-break spaces so the ones at the ends stay |
-| color, `\colorbox` | `mathcolor`, `mathbackground` on an `<mrow>` |
+| color, `\colorbox`, `\bbox[color,5px]` | `mathcolor`, `mathbackground` on an `<mrow>`; `\bbox`'s padding as CSS `padding` (a `\bbox` border is S-MML-1) |
+| `\class`, `\cssId`, `\style`, `\htmlData` | the attributes (`class`, `id`, `style`, `data-*`, global in MathML Core) on an `<mrow>`, as the tree keeps them, sanitized |
+| `\vdotswithin{=}` | a one-column `<mtable>`: `⋮` over the relation in an `<mphantom>` with no height, so the dots take its width; `\shortvdotswithin` with `rowspacing="0em"` |
+| `\overgroup`, `\undergroup` | `<mover>`/`<munder>` with a stretchy `⏠`/`⏡` as an accent |
+| mhchem's words (`\ce{Hydrogen + Oxygen -> Water}`) | `<mtext>` |
 | `\displaystyle`… | `<mstyle displaystyle scriptlevel>` |
 | `\phantom`, `\hphantom`, `\smash`, `\mathrlap`, `\raisebox` | `<mphantom>` and `<mpadded>` |
 
@@ -43,7 +47,7 @@ The `intent` attribute of [MathML 4](https://www.w3.org/TR/mathml4/#mixing_inten
 
 ## S-MML-1 · What MathML cannot draw
 
-Chemical structures (chemfig), commutative diagrams (amscd, tikz-cd, xymatrix), `\divchave` and `\contaarmada`, crossed-out content (`\cancel`, `\not` on a letter), framed content (`\boxed`, `\fbox`, the phasor and actuarial angles), graphicx's rotated, scaled and mirrored boxes and `\mathchoice` have no MathML Core drawing. The equation is then a `<semantics>` element: the closest drawing first (the content without its frame or strike, the cells of a diagram as a table, a structure's formula as `<mtext>`, `125 ÷ 5` for a long division), then the source in an `<annotation>`, with the encoding of its notation (`application/x-tex`, `text/x-asciimath` or `application/mathml-presentation+xml`).
+Chemical structures (chemfig), commutative diagrams (amscd, tikz-cd, xymatrix), `\divchave` and `\contaarmada`, crossed-out content (`\cancel`, `\not` on a letter, `\enclose{updiagonalstrike}`), framed content (`\boxed`, `\fbox`, a `\bbox` border, `\enclose{circle}`, the phasor and actuarial angles), graphicx's rotated, scaled and mirrored boxes and `\mathchoice` have no MathML Core drawing. The equation is then a `<semantics>` element: the closest drawing first (the content without its frame or strike, the cells of a diagram as a table, a structure's formula as `<mtext>`, `125 ÷ 5` for a long division), then the source in an `<annotation>`, with the encoding of its notation (`application/x-tex`, `text/x-asciimath` or `application/mathml-presentation+xml`).
 
 ```xml
 <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><semantics><mrow><mrow><mn>125</mn><mo>÷</mo><mn>5</mn></mrow></mrow><annotation encoding="application/x-tex">\divchave{125}{5}</annotation></semantics></math>
@@ -53,9 +57,9 @@ The conversion records a note `S-MML-1` naming the construction, in `applied`: a
 
 ## Round trip
 
-Reading the output back with `--from mathml` gives the same tree as the original input. `crates/core/tests/mathml_output.rs` checks it over the whole corpus (`constructions.json`, `packages.json`, `gallery.json` and `reference.json`): of 490 equations whose MathML is not a fallback, 459 come back identical. The 31 others draw the same, and lose structure MathML has no place for; the test lists each one:
+Reading the output back with `--from mathml` gives the same tree as the original input. `crates/core/tests/mathml_output.rs` checks it over the whole corpus (`constructions.json`, `packages.json`, `gallery.json` and `reference.json`): of 498 equations whose MathML is not a fallback, 466 come back identical. The 32 others draw the same, and lose structure MathML has no place for; the test lists each one:
 
-- siunitx and mhchem's `\pu` (13): a quantity and its units come back as their drawing (the number, a space and upright letters), and the grouping flag of a number under five digits draws nothing.
+- siunitx, `\tablenum` and mhchem's `\pu` (14): a quantity and its units come back as their drawing (the number, a space and upright letters), and the grouping flag of a number under five digits draws nothing.
 - An atom class forced on a group (6: `\mathrel`, `\mathop`, `\DeclarePairedDelimiter`, `\intop`, physics' `\dd`): MathML has spacing on a single `<mo>`, not a class for a group.
 - An operator the author named like a known function (2: `\DeclareMathOperator{\sen}{sen}` in English) reads back as that function.
 - Table structure (5): `\intertext` rows, `\cline` and dashed rules, rules around the table, `\arraystretch`.
@@ -76,3 +80,5 @@ For the round trip, the MathML reader (spec/input.md) also reads what this outpu
 - `accent` written out, also `accent="false"`; any single mark with `accent="true"` is an accent of that character; a stretchy arrow with text over or under it is `\xrightarrow`.
 - An `<mrow>` with an interval intent, or with an `arg`, only groups for the intent: its children go into the row.
 - No-break spaces in `<mtext>` are spaces.
+- An `<mrow>` with `class`, `id`, `style` or `data-*` (not MathJax's `data-mjx-*`) carries them, sanitized as the LaTeX reader does; with `mathbackground`, a CSS `padding` is `\bbox`'s.
+- An empty `<mrow>` in a row is TeX's empty group `{}`; `columnspan="1"` is a line of multline aligned on its own; a one-column table of `⋮` over a phantom with no height is `\vdotswithin`.

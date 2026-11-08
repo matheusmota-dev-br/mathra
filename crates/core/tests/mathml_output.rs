@@ -37,49 +37,50 @@ fn equations() -> Vec<(String, Locale, Input, String)> {
     out
 }
 
-/// Equations whose MathML is not a fallback but does not read back to the same tree, and why.
+/// Equations (by their source) whose MathML is not a fallback but does not read back to the same
+/// tree, and why.
 /// The drawing is right; what is lost is structure MathML has no place for (spec/mathml.md, "Round trip").
 const KNOWN: &[(&str, &str)] = &[
     // siunitx: Quantity and Unit come back as their drawing (number, space, upright letters), and the
     // `group` flag of a number under five digits draws nothing MathML can show
-    (r"constructions.json: \SI (siunitx)", "siunitx quantity"),
-    (r"constructions.json: \qty (siunitx)", "siunitx quantity"),
-    (r"constructions.json: \ang (siunitx)", "siunitx group flag"),
-    (r"packages.json: siunitx \SI", "siunitx quantity"),
-    ("gallery: units", "siunitx quantity"),
-    ("reference science/chemistry #9", "mhchem \\pu: siunitx quantity"),
-    ("reference science/units #0", "siunitx quantity"),
-    ("reference science/units #1", "siunitx quantity"),
-    ("reference science/units #2", "siunitx group flag"),
-    ("reference science/units #3", "siunitx group flag"),
-    ("reference science/units #4", "siunitx quantity"),
-    ("reference science/units #5", "siunitx group flag"),
-    ("reference science/units #6", "siunitx quantity"),
+    (r##"\SI{9,8}{\meter\per\second\squared}"##, "siunitx quantity"),
+    (r##"\qty{3}{\kilo\gram}"##, "siunitx quantity"),
+    (r##"\ang{30}"##, "siunitx group flag"),
+    (r##"g = \SI{9.81}{\meter\per\second\squared}"##, "siunitx quantity"),
+    (r##"\pu{123 kJ mol^-1}"##, "mhchem \\pu: siunitx quantity"),
+    (r##"\SI{9.81}{\meter\per\second\squared}"##, "siunitx quantity"),
+    (r##"\qty{1.38e-23}{\joule\per\kelvin}"##, "siunitx quantity"),
+    (r##"\num{6.022e23}"##, "siunitx group flag"),
+    (r##"\ang{12;30;15}"##, "siunitx group flag"),
+    (r##"\SIrange{1}{10}{\kilo\gram}"##, "siunitx quantity"),
+    (r##"\numlist{1;2;3}"##, "siunitx group flag"),
+    (r##"\begin{array}{c} \tablenum{1.2} \\ \tablenum{-12.345} \end{array}"##, "siunitx group flag"),
+    (r##"\SI{1}{\angstrom}"##, "siunitx quantity"),
     // \mathrel, \mathop…: MathML has no atom class for a group, only spacing on one <mo>
-    (r"constructions.json: mathtools \DeclarePairedDelimiter", "forced class"),
-    (r"constructions.json: \underset/\overset", "forced class"),
-    ("reference latex/operators #8", "forced class"),
-    ("reference latex/integrals #9", "forced class"),
-    ("reference latex/symbols #10", "forced class"),
-    ("reference science/physics #10", "forced class"),
+    (r##"\DeclarePairedDelimiter{\abs}{\lvert}{\rvert} \abs{x}"##, "forced class"),
+    (r##"\underset{n\to\infty}{\lim} \overset{?}{=}"##, "forced class"),
+    (r##"\injlim_{i} A_i \quad \projlim_{j} B_j \quad \varliminf_{n} a_n \quad \varlimsup_{n} a_n"##, "forced class"),
+    (r##"\intop_0^1 f(x)\,dx"##, "forced class"),
+    (r##"a \coloneqq b \quad c \eqqcolon d \quad e \Coloneq f \quad g \colonapprox h \quad i \dblcolon j"##, "forced class"),
+    (r##"\int f \dd x"##, "forced class"),
     // an operator the author named `sen` reads back as the sine it is
-    (r"constructions.json: \DeclareMathOperator", "author's function named like a known one"),
-    (r"packages.json: \operatorname", "author's function named like a known one"),
+    (r##"\DeclareMathOperator{\sen}{sen} \sen x"##, "author's function named like a known one"),
+    (r##"\operatorname{sen} x"##, "author's function named like a known one"),
     // table structure MathML has no attribute for: \intertext rows, \cline and dashed rules, outer
     // rules, \arraystretch, \multicolumn's own rules
-    (r"constructions.json: \intertext", "table structure"),
-    (r"constructions.json: array \multicolumn", "table structure"),
-    (r"constructions.json: array \cline", "table structure"),
-    ("reference latex/matrices #8", "table structure"),
-    ("reference latex/matrices #9", "table structure"),
+    (r##"\begin{align} a&=b \intertext{logo} c&=d \end{align}"##, "table structure"),
+    (r##"\begin{array}{|c|c|} \hline \multicolumn{2}{|c|}{X} \\ \hline 1&2 \end{array}"##, "table structure"),
+    (r##"\begin{array}{cc} 1&2 \\ \cline{1-1} 3&4 \end{array}"##, "table structure"),
+    (r##"\def\arraystretch{1.5} \begin{array}{c:c:c} a & b & c \\ \hline d & e & f \\ \hdashline g & h & i \end{array}"##, "table structure"),
+    (r##"\begin{array}{|l|r|} \hline \text{item} & \text{cost} \\ \cdashline{1-2} \text{pen} & 2 \\ \text{book} & 15 \\ \hline \end{array}"##, "table structure"),
     // math inside \text: MathML text holds no math, so it comes back as text and math side by side
-    (r"constructions.json: \colorbox", "math inside text"),
-    (r"constructions.json: \text with math inside", "math inside text"),
+    (r##"\colorbox{yellow}{$x$}"##, "math inside text"),
+    (r##"\text{se $x>0$ então}"##, "math inside text"),
     // drawn with Core's mspace and mpadded, read back as a space and as the content
-    (r"constructions.json: \rule", "rule as mspace"),
-    ("reference latex/display #5", "\\vcenter"),
+    (r##"\rule{1cm}{1pt}"##, "rule as mspace"),
+    (r##"a + \vcenter{\frac{\frac{a}{b}}{c}}"##, "\\vcenter"),
     // the border labels become a plain table
-    (r"constructions.json: \bordermatrix", "border matrix"),
+    (r##"\bordermatrix{&a\cr b&1}"##, "border matrix"),
 ];
 
 #[test]
@@ -102,14 +103,14 @@ fn the_corpus_round_trips_through_mathml() {
             failures.push((name, tex, first.tree.to_json(), back.map(|b| b.tree.to_json()).unwrap_or_else(|e| e.to_string()), first.mathml));
         }
     }
-    let unexpected: Vec<_> = failures.iter().filter(|f| !KNOWN.iter().any(|(k, _)| *k == f.0)).collect();
+    let unexpected: Vec<_> = failures.iter().filter(|f| !KNOWN.iter().any(|(k, _)| *k == f.1)).collect();
     for f in &unexpected {
         eprintln!("{}\n  tex   {}\n  tree  {}\n  back  {}\n  mml   {}\n", f.0, f.1, f.2, f.3, f.4);
     }
     eprintln!("round trip: {checked} checked, {} identical, {} known differences, {fallbacks} fallbacks", checked - failures.len(), failures.len());
     assert!(unexpected.is_empty(), "{} equations do not round-trip", unexpected.len());
     // a known difference that went away: take it off the list
-    let gone: Vec<_> = KNOWN.iter().filter(|(k, _)| !failures.iter().any(|f| f.0 == *k)).collect();
+    let gone: Vec<_> = KNOWN.iter().filter(|(k, _)| !failures.iter().any(|f| f.1 == *k)).collect();
     assert!(gone.is_empty(), "round-trip now: {gone:?}");
 }
 
@@ -274,6 +275,28 @@ fn hostile_text_stays_text() {
         assert!(doc.descendants().all(|n| !matches!(n.tag_name().name(), "script" | "b" | "i")), "{tex:?}: {}", r.mathml);
         assert!(doc.descendants().all(|n| n.attributes().all(|a| !a.name().starts_with("on"))), "{tex:?}");
     }
+}
+
+#[test]
+fn the_enhancements_of_2026_11() {
+    let round_trip = |tex: &str| {
+        let first = convert(tex, &Options::default()).unwrap_or_else(|e| panic!("{tex}: {e}"));
+        let back = convert(&first.mathml, &Options { input: Input::MathMl, ..Options::default() }).unwrap();
+        assert_eq!(back.tree, first.tree, "{tex}: {}", first.mathml);
+        first.mathml
+    };
+    // \class, \cssId, \style, \htmlData: MathML Core's global attributes on an <mrow>
+    let m = round_trip(r"\class{step}{x} + \cssId{eq1}{y} + \style{color:red}{z} + \htmlData{step=3, kind=a}{1}");
+    assert!(m.contains(r#"<mrow class="step"><mi>x</mi></mrow>"#) && m.contains(r#"<mrow id="eq1">"#) && m.contains(r#"<mrow data-step="3" data-kind="a">"#), "{m}");
+    // \bbox with a color and a padding: mathbackground and CSS padding; with a border: S-MML-1
+    assert!(round_trip(r"\bbox[yellow,5px]{x}").contains(r#"<mrow mathbackground="yellow" style="padding: 0.375em">"#));
+    assert!(mml(r"\bbox[border:2px solid red]{x} \enclose{circle}{y}").contains("<semantics>"));
+    // \vdotswithin and its short form; \overgroup and \undergroup as accents; mhchem's words as text
+    round_trip(r"\begin{aligned} a &= b \\ &\vdotswithin{=} \\ \shortvdotswithin{=} &= c \end{aligned}");
+    assert!(round_trip(r"\overgroup{AB} \undergroup{AB}").contains(r#"<mover accent="true"><mrow><mi>A</mi><mi>B</mi></mrow><mo stretchy="true">⏠</mo></mover>"#));
+    assert!(round_trip(r"\ce{Hydrogen + Oxygen -> Water}").contains("<mtext>Hydrogen</mtext>"));
+    // multline's lines, each aligned on its own, after an empty group
+    round_trip(r"\begin{multline} a+b \\ \shoveright{{}+c} \end{multline}");
 }
 
 #[test]

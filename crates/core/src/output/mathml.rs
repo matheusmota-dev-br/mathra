@@ -127,6 +127,8 @@ fn each_child<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
         | Node::VCenter { base }
         | Node::Reflected { base }
         | Node::Smashed { base, .. }
+        | Node::Attributed { base, .. }
+        | Node::VdotsWithin { symbol: base, .. }
         | Node::Overlapped { base, .. } => out.push(base),
         _ => {}
     }
@@ -335,13 +337,14 @@ impl Writer {
             Node::Brace { base, above, label, bracket } => self.brace(base, *above, label.as_deref(), *bracket),
             Node::Text { parts } => self.text_node(parts),
             Node::Space { em: e } => self.space(*e),
-            Node::Framed { base, background, .. } => self.paint(base, None, background.as_deref()),
-            Node::Colored { color, base } => self.paint(base, Some(color), None),
+            Node::Framed { base, background, padding, .. } => self.paint(base, None, background.as_deref(), *padding),
+            Node::Colored { color, base } => self.paint(base, Some(color), None, None),
             Node::Arrow { symbol, above, below } => self.arrow(*symbol, above.as_deref(), below.as_deref()),
             Node::Stacked { base, above, below } => self.stacked(base, above.as_deref(), below.as_deref()),
             Node::Phantom { base, width, height } => self.phantom(base, *width, *height),
-            Node::ForcedClass { base, .. } | Node::Quantity { unit: base, .. } | Node::Multicolumn { base, .. } | Node::Attributed { base, .. } => self.node(base),
-            Node::VdotsWithin { symbol, .. } => self.node(symbol),
+            Node::ForcedClass { base, .. } | Node::Quantity { unit: base, .. } | Node::Multicolumn { base, .. } => self.node(base),
+            Node::Attributed { attributes, base } => self.attributed(attributes, base),
+            Node::VdotsWithin { symbol, short } => self.vdots_within(symbol, *short),
             Node::Style { level, base } => self.style(*level, base),
             Node::Unit { base, .. } => self.unit(base),
             Node::Raised { em: e, base, .. } => self.padded(base, &[("voffset", em(*e))]),
@@ -911,13 +914,17 @@ impl Writer {
     }
 
     #[inline(never)]
-    fn paint(&mut self, base: &Node, color: Option<&str>, background: Option<&str>) {
+    fn paint(&mut self, base: &Node, color: Option<&str>, background: Option<&str>, padding: Option<f32>) {
         self.start("mrow");
         if let Some(c) = color {
             self.attr("mathcolor", c);
         }
         if let Some(b) = background {
             self.attr("mathbackground", b);
+        }
+        // \bbox[yellow,5px]: the space around the content, as CSS (MathML Core boxes take padding)
+        if let Some(p) = padding {
+            self.attr("style", &format!("padding: {}", em(p)));
         }
         self.gt();
         self.inline(base);
@@ -985,6 +992,36 @@ impl Writer {
         if padded {
             self.end("mpadded");
         }
+    }
+
+    /// `\class`, `\cssId`, `\style`, `\htmlData`: MathML Core's global attributes on an `<mrow>`. The
+    /// tree holds them already sanitized; a name that is not an HTML attribute name is left out.
+    #[inline(never)]
+    fn attributed(&mut self, attributes: &[(String, String)], base: &Node) {
+        self.start("mrow");
+        for (name, value) in attributes {
+            let known = matches!(name.as_str(), "class" | "id" | "style") || name.strip_prefix("data-").is_some_and(|k| !k.is_empty());
+            if known && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+                self.attr(name, value);
+            }
+        }
+        self.gt();
+        self.inline(base);
+        self.end("mrow");
+    }
+
+    /// `\vdotswithin{=}`: ⋮ centered in the width of the relation, as a one-column table over a phantom
+    /// of it with no height; `\shortvdotswithin` without space between the rows.
+    #[inline(never)]
+    fn vdots_within(&mut self, symbol: &Node, short: bool) {
+        self.start("mtable");
+        if short {
+            self.attr("rowspacing", "0em");
+        }
+        self.gt();
+        self.out.push_str("<mtr><mtd><mo>\u{22EE}</mo></mtd></mtr><mtr><mtd>");
+        self.phantom(symbol, true, false);
+        self.out.push_str("</mtd></mtr></mtable>");
     }
 
     #[inline(never)]

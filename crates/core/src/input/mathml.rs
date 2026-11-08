@@ -99,6 +99,11 @@ impl Reader<'_> {
                     children.push(Node::row(vec![]));
                     marks.push(mark);
                 }
+                // an empty <mrow> is TeX's empty group {}, which makes `{} + e` a binary +
+                Node::Row { children: c } if c.is_empty() && child.tag_name().name() == "mrow" && Self::elements(*child).is_empty() && !grouping_for_intent(*child) => {
+                    children.push(Node::row(vec![]));
+                    marks.push(Mark::Plain);
+                }
                 Node::Row { children: c } if c.is_empty() => {}
                 // a grouping that only carries an intent (an interval, the argument of one): its children
                 Node::Row { children: c } if grouping_for_intent(*child) => {
@@ -147,6 +152,10 @@ impl Reader<'_> {
         let name = node.tag_name().name();
         let node_out = match name {
             // an <mrow> around a single element is a group, as TeX's braces: {x}^2, {=}
+            "mrow" if html_attributes(node).is_some() => {
+                let base = self.row(node, variant)?;
+                Node::Attributed { attributes: html_attributes(node).expect("checked"), base: Box::new(base) }
+            }
             "mrow" if Self::elements(node).len() == 1 && node.attributes().all(|a| a.name() == "arg") => Node::row(vec![self.element(Self::elements(node)[0], variant)?]),
             "math" | "mrow" => self.row(node, variant)?,
             "mtd" => self.cell(node, variant)?,
@@ -292,7 +301,9 @@ impl Reader<'_> {
             out = Node::Colored { color: color.to_string(), base: Box::new(out) };
         }
         if let Some(background) = node.attribute("mathbackground").or(node.attribute("background")).filter(|c| valid(c)) {
-            out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background.to_string()), border: None, padding: None, thickness: None };
+            // the padding mathra writes as CSS for \bbox[color,5px]
+            let padding = node.attribute("style").and_then(|s| s.split(';').find_map(|d| d.trim().strip_prefix("padding:"))).and_then(measure_em);
+            out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background.to_string()), border: None, padding, thickness: None };
         }
         out
     }
@@ -530,6 +541,12 @@ impl Reader<'_> {
             _ if columns.is_empty() && verticals.is_empty() => (TableKind::Matrix, columns),
             _ => (TableKind::Array, columns),
         };
+        // ⋮ over a phantom of the relation, one column: \vdotswithin, short without space between the rows
+        if let [first, second] = rows.as_slice() {
+            if let ([Node::Operator { symbol: '⋮', .. }], [Node::Phantom { base, width: true, height: false }]) = (first.as_slice(), second.as_slice()) {
+                return Ok(Node::VdotsWithin { symbol: base.clone(), short: node.attribute("rowspacing") == Some("0em") });
+            }
+        }
         Ok(Node::Table { shape, rows, columns, verticals, dashed: vec![], horizontals, between: vec![], intertexts: vec![], stretch: 1.0 })
     }
 }
@@ -538,7 +555,8 @@ impl Reader<'_> {
 impl Reader<'_> {
     fn cell(&mut self, node: Xml, variant: Variant) -> R<Node> {
         let base = self.row(node, variant)?;
-        let span = node.attribute("columnspan").and_then(|s| s.trim().parse::<usize>().ok()).filter(|n| *n > 1);
+        // mathra writes columnspan="1" for a line of multline, aligned on its own (\shoveleft)
+        let span = node.attribute("columnspan").and_then(|s| s.trim().parse::<usize>().ok()).filter(|n| *n >= 1);
         Ok(match span {
             Some(columns) => {
                 let alignment = match node.attribute("columnalign") {
@@ -551,6 +569,31 @@ impl Reader<'_> {
             None => base,
         })
     }
+}
+
+/// The HTML attributes of an `<mrow>` (`class`, `id`, `style`, `data-*`), as `\class`, `\cssId`,
+/// `\style` and `\htmlData` keep them: names of `[A-Za-z0-9_-]`, styles of the properties the LaTeX
+/// reader keeps. MathJax's own `data-mjx-*` are not the author's.
+fn html_attributes(node: Xml) -> Option<Vec<(String, String)>> {
+    let safe = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let mut out = Vec::new();
+    for a in node.attributes() {
+        let (name, value) = (a.name(), a.value());
+        let kept = match name {
+            "class" => {
+                let classes: Vec<&str> = value.split_whitespace().filter(|c| safe(c)).collect();
+                (!classes.is_empty()).then(|| classes.join(" "))
+            }
+            "id" => safe(value.trim()).then(|| value.trim().to_string()),
+            "style" => super::latex::safe_style(value),
+            _ if name.starts_with("data-") && !name.starts_with("data-mjx-") && safe(&name[5..]) => Some(value.to_string()),
+            _ => None,
+        };
+        if let Some(v) = kept {
+            out.push((name.to_ascii_lowercase(), v));
+        }
+    }
+    (!out.is_empty()).then_some(out)
 }
 
 /// `<mpadded>` as mathra writes it: no height and depth around a phantom is `\hphantom`, no width

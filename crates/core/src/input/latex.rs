@@ -3588,6 +3588,7 @@ fn html_attributes(command: &str, value: &str, base: Node) -> (Node, Vec<String>
         "style" | "htmlStyle" => {
             let mut kept = Vec::new();
             for declaration in value.split(';').map(str::trim).filter(|d| !d.is_empty()) {
+                // the same test as safe_style, which the MathML reader uses
                 let Some((property, v)) = declaration.split_once(':') else {
                     dropped.push(format!("style {declaration:?}"));
                     continue;
@@ -3630,6 +3631,20 @@ fn html_attributes(command: &str, value: &str, base: Node) -> (Node, Vec<String>
         out = Node::Attributed { attributes, base: Box::new(out) };
     }
     (out, dropped)
+}
+
+/// A style attribute with only the declarations [`html_attributes`] keeps, as it writes them; `None`
+/// when none is left. For the MathML reader, which reads back the `style` mathra writes.
+pub(crate) fn safe_style(value: &str) -> Option<String> {
+    let (node, _) = html_attributes("style", value, Node::row(vec![]));
+    let mut node = node;
+    loop {
+        match node {
+            Node::Attributed { attributes, .. } => return attributes.into_iter().find(|(k, _)| k == "style").map(|(_, v)| v),
+            Node::Colored { base, .. } => node = *base,
+            _ => return None,
+        }
+    }
 }
 
 /// A number in siunitx format: decimal comma or dot, spaces, exponent with `e`.
