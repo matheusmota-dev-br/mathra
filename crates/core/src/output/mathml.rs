@@ -207,6 +207,11 @@ fn variant_name(v: Variant) -> &'static str {
         Variant::Fraktur => "fraktur",
         Variant::SansSerif => "sans-serif",
         Variant::Monospace => "monospace",
+        Variant::BoldScript => "bold-script",
+        Variant::BoldFraktur => "bold-fraktur",
+        Variant::BoldSansSerif => "bold-sans-serif",
+        Variant::SansSerifItalic => "sans-serif-italic",
+        Variant::SansSerifBoldItalic => "sans-serif-bold-italic",
     }
 }
 

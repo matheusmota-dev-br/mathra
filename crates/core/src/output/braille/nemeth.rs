@@ -867,11 +867,13 @@ fn typeform(c: char, variant: Variant) -> &'static str {
         (Variant::Bold | Variant::BoldItalic, true) => "⠸",
         (Variant::DoubleStruck, false) => "⠠⠸⠰",
         (Variant::DoubleStruck, true) => "⠠⠸",
-        (Variant::Calligraphic, false) => "⠈⠰",
-        (Variant::Calligraphic, true) => "⠈",
-        (Variant::SansSerif, false) => "⠠⠨⠰",
-        (Variant::SansSerif, true) => "⠠⠨",
-        (Variant::Fraktur, false) => "⠸",
+        // #173: the bold and italic forms of script, Fraktur and sans-serif take the indicator of their
+        // alphabet (this module follows no rule of the code for the combined typeforms)
+        (Variant::Calligraphic | Variant::BoldScript, false) => "⠈⠰",
+        (Variant::Calligraphic | Variant::BoldScript, true) => "⠈",
+        (Variant::SansSerif | Variant::BoldSansSerif | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, false) => "⠠⠨⠰",
+        (Variant::SansSerif | Variant::BoldSansSerif | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, true) => "⠠⠨",
+        (Variant::Fraktur | Variant::BoldFraktur, false) => "⠸",
         _ => "",
     }
 }

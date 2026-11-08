@@ -691,7 +691,21 @@ fn math_letter(c: char) -> Option<(char, Variant)> {
     if !(('\u{1D400}'..='\u{1D7FF}').contains(&c) || letterlike.contains(c)) {
         return None;
     }
-    let variants = [Variant::Italic, Variant::Bold, Variant::BoldItalic, Variant::Calligraphic, Variant::Fraktur, Variant::DoubleStruck, Variant::SansSerif, Variant::Monospace];
+    let variants = [
+        Variant::Italic,
+        Variant::Bold,
+        Variant::BoldItalic,
+        Variant::Calligraphic,
+        Variant::Fraktur,
+        Variant::DoubleStruck,
+        Variant::SansSerif,
+        Variant::Monospace,
+        Variant::BoldScript,
+        Variant::BoldFraktur,
+        Variant::BoldSansSerif,
+        Variant::SansSerifItalic,
+        Variant::SansSerifBoldItalic,
+    ];
     let plain = ('A'..='Z').chain('a'..='z').chain('0'..='9').chain('Α'..='Ω').chain('α'..='ω').chain("ϵϑϰϕϱϖıȷ".chars());
     for p in plain {
         for v in variants {
@@ -718,9 +732,15 @@ fn parse_variant(v: &str) -> Option<Variant> {
         "bold" => Variant::Bold,
         "bold-italic" => Variant::BoldItalic,
         "double-struck" => Variant::DoubleStruck,
-        "script" | "bold-script" => Variant::Calligraphic,
-        "fraktur" | "bold-fraktur" => Variant::Fraktur,
-        "sans-serif" | "bold-sans-serif" | "sans-serif-italic" | "sans-serif-bold-italic" => Variant::SansSerif,
+        "script" => Variant::Calligraphic,
+        "fraktur" => Variant::Fraktur,
+        "sans-serif" => Variant::SansSerif,
+        // #173
+        "bold-script" => Variant::BoldScript,
+        "bold-fraktur" => Variant::BoldFraktur,
+        "bold-sans-serif" => Variant::BoldSansSerif,
+        "sans-serif-italic" => Variant::SansSerifItalic,
+        "sans-serif-bold-italic" => Variant::SansSerifBoldItalic,
         "monospace" => Variant::Monospace,
         _ => return None,
     })

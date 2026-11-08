@@ -1257,6 +1257,9 @@
      "tex": "\\mathtt{x}"
     },
     {
+     "tex": "\\mathbfcal{L} = \\symcal{L} \\quad \\mathsfit{x} + \\mathbfsfit{y} \\quad \\mathbffrak{g} \\quad \\symup{d}x"
+    },
+    {
      "tex": "\\mathrm{d}x"
     },
     {

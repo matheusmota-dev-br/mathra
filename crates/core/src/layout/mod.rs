@@ -797,7 +797,7 @@ pub fn compose_list(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
 /// A slanted letter or word (`\mathit{diff}`), alone or in a row of one: the row adds no kern of its own.
 fn ends_slanted(node: &Node) -> bool {
     match node {
-        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
+        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, .. } => true,
         Node::Row { children } if children.len() == 1 => ends_slanted(&children[0]),
         Node::Attributed { base, .. } => ends_slanted(base),
         _ => false,
@@ -807,7 +807,7 @@ fn ends_slanted(node: &Node) -> bool {
 /// A slanted letter, also inside the group of `\class` and its kin, which changes nothing in the drawing.
 fn slanted_letter(node: &Node) -> bool {
     match node {
-        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
+        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, .. } => true,
         Node::Attributed { base, .. } => slanted_letter(base.single()),
         _ => false,
     }

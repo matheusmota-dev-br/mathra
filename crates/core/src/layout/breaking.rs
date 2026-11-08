@@ -184,7 +184,17 @@ fn pieces(children: &[Node], e: Style, ctx: &mut Context) -> R<(Vec<Piece>, f32)
         if pending_italic > 0.0 {
             x += pending_italic;
         }
-        pending_italic = if matches!(node, Node::Identifier { variant: crate::tree::Variant::Italic | crate::tree::Variant::BoldItalic, .. }) { b.italic } else { 0.0 };
+        pending_italic = if matches!(
+            node,
+            Node::Identifier {
+                variant: crate::tree::Variant::Italic | crate::tree::Variant::BoldItalic | crate::tree::Variant::SansSerifItalic | crate::tree::Variant::SansSerifBoldItalic,
+                ..
+            }
+        ) {
+            b.italic
+        } else {
+            0.0
+        };
         let width = b.width;
         pieces.push(Piece { x, b, class: *class, tier: 0 });
         x += width;
