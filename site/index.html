@@ -128,6 +128,7 @@
       <button role="tab" data-tab="rules" aria-selected="false">Rules</button>
       <button role="tab" data-tab="tree" aria-selected="false">Tree</button>
       <button role="tab" data-tab="svg" aria-selected="false">SVG source</button>
+      <button role="tab" data-tab="mathml" aria-selected="false">MathML</button>
     </div>
     <div class="panel" id="panel" role="tabpanel"></div>
   </div>
@@ -569,6 +570,16 @@ println!("{}", r.speech);</pre>
       panel.innerHTML = rows.length
         ? rows.map((r) => `<div class="rule"><code>${escape(r.rule)}</code><span>${escape(r.description)}</span></div>`).join("")
         : '<p class="empty">No rule changed this equation.</p>';
+      return;
+    }
+    if (tab === "mathml") {
+      // the same render() call's MathML, to paste into Word, LibreOffice or Google Docs; a <semantics>
+      // with the source as an annotation when MathML cannot draw part of it (S-MML-1)
+      const fallback = last.applied.find((r) => r.rule === "S-MML-1");
+      panel.innerHTML = `<pre>${colorCode(last.mathml, "xml")}</pre>` +
+        `<div class="panel-foot"><button class="button" id="copy-mathml" type="button">Copy MathML</button>` +
+        (fallback ? `<p class="panel-note"><code>S-MML-1</code> ${escape(fallback.description)}.</p>` : "") + "</div>";
+      $("copy-mathml").onclick = async (e) => { await navigator.clipboard.writeText(last.mathml); flash(e.target, "Copied"); };
       return;
     }
     const text = { text: last.text, tree: JSON.stringify(last.tree, null, 2), svg: last.svg }[tab];
