@@ -118,6 +118,7 @@
         <button class="button" id="pen" type="button" title="A pen writes the equation: each glyph's outline, then its fill">✎ Pen</button>
         <button class="button" id="download-pen" type="button">Pen SVG</button>
         <button class="button" id="download" type="button">Download SVG</button>
+        <button class="button" id="download-png" type="button" title="50 px per em (300 dpi over a 12pt body), transparent, ink #111: what mathra … -o x.png writes">Download PNG</button>
         <button class="button" id="download-animated" type="button">Animated SVG</button>
         <button class="button" id="download-gif" type="button">Download GIF</button>
         <button class="button" id="download-video" type="button" hidden>Download video</button>
@@ -850,6 +851,42 @@ println!("{}", r.speech);</pre>
     setTimeout(() => URL.revokeObjectURL(a.href), 0);
   }
   $("download").onclick = () => { if (last) save(new Blob([last.svg], { type: "image/svg+xml" }), "equation.svg"); };
+  // the PNG of `mathra … -o x.png`, drawn by the browser from the same SVG: 50 px per em (300 dpi over
+  // a 12pt body), each side rounded up to a whole pixel, a transparent background and the #111 ink;
+  // the SVG's CSS (its standalone color, the animation) is left out, as the command line does
+  const PNG_PX_PER_EM = 50, PNG_MAX_SIDE = 32768, PNG_MAX_PIXELS = 2 ** 26;
+  async function png(svg) {
+    const em = (name) => Number(new RegExp(`^<svg[^>]*? ${name}="([\\d.]+)em"`).exec(svg)?.[1] ?? 0);
+    const [w, h] = [em("width"), em("height")];
+    const px = (v) => Math.max(1, Math.ceil(v * PNG_PX_PER_EM - 1e-3));
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [px(w), px(h)];
+    if (canvas.width > PNG_MAX_SIDE || canvas.height > PNG_MAX_SIDE || canvas.width * canvas.height > PNG_MAX_PIXELS) {
+      throw new Error(`${canvas.width} × ${canvas.height} pixels is too large for a PNG`);
+    }
+    // an empty equation (0em × 0em) is one blank pixel
+    if (w > 0 && h > 0) {
+      const ink = svg.replace(/<style>[\s\S]*?<\/style>/g, "")
+        .replace(/^<svg([^>]*?) width="[\d.]+em" height="[\d.]+em"/, `<svg$1 width="${w * PNG_PX_PER_EM}" height="${h * PNG_PX_PER_EM}" color="#111"`);
+      const img = new Image();
+      img.src = URL.createObjectURL(new Blob([ink], { type: "image/svg+xml" }));
+      try {
+        await img.decode();
+        canvas.getContext("2d").drawImage(img, 0, 0, w * PNG_PX_PER_EM, h * PNG_PX_PER_EM);
+      } finally {
+        URL.revokeObjectURL(img.src);
+      }
+    }
+    return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("the browser made no PNG"))), "image/png"));
+  }
+  $("download-png").onclick = async () => {
+    if (!last || !tex.value.trim()) return;
+    try {
+      save(await png(last.svg), "equation.png");
+    } catch (e) {
+      alert(`Could not make the PNG: ${String(e.message ?? e)}`);
+    }
+  };
   // the equation writing itself, over and over, as a GIF plays
   $("animate").onclick = () => {
     if (stopLoop) return stopAnimation();
