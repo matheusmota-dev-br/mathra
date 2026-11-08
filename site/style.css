@@ -159,6 +159,7 @@
   .msg { font: 12.5px/1.5 var(--font-mono); padding: 7px 10px; border-radius: 4px; border: 1px solid; overflow-wrap: anywhere; }
   .msg.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
   .msg.err { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
+  .msg.note { background: var(--surface-2); border-color: var(--line); color: var(--muted); font-family: var(--font-body); font-size: 13px; }
 
   .inspect { margin-bottom: 8px; }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); padding: 0 10px; overflow-x: auto; }
@@ -176,6 +177,10 @@
   .panel .rule:last-child { border-bottom: 0; }
   .panel .rule code { color: var(--accent-ink); font-weight: 500; }
   .panel .empty { color: var(--muted); font-size: 14px; margin: 0; }
+  .panel-foot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 12px; }
+  .panel-foot .button { padding: 7px 12px; font-size: 13px; }
+  .panel-note { margin: 0; flex: 1 1 260px; min-width: 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .panel-note code { color: var(--accent-ink); font-weight: 500; }
 
   /* sections */
   section { padding: 56px 0 8px; }
