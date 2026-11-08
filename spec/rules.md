@@ -125,6 +125,8 @@ Inside `\text{…}` (and every text argument), `\hspace{…}` and `\hspace*{…}
 
 A text is a box of its natural width, as `\text{…}` is in TeX: `\hfill`, `\hfil` and `\hss` take no room in it (`1 \hfill IA` is `1 IA`), and a line break, `\newline` or `\linebreak` (with its optional `[n]`), is a space, as `\\` is.
 
+A line break or a tab inside text is a space, as in TeX; with the spaces around it (the indentation of the next line, a blank line) it is a single space: `\text{can be`, a line break, `  used}` is `can be used`.
+
 A backslash before a line break or a tab of the source is a control space, `\ `, as in plain TeX, in text and in math (`a\` and a line break, then `b`, is `a\ b`); `\\` before a line break is still a line break.
 
 ### L-TXT-4 · Color inside text

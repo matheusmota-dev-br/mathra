@@ -431,3 +431,22 @@ fn backslash_before_a_line_break_is_a_control_space() {
     }
     assert_eq!(tolerant("\\begin{matrix}a\\\\\nb\\end{matrix}").tree, tolerant(r"\begin{matrix}a\\b\end{matrix}").tree);
 }
+
+/// #212: a line break or a tab inside text is a space, as in TeX (not a box for a character the font
+/// lacks); with the spaces around it, a blank line or the next line's indentation, one space.
+#[test]
+fn line_breaks_and_tabs_in_text_are_spaces() {
+    for (tex, meant) in [
+        ("\\text{foo\nbar}", r"\text{foo bar}"),
+        ("\\text{foo\tbar}", r"\text{foo bar}"),
+        ("\\text{foo\r\nbar}", r"\text{foo bar}"),
+        ("\\text{can be  \n    used}", r"\text{can be used}"),
+        ("\\text{one\n\ntwo}", r"\text{one two}"),
+        ("\\fbox{A regular map\nof rings}", r"\fbox{A regular map of rings}"),
+    ] {
+        let out = tolerant(tex);
+        assert!(out.warnings.is_empty(), "{tex:?}: {:?}", out.warnings);
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+        assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
+    }
+}

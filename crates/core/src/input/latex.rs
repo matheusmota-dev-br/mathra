@@ -2848,6 +2848,16 @@ impl Reader<'_> {
                     current.push(typographic);
                     i += if double { 2 } else { 1 };
                 }
+                // #212: a line break or a tab is a space, as in TeX; with the spaces around it (a line's
+                // indentation, a blank line) it is one space
+                '\n' | '\r' | '\t' => {
+                    let end = current.trim_end_matches(' ').len();
+                    current.truncate(end);
+                    current.push(' ');
+                    while c.get(i).is_some_and(|x| matches!(x, ' ' | '\n' | '\r' | '\t')) {
+                        i += 1;
+                    }
+                }
                 other => {
                     current.push(other);
                     i += 1;
