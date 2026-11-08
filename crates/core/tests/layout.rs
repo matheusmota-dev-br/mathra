@@ -524,6 +524,52 @@ fn ink(items: &[Item]) -> (f32, f32) {
     })
 }
 
+/// Leftmost and rightmost ink of some glyphs of a box.
+fn ink_x(items: &[Item]) -> (f32, f32) {
+    let f = mathra::font::font();
+    items.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), item| match item {
+        Item::Glyph { id, x, scale, .. } => {
+            let (x0, _, x1, _) = f.limits(*id);
+            (lo.min(x + x0 * scale), hi.max(x + x1 * scale))
+        }
+        _ => (lo, hi),
+    })
+}
+
+#[test]
+fn braces_have_a_minimum_width() {
+    // the font's first variant wider than the base glyph: over one character the brace is that
+    // wide, centered on the base, and the box widens to hold it (TeX gives braces a minimum too)
+    let f = mathra::font::font();
+    for (tex, symbol) in [(r"\underbrace{7}_{n}", '⏟'), (r"\overbrace{7}^{n}", '⏞'), (r"\underbrace{7}", '⏟'), (r"\underbracket{7}_{n}", '⎵'), (r"\overbracket{7}^{n}", '⎴')]
+    {
+        let id = f.glyph(symbol).unwrap();
+        let width = |g| {
+            let (x0, _, x1, _) = f.limits(g);
+            x1 - x0
+        };
+        let minimum = f.variants(id, false).into_iter().map(|(v, _)| width(v)).find(|w| *w > width(id)).unwrap();
+        let base = math_box("7");
+        let b = math_box(tex);
+        let n = base.items.len();
+        let (left, right) = ink_x(&b.items[n..n + 1]);
+        assert!(right - left >= minimum - 1.0 && right - left > base.width * 1.5, "{tex}: brace {} wide, minimum {minimum}", right - left);
+        assert!(b.width >= right - left - 1.0, "{tex}: box {} narrower than its brace {}", b.width, right - left);
+        let (base_left, base_right) = ink_x(&b.items[..n]);
+        let center = |(l, r): (f32, f32)| (l + r) / 2.0;
+        assert!((center((left, right)) - center((base_left, base_right))).abs() < 0.15 * base.width, "{tex}: the brace is not centered on its base");
+        consistent(&b, tex);
+    }
+    // in the SVG: 7 is 0.495em; under its brace the equation is as wide as the brace's 1em variant
+    let width = |svg: &str| svg.split("width=\"").nth(1).unwrap().split("em\"").next().unwrap().parse::<f32>().unwrap();
+    assert!(width(&svg(r"\underbrace{7}_{n}")) >= 1.0, "{}", width(&svg(r"\underbrace{7}_{n}")));
+    // a sequence of short braces takes the room of their braces, not of their digits
+    assert!(math_box(r"\underbrace{3}_{a} \ \underbrace{1}_{b} \ \underbrace{4}_{c}").width > 3.0 * 900.0);
+    // a wide base is unchanged: the brace stretches to it
+    let wide = math_box(r"\underbrace{a+b+c+d+e+f}_{n}");
+    assert!((wide.width - math_box("a+b+c+d+e+f").width).abs() < 1.0);
+}
+
 #[test]
 fn overbrace_mirrors_underbrace() {
     // ⏞ floats above the baseline in the font and ⏟ below it: the gaps are measured on the ink,

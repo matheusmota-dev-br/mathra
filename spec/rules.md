@@ -222,6 +222,7 @@ The rules for fractions, roots, scripts, limits, accents, bars, braces and arrow
 | Large operator | variant with height ≥ `DisplayOperatorMinHeight` in display style, centered on the axis |
 | Delimiters (`\left`, matrices) | size variants and assembly from parts; height ≥ max(0.901 × 2δ, 2δ − 0.5 em), like `\delimiterfactor` and `\delimitershortfall` |
 | Accents | `AccentBaseHeight`, the glyph's accent attachment; `\widehat` and extended arrows through horizontal assembly |
+| Braces and brackets (`\underbrace`, `\overbrace`, `\underbracket`, `\overbracket`) | `OverbarVerticalGap`/`UnderbarVerticalGap` from the content, `UpperLimitGapMin`/`LowerLimitGapMin` to the label, measured on the ink; the horizontal variant or assembly as wide as the content, but never narrower than the font's first variant wider than the base glyph (1 em in STIX Two Math), as TeX gives a brace a minimum width: over a short base the brace is centered and sticks out, and the box widens to hold it |
 | Matrices and `array` | strut of 0.84 em / 0.36 em per row, columns 1 em apart, `\jot` of 0.3 em in alignments |
 | Arrow diagrams (`tikz-cd`, `xymatrix`) | `AxisHeight` (arrows leave and reach each cell at the axis, and the diagram is centered on it), `FractionRuleThickness` (the strokes); tikz-cd's separations: 2.4 em between columns and 2.1 em between rows, widened to fit a label; labels in script style; a bend as tikz's `bend left`, a cubic Bézier with its control points 0.39 of the way along the leaving and arriving directions |
 
