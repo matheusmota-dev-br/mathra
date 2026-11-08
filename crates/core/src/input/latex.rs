@@ -1919,6 +1919,8 @@ impl Reader<'_> {
         } else if let Some((accent, stretchy)) = symbols::accent(other) {
             // the "under" ones (⏝, ⏡) go below the base
             Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: matches!(accent, '⏝' | '⏡') }
+        } else if matches!(other, "implies" | "impliedby" | "iff") {
+            return self.long_implication(other, start, col, items);
         } else if let Some(Symbol { symbol, class }) = symbols::command(other) {
             // \boldsymbol{\nabla}, \bm{\nabla}: TeX's bold symbol font has an upright bold nabla, the 𝛁 of
             // physics' \grad (U+1D6C1)
@@ -1928,6 +1930,19 @@ impl Reader<'_> {
             return self.unknown_command(other, start, col, items);
         };
         items.push(node);
+        Ok(None)
+    }
+
+    /// #250: amsmath's `\implies`, `\impliedby` and `\iff`, defined as `\;\Longrightarrow\;`,
+    /// `\;\Longleftarrow\;` and `\;\Longleftrightarrow\;`: the long arrow with a thick space on each
+    /// side. The arrow is the last node read, so `\not\implies` still strikes the arrow; the space after
+    /// it is read next, from the input. Out of line: `symbol_command` ends every chain of commands.
+    #[inline(never)]
+    fn long_implication(&mut self, name: &str, start: usize, col: usize, items: &mut Vec<Node>) -> R<Option<Stop>> {
+        let symbol = symbols::command(name).map_or('⟹', |s| s.symbol);
+        items.push(Node::Space { em: 5.0 / 18.0 });
+        items.push(Node::Operator { symbol, class: Class::Rel });
+        self.inject(start, "\\;", col)?;
         Ok(None)
     }
 

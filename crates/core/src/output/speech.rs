@@ -626,6 +626,8 @@ fn operator(symbol: char, class: Class, loc: Locale) -> String {
         '⟶' => "op.→".to_string(),
         '⟹' => "op.⇒".to_string(),
         '⟺' => "op.⇔".to_string(),
+        // \Longleftarrow and \impliedby (#250) are read as ⇐
+        '⟸' => return operator('⇐', class, loc),
         '∣' => "op.|".to_string(),
         // \vdots and \vdotswithin: the list goes on, down the column
         '⋯' | '⋮' => "op.…".to_string(),

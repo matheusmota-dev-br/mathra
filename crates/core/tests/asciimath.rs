@@ -44,7 +44,7 @@ fn same_meaning_as_latex() {
         ("RR, NN, ZZ, QQ, CC", r"\mathbb{R}, \mathbb{N}, \mathbb{Z}, \mathbb{Q}, \mathbb{C}"),
         ("x xx y -: z ** w", r"x \times y \div z \ast w"),
         ("a <= b >= c ~~ d -= e prop f", r"a \le b \ge c \approx d \equiv e \propto f"),
-        ("A => B iff C", r"A \implies B \iff C"),
+        ("A => B iff C", r"A \Rightarrow B \Leftrightarrow C"),
         ("f: A -> B, x |-> x^2", r"f: A \to B, x \mapsto x^2"),
         ("del f // del x + grad g", r"\partial f / \partial x + \nabla g"),
         ("alpha beta Gamma Delta varphi omega", r"\alpha \beta \Gamma \Delta \varphi \omega"),

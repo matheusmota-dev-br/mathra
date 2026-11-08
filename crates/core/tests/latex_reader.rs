@@ -1818,6 +1818,22 @@ fn mathtools_colon_equals_and_centernot() {
 }
 
 #[test]
+fn implies_impliedby_and_iff_are_spaced_long_arrows() {
+    // #250: amsmath defines them as \;\Longrightarrow\;, \;\Longleftarrow\; and \;\Longleftrightarrow\;
+    for (short, long) in [("implies", "Longrightarrow"), ("impliedby", "Longleftarrow"), ("iff", "Longleftrightarrow")] {
+        assert_eq!(tree(&format!(r"a \{short} b")), tree(&format!(r"a \;\{long}\; b")), "{short}");
+    }
+    has(&tree(r"a \implies b \quad c \impliedby d \quad e \iff f"), &["'⟹'", "'⟸'", "'⟺'"]);
+    // \not strikes the arrow, not the space around it
+    has(&tree(r"a \not\implies b"), &["Canceled { base: Operator { symbol: '⟹'"]);
+    let out = convert(r"a \implies b \quad c \impliedby d \quad e \iff f", &Options::default()).unwrap();
+    assert_eq!(out.text, "a ⟹ b c ⟸ d e ⟺ f");
+    // the speech is the same as for the short arrows
+    let short = convert(r"a \Rightarrow b \quad c \Leftarrow d \quad e \Leftrightarrow f", &Options::default()).unwrap();
+    assert_eq!(out.speech, short.speech);
+}
+
+#[test]
 fn unbraced_command_as_an_argument() {
     // found by the braille review: \boldsymbol\alpha read only the backslash as its argument
     assert_eq!(tree(r"\boldsymbol\alpha"), tree(r"\boldsymbol{\alpha}"));
