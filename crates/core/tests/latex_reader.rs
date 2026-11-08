@@ -595,12 +595,79 @@ fn square_brackets_and_arrows_under_and_over() {
 #[test]
 fn color_models() {
     has(&tree(r"\color[HTML]{FF0000} x"), &["#FF0000"]);
-    has(&tree(r"\textcolor[rgb]{1,0,0}{x}"), &["rgb(1,0,0)"]);
+    // each model as #rrggbb (CSS's rgb() counts to 255, not to 1)
+    has(&tree(r"\textcolor[rgb]{1,0,0}{x}"), &["#ff0000"]);
+    has(&tree(r"\textcolor[RGB]{0,128,255}{x}"), &["#0080ff"]);
+    has(&tree(r"\textcolor[gray]{0.5}{x}"), &["#808080"]);
+    has(&tree(r"\textcolor[cmyk]{1,0,0,0.2}{x}"), &["#00cccc"]);
+    has(&tree(r"\textcolor[named]{red}{x}"), &["\"red\""]);
     // invalid color: strict mode refuses; tolerant mode draws without color
-    for tex in [r"\color{re;d} x", r#"\textcolor{red" onload="x}{a}"#, r"\colorbox{}{a}", r"\color[HTML]{<script>} x"] {
+    for tex in [
+        r"\color{re;d} x",
+        r#"\textcolor{red" onload="x}{a}"#,
+        r"\colorbox{}{a}",
+        r"\color[HTML]{<script>} x",
+        r"\textcolor[rgb]{2,0,0}{x}",
+        r"\textcolor[RGB]{1,2}{x}",
+        r"\textcolor[hsb]{0.5,1,1}{x}",
+        r"\textcolor{nosuchcolor!50}{x}",
+        r"\textcolor{red!150}{x}",
+    ] {
         let t = recovers(tex, "E-REC-9");
         assert!(!t.contains("Colored"), "{tex}: {t}");
     }
+}
+
+#[test]
+fn definecolor_adds_a_color_for_the_rest_of_the_input() {
+    let t = tree(r"\definecolor{brand}{HTML}{1F6FEB} \color{brand} x + \textcolor{brand}{y}");
+    assert_eq!(t.matches("#1f6feb").count(), 2, "{t}");
+    for (tex, expected) in [
+        (r"\definecolor{warm}{rgb}{0.9,0.3,0.1}\textcolor{warm}{a}", "#e64d1a"),
+        (r"\definecolor{cool}{RGB}{30,120,200}\textcolor{cool}{b}", "#1e78c8"),
+        (r"\definecolor{mid}{gray}{0.5}\textcolor{mid}{c}", "#808080"),
+        (r"\definecolor{ink}{cmyk}{0,1,1,0.5}\textcolor{ink}{d}", "#800000"),
+        // xcolor's optional type, and a definition with several models takes the first
+        (r"\definecolor[named]{both}{rgb/cmyk}{0,0,1/1,1,0,0}\textcolor{both}{e}", "#0000ff"),
+        // a defined name wins over the name it shadows
+        (r"\definecolor{red}{rgb}{0.5,0,0}\textcolor{red}{f}", "#800000"),
+        // \providecolor keeps a color already defined
+        (r"\definecolor{a}{gray}{0}\providecolor{a}{gray}{1}\providecolor{b}{gray}{1}\textcolor{a}{g}\textcolor{b}{h}", "#000000"),
+        // in \colorbox, \fcolorbox and \color inside \text
+        (r"\definecolor{bg}{HTML}{FFEEAA}\colorbox{bg}{x}", "background: Some(\"#ffeeaa\")"),
+        (r"\definecolor{t}{gray}{0.25}\text{a \color{t}b}", "#404040"),
+    ] {
+        has(&tree(tex), &[expected]);
+    }
+    has(&tree(r"\definecolor{a}{gray}{0}\providecolor{a}{gray}{1}\providecolor{b}{gray}{1}\textcolor{b}{h}"), &["#ffffff"]);
+    // a color is defined from where it is written on
+    assert!(!tree(r"\textcolor{late}{x}\definecolor{late}{gray}{0}").contains('#'));
+    // an invalid definition defines nothing
+    for tex in [r"\definecolor{bad}{rgb}{2,0,0}", r"\definecolor{bad}{HTML}{12345}", r"\definecolor{bad}{hsb}{0,1,1}", r"\definecolor{bad}{RGB}{1,2,3,4}"] {
+        let t = recovers(&format!(r"{tex}\textcolor{{bad}}{{x}}"), "E-REC-9");
+        assert!(!t.contains('#'), "{tex}: {t}");
+    }
+}
+
+#[test]
+fn colorlet_and_xcolor_mixes() {
+    for (tex, expected) in [
+        // red!40: 40 % red, 60 % white
+        (r"\textcolor{red!40}{x}", "#ff9999"),
+        (r"\textcolor{red!40!blue}{x}", "#660099"),
+        (r"\textcolor{red!50!blue!50!white}{x}", "#bf80bf"),
+        (r"\textcolor{black!100}{x}", "#000000"),
+        // xcolor's base colors: green is (0,1,0) in a mix
+        (r"\textcolor{green!50!black}{x}", "#008000"),
+        (r"\definecolor{warm}{rgb}{0.9,0.3,0.1}\colorlet{soft}{warm!40}\textcolor{soft}{c}", "#f5b8a3"),
+        (r"\definecolor{brand}{HTML}{1F6FEB}\colorbox{brand!20}{x}", "#d2e2fb"),
+        (r"\colorlet{accent}{orange}\textcolor{accent!50}{x}", "#ffbf80"),
+    ] {
+        has(&tree(tex), &[expected]);
+    }
+    // \colorlet of a plain name keeps the name, as \color{orange} does
+    has(&tree(r"\colorlet{accent}{orange}\textcolor{accent}{x}"), &["\"orange\""]);
+    has(&recovers(r"\colorlet{x}{nosuch!40}\textcolor{x}{y}", "E-REC-9"), &["Identifier"]);
 }
 
 #[test]
@@ -864,7 +931,7 @@ fn l_txt_4_color_inside_text() {
     has(&t, &["Text(\"a \")", "Math(Colored { color: \"red\", base: Text { parts: [Text(\"b \"), Math(Identifier", "Text(\" c\")"]);
     assert!(t.find("Colored").unwrap() < t.find("Text(\" c\")").unwrap(), "{t}");
     // to the end of the text, with a color model
-    has(&tree(r"\text{a \color[rgb]{0,0,1}b}"), &["Colored { color: \"rgb(0,0,1)\"", "Text(\"b\")"]);
+    has(&tree(r"\text{a \color[rgb]{0,0,1}b}"), &["Colored { color: \"#0000ff\"", "Text(\"b\")"]);
     // \textcolor: its argument
     has(&tree(r"\text{\textcolor{blue}{x}y}"), &["Math(Colored { color: \"blue\", base: Text { parts: [Text(\"x\")]", "Text(\"y\")"]);
     // the colored text stays bold, and its math bold after \boldmath

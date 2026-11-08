@@ -1252,6 +1252,9 @@
     },
     {
      "tex": "\\url{https://example.org/a_b}"
+    },
+    {
+     "tex": "\\definecolor{brand}{HTML}{1F6FEB} \\colorlet{soft}{brand!40} \\textcolor{brand}{a} + \\textcolor{soft}{b} = \\textcolor{red!60!blue}{c}"
     }
    ]
   },
