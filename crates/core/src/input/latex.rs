@@ -171,6 +171,7 @@ fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
             registry.warn(rules::E_REC_9, format!("column {column}: '%' starts a comment in TeX (write \\% for a percent sign); drawn as a percent sign"));
         }
     }
+    control_spaces(&mut s);
     if !strict {
         if let Some(repaired) = repair_controls(&s) {
             registry.warn(rules::E_REC_2, "JSON control character in place of the backslash (\\frac stored unescaped): command rebuilt");
@@ -5651,6 +5652,28 @@ fn json_decoded(c: &[char]) -> bool {
         i += 1;
     }
     true
+}
+
+/// #211: a backslash before a line break or a tab is a control space, `\ `, as in plain TeX (`\\` before
+/// a line break is a line break and then whitespace).
+#[inline(never)]
+fn control_spaces(s: &mut String) {
+    if !s.contains(['\n', '\r', '\t']) {
+        return;
+    }
+    let mut backslashes = 0;
+    *s = s
+        .chars()
+        .map(|c| {
+            let odd = backslashes % 2 == 1;
+            backslashes = if c == '\\' { backslashes + 1 } else { 0 };
+            if odd && matches!(c, '\n' | '\r' | '\t') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
 }
 
 /// The plain character of a Unicode superscript or subscript: every character whose Unicode

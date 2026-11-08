@@ -418,3 +418,16 @@ fn commands_eaten_by_json_are_still_rebuilt() {
         assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
     }
 }
+
+/// #211: a backslash before a line break or a tab is a control space, `\ `, with no warning, in math and
+/// in text; `\\` before a line break is still a line break.
+#[test]
+fn backslash_before_a_line_break_is_a_control_space() {
+    for (tex, meant) in [("a\\\nb", r"a\ b"), ("a\\\tb", r"a\ b"), ("a\\\r\nb", r"a\ b"), ("\\text{a\\\nb}", r"\text{a\ b}"), ("x =\\\n y", r"x =\ y")] {
+        let out = tolerant(tex);
+        assert!(out.warnings.is_empty(), "{tex:?}: {:?}", out.warnings);
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+        assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
+    }
+    assert_eq!(tolerant("\\begin{matrix}a\\\\\nb\\end{matrix}").tree, tolerant(r"\begin{matrix}a\\b\end{matrix}").tree);
+}
