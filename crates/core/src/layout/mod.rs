@@ -16,7 +16,7 @@ pub use math_box::{Item, MathBox};
 
 use ttf_parser::math::Constants;
 
-use crate::font::{Font, MathFont};
+use crate::font::{FallbackFont, Font, MathFont};
 use crate::locale::Locale;
 use crate::rules::{self, Registry};
 use crate::tree::*;
@@ -127,6 +127,8 @@ pub struct Context<'a> {
     pub strict: bool,
     /// How text is kerned.
     pub kerning: kerning::TextKerning,
+    /// Where a character the math font lacks is looked up, in order, before it becomes a box.
+    pub fallbacks: &'a [FallbackFont],
 }
 
 /// MATH table constant already at the style's scale.
@@ -237,7 +239,7 @@ pub(crate) fn glyph_id(id: ttf_parser::GlyphId, s: f32, f: &Font) -> MathBox {
         width: f.advance(id) * s,
         height: y1.max(0.0) * s,
         depth: (-y0).max(0.0) * s,
-        items: vec![Item::Glyph { id, x: 0.0, y: 0.0, scale: s, color: None, flip: false }],
+        items: vec![Item::Glyph { id, x: 0.0, y: 0.0, scale: s, color: None, flip: false, font: None }],
         italic: f.italic_correction(id) * s,
         accent_point: f.accent_point(id).map(|v| v * s),
         single_glyph: true,
@@ -331,10 +333,7 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
                 last_italic = if italic > 0 { g.italic } else { 0.0 };
                 math_box.append(&g);
             }
-            Err(Error::MissingGlyph { character }) if !ctx.strict => {
-                ctx.registry.warn(rules::E_REC_8, format!("the font has no '{character}' (U+{:04X}): drew a box", character as u32));
-                math_box.append(&glyph('□', e)?);
-            }
+            Err(Error::MissingGlyph { character }) => math_box.append(&missing(character, e, ctx)?),
             Err(error) => return Err(error),
         }
     }
@@ -345,12 +344,65 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
 pub fn compose(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
     let leaf = matches!(node, Node::Identifier { .. } | Node::Operator { .. } | Node::Number { .. } | Node::FixedDelimiter { .. } | Node::LargeOperator { .. });
     match compose_node(node, e, ctx) {
-        Err(Error::MissingGlyph { character }) if leaf && !ctx.strict => {
-            ctx.registry.warn(rules::E_REC_8, format!("the font has no '{character}' (U+{:04X}): drew a box", character as u32));
-            glyph('□', e)
-        }
+        Err(Error::MissingGlyph { character }) if leaf => missing_leaf(node, character, e, ctx),
         other => other,
     }
+}
+
+/// A symbol with a character the math font lacks. A name of several letters is set letter by letter,
+/// each from the math font or a fallback; anything else is the one character. Out of line, so the
+/// recursion's frames do not grow.
+#[cold]
+#[inline(never)]
+fn missing_leaf(node: &Node, character: char, e: Style, ctx: &mut Context) -> R<MathBox> {
+    if let Node::Identifier { name, variant } = node {
+        if name.chars().count() > 1 {
+            let mut math_box = MathBox::empty();
+            for c in name.chars() {
+                let g = match glyph(alphabet::character(c, *variant), e).or_else(|_| glyph(c, e)) {
+                    Ok(g) => g,
+                    Err(Error::MissingGlyph { character }) => missing(character, e, ctx)?,
+                    Err(error) => return Err(error),
+                };
+                math_box.append(&g);
+            }
+            return Ok(math_box);
+        }
+    }
+    missing(character, e, ctx)
+}
+
+/// A character the math font lacks: from the first fallback font that has it, as an ordinary symbol;
+/// else refused (strict) or drawn as a box (E-REC-8).
+#[cold]
+#[inline(never)]
+fn missing(c: char, e: Style, ctx: &mut Context) -> R<MathBox> {
+    if let Some(math_box) = fallback_glyph(c, e, ctx.fallbacks) {
+        return Ok(math_box);
+    }
+    if ctx.strict {
+        return Err(Error::MissingGlyph { character: c });
+    }
+    ctx.registry.warn(rules::E_REC_8, format!("the font has no '{c}' (U+{:04X}): drew a box", c as u32));
+    glyph('□', e)
+}
+
+/// `c` from the first of `fallbacks` that has it: its glyph scaled from that font's em to the math
+/// font's, on the baseline, with no italic correction and its accent over the middle.
+pub fn fallback_glyph(c: char, e: Style, fallbacks: &[FallbackFont]) -> Option<MathBox> {
+    let (font, id) = FallbackFont::find(fallbacks, c)?;
+    let f = font.get();
+    let s = e.scale() * e.font().units_per_em() / f.units_per_em();
+    let (_, y0, _, y1) = f.limits(id);
+    Some(MathBox {
+        width: f.advance(id) * s,
+        height: y1.max(0.0) * s,
+        depth: (-y0).max(0.0) * s,
+        items: vec![Item::Glyph { id, x: 0.0, y: 0.0, scale: s, color: None, flip: false, font: Some(font) }],
+        italic: 0.0,
+        accent_point: None,
+        single_glyph: true,
+    })
 }
 
 fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
@@ -1084,9 +1136,9 @@ fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Sty
     if b.width == 0.0 && b.items.is_empty() {
         // accent over nothing (\hat{}): takes the width of its drawing instead of leaking left
         // (combining accents have zero advance)
-        let glyphs = a.items.iter().filter_map(|i| if let Item::Glyph { id, x, scale, .. } = i { Some((*id, *x, *scale)) } else { None });
-        let (x0, x1) = glyphs.fold((0.0f32, a.width), |(x0, x1), (id, x, scale)| {
-            let (g0, _, g1, _) = e.font().limits(id);
+        let glyphs = a.items.iter().filter_map(|i| if let Item::Glyph { id, x, scale, font, .. } = i { Some((*id, *x, *scale, *font)) } else { None });
+        let (x0, x1) = glyphs.fold((0.0f32, a.width), |(x0, x1), (id, x, scale, font)| {
+            let (g0, _, g1, _) = crate::font::glyph_font(font, e.font()).limits(id);
             (x0.min(x + g0 * scale), x1.max(x + g1 * scale))
         });
         math_box.place(&a, -x0, dy);

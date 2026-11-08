@@ -117,9 +117,20 @@ texToSvg(String.raw`e^{i\pi} + 1 = 0`, { font });
 
 All the fonts of the catalog are under licenses that let the SVG carry their outlines (OFL, GUST, Apache-2.0, MIT).
 
+## Emoji and other characters the math font lacks
+
+A character the math font does not have is drawn as a box, with the warning E-REC-8 (or refused with `strict`). Fallback fonts fill the gap: they are tried in order, and the glyph's outline goes in the SVG like any other, in the text color. Any `.otf` or `.ttf` with outlines works, MATH table or not, such as [Noto Emoji](https://fonts.google.com/noto/specimen/Noto+Emoji) (the monochrome one) or a CJK font for `\text{…}`. A math font from `loadFont` or `loadFontFromCatalog` can be one too.
+
+```js
+const emoji = loadFallbackFont(await readFile("NotoEmoji-Regular.ttf")); // { id, name, fallback: true }
+texToSvg("E = mc^2 😀", { fallbackFonts: [emoji] });
+```
+
+The npm package embeds no emoji font, to keep the download small; the Python package and the terminal embed Noto Emoji, so emoji are drawn there without asking, and give a box here unless you pass a font.
+
 ## Also for Python, Rust and the terminal
 
-The same core is a Python module, a Rust crate and a command-line tool, and every one gives the same SVG, byte for byte. How to install each: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.
+The same core is a Python module, a Rust crate and a command-line tool, and every one gives the same SVG, byte for byte (emoji aside: see above). How to install each: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.
 
 ## License
 

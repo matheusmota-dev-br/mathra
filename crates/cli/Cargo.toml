@@ -18,6 +18,8 @@ path = "src/main.rs"
 mathra.workspace = true
 
 [features]
-default = ["png"]
+default = ["png", "emoji"]
 # PNG output (`-o file.png`, `--png`); a build without it refuses .png instead of writing an SVG there
 png = ["mathra/png"]
+# Noto Emoji as the fallback font for emoji (the core leaves it off); without it, emoji are boxes
+emoji = ["mathra/emoji"]

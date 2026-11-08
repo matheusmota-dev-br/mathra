@@ -54,6 +54,8 @@ A `<style>` inside an inline SVG applies to the whole page. That is why the only
 
 Each glyph becomes a `<path>` in `<defs>`, in order of first appearance, and is reused with `<use>`. A turned or unevenly scaled box (`\rotatebox`, `\scalebox{2}[1]`, L-BOX-1) is a `<g transform="matrix(…)">` around its drawing; its glyphs are in `<defs>` like the others.
 
+A character the math font lacks comes from the first fallback font that has it (`Options::fallback_fonts`; Noto Emoji, the monochrome one, with the `emoji` feature, on in the CLI and the Python package). Its outline is a `<path>` in `<defs>` like the others, once however many times it is used, with an id that names its font: `…-g42` is the math font's glyph 42, `…-f1a2b3c4g42` glyph 42 of the fallback font whose tag is `1a2b3c4` (a hash of its bytes, or of its name for an embedded font). It is scaled from its font's em to the math font's, sits on the baseline, has no italic correction, and is an ordinary symbol (class Ord). It is filled with `currentColor` like every glyph (S-SVG-4): color layers (COLR, CBDT, SVG) are not read, only outlines (`glyf`, `CFF`, `CFF2`). `<mathra:font>` keeps the math font's name. Speech, text and braille do not change: they keep the character, as for any character without a name (braille writes the full cell ⠿, S-BRL-1). A character no font has is a box, or refused in strict mode (E-REC-8).
+
 ### S-SVG-6 · Text layer
 
 A transparent `<text>`, stretched with `textLength` over the width of the equation, holding the linear text (`3.14 + x`). When the SVG is inline in the page, selection and find-in-page pick up this text. Inside `<img>`, nothing is selectable: that is a browser rule.

@@ -6,8 +6,10 @@ use mathra::rules::Registry;
 use mathra::tree::{Class, Node, Variant};
 use mathra::{Error, Locale, Options};
 
+/// No fallback fonts, with or without the `emoji` feature: a character the math font lacks is a box
+/// here (tests/fallback.rs has the fallbacks).
 fn options() -> Options {
-    Options { locale: Locale::PtBr, ..Options::default() }
+    Options { locale: Locale::PtBr, fallback_fonts: Vec::new(), ..Options::default() }
 }
 
 /// Box composed through the public API, with the tolerant mode's warnings.
@@ -43,7 +45,7 @@ fn assert_valid_svg(svg: &str, tex: &str) {
 /// Composes a hand-built tree (for nodes the reader only produces in rare combinations).
 fn compose_node(node: &Node, e: Style, strict: bool) -> Result<MathBox, Error> {
     let mut registry = Registry::default();
-    let mut ctx = Context { locale: Locale::PtBr, registry: &mut registry, strict, kerning: Default::default() };
+    let mut ctx = Context { locale: Locale::PtBr, registry: &mut registry, strict, kerning: Default::default(), fallbacks: &[] };
     compose(node, e, &mut ctx)
 }
 

@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::font::{Font, MathFont};
+use crate::font::{glyph_font, FallbackFont, Font, MathFont};
 use crate::layout::{Item, MathBox};
 use crate::locale::Locale;
 use crate::VERSION;
@@ -178,12 +178,24 @@ pub fn generate(c: &Content) -> String {
     s
 }
 
+/// The name of a glyph's `<path>` after the equation's id: `g42` for the math font's glyph 42, and
+/// `f1a2b3c4g42` for a fallback font's, the font's tag first (S-SVG-5).
+pub(crate) fn glyph_name(font: Option<FallbackFont>, g: crate::font::GlyphId) -> String {
+    match font {
+        Some(f) => format!("f{:08x}g{}", f.tag(), g.0),
+        None => format!("g{}", g.0),
+    }
+}
+
+/// What tells two glyphs apart: the fallback font's tag (none for the math font) and the glyph id.
+pub(crate) type GlyphKey = (Option<u32>, u16);
+
 /// S-SVG-5: the outline of each glyph, once, in order of first appearance, inside turned boxes too.
-fn glyph_defs(items: &[Item], id: &str, f: &Font, seen: &mut HashSet<u16>, s: &mut String) {
+fn glyph_defs(items: &[Item], id: &str, f: &Font, seen: &mut HashSet<GlyphKey>, s: &mut String) {
     for item in items {
         match item {
-            Item::Glyph { id: g, .. } if seen.insert(g.0) => {
-                let _ = write!(s, r#"<path id="{id}-g{}" d="{}"/>"#, g.0, f.outline(*g));
+            Item::Glyph { id: g, font, .. } if seen.insert((font.map(FallbackFont::tag), g.0)) => {
+                let _ = write!(s, r#"<path id="{id}-{}" d="{}"/>"#, glyph_name(*font, *g), glyph_font(*font, f).outline(*g));
             }
             Item::Transformed { items, .. } | Item::Group { items, .. } => glyph_defs(items, id, f, seen, s),
             _ => {}
@@ -211,7 +223,7 @@ fn items_svg(math_box: &MathBox, lines: &[MathBox], id: &str, steps: &mut Steps)
 fn item_svg(items: &[Item], id: &str, steps: &mut Steps, out: &mut String) {
     for item in items {
         match item {
-            Item::Glyph { id: g, x, y, scale, color, flip } => {
+            Item::Glyph { id: g, x, y, scale, color, flip, font } => {
                 let transform = if *flip {
                     format!(r#"transform="translate({} {}) scale({} {})""#, n(*x), n(*y), n(-*scale), n(*scale))
                 } else if (*scale - 1.0).abs() < 1e-4 {
@@ -219,7 +231,7 @@ fn item_svg(items: &[Item], id: &str, steps: &mut Steps, out: &mut String) {
                 } else {
                     format!(r#"transform="translate({} {}) scale({})""#, n(*x), n(*y), n(*scale))
                 };
-                let _ = write!(out, r##"<use href="#{id}-g{}" {transform}{}{}/>"##, g.0, fill(color), steps.next(Entry::Fade));
+                let _ = write!(out, r##"<use href="#{id}-{}" {transform}{}{}/>"##, glyph_name(*font, *g), fill(color), steps.next(Entry::Fade));
             }
             Item::Rule { x, y, width, height, color } => {
                 let entry = if width >= height { Entry::Wide } else { Entry::Tall };

@@ -87,10 +87,21 @@ mathra.tex_to_svg(r"e^{i\pi} + 1 = 0", font=font)
 
 All the fonts of the catalog are under licenses that let the SVG carry their outlines (OFL, GUST, Apache-2.0, MIT).
 
+## Emoji and other characters the math font lacks
+
+Emoji are drawn from Noto Emoji (the monochrome one), embedded in the package: `mathra.tex_to_svg("E = mc^2 😀")` draws the face, with no warning, in the text color. For other characters the math font lacks, such as Chinese in `\text{…}`, pass fallback fonts: any `.otf` or `.ttf` with outlines, tried in order before Noto Emoji. A math font from `load_font` can be one too.
+
+```python
+cjk = mathra.load_fallback_font("NotoSansSC-Regular.otf")  # FallbackFont(id=0, name='Noto Sans SC')
+mathra.tex_to_svg(r"\text{面积} = \pi r^2", fallback_fonts=[cjk])
+```
+
+A character no font has is drawn as a box, with the warning E-REC-8, or raises ValueError with `strict=True`. Noto Emoji adds about 540 KB to the wheel.
+
 ## Also for JavaScript, Rust and the terminal
 
 The same core is an npm package (`@mathlabs/mathra`), a Rust crate and a command-line tool: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.
 
 ## License
 
-The code is MIT or Apache-2.0; the embedded STIX Two Math font is under the SIL Open Font License 1.1.
+The code is MIT or Apache-2.0; the embedded STIX Two Math and Noto Emoji fonts are under the SIL Open Font License 1.1.

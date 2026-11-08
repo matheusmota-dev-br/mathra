@@ -252,7 +252,7 @@ mod tests {
         for tex in [r"f(x) = a_0 + a_1 x + a_2 x^2", r"\int f\,dx = -F + C", r"]a, b[ = \{ x \mid a < x < b \}", r"x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}", r"a\quad b f"] {
             let mut registry = Registry::default();
             let tree = crate::input::latex::read(tex, crate::Locale::PtBr, &mut registry).unwrap();
-            let mut ctx = Context { locale: crate::Locale::PtBr, registry: &mut registry, strict: false, kerning: Default::default() };
+            let mut ctx = Context { locale: crate::Locale::PtBr, registry: &mut registry, strict: false, kerning: Default::default(), fallbacks: &[] };
             let e = Style::display();
             let whole = super::super::compose_list(&tree, e, &mut ctx).unwrap();
             let (pieces, total) = pieces(tree.children(), e, &mut ctx).unwrap();

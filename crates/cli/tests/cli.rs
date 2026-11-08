@@ -368,3 +368,31 @@ fn without_the_png_feature_png_is_refused() {
     assert!(o.status.success());
     assert!(std::fs::read_to_string(p.join("x.jpg")).unwrap().starts_with("<svg"));
 }
+
+#[cfg(feature = "emoji")]
+#[test]
+fn emoji_from_the_embedded_noto_emoji() {
+    // the issue's examples (#125): drawn with no warning, and strict accepts them
+    for tex in ["E = mc^2 😀", r"🍎 + 🍎 = 2 \cdot 🍎", r"\text{nota: 10 ⭐}"] {
+        let o = mathra(&[tex], None);
+        assert!(o.status.success() && stderr(&o).is_empty(), "{tex}: {}", stderr(&o));
+        assert!(mathra(&[tex, "--strict"], None).status.success(), "{tex}");
+    }
+    assert!(mathra(&["😀 + ∑ ∫ α → ℝ", "--strict"], None).status.success());
+}
+
+#[test]
+fn fallback_fonts_from_files() {
+    let a = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/tests/fonts/fallback-a.ttf");
+    // 中 is in neither STIX Two Math nor Noto Emoji: a box, then drawn from the fallback
+    let o = mathra(&[r"\text{中}"], None);
+    assert!(stderr(&o).contains("E-REC-8"), "{}", stderr(&o));
+    let o = mathra(&[r"\text{中}", "--fallback-font", a, "--strict"], None);
+    assert!(o.status.success() && stderr(&o).is_empty(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("M100 -100 L900 -100"));
+    // tried before Noto Emoji: fallback-a's diamond for 😀
+    let o = mathra(&["😀", "--fallback-font", a], None);
+    assert!(stdout(&o).contains("M500 -100 L900 300"));
+    let o = mathra(&["x", "--fallback-font", concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")], None);
+    assert!(!o.status.success() && stderr(&o).contains("not a font"), "{}", stderr(&o));
+}

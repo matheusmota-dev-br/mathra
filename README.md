@@ -232,6 +232,7 @@ let png: Vec<u8> = r.png(&mathra::PngOptions { dpi: 300.0, background: Some("whi
 Layout follows the parameters of the font's MATH table. The font is STIX Two Math; with the
 `latin-modern` feature, `convert_in_font` and `typeset_in_font` can also set an equation in Latin
 Modern Math, the OpenType Computer Modern of TeX's own documents (about 430 KB more in the binary).
+With the `emoji` feature, on in the CLI and the Python package and off in the crate and the npm package, Noto Emoji (the monochrome one) is the default fallback font, so emoji are drawn rather than boxed (about 780 KB more in the binary: 778 KB on the macOS CLI, 537 KB more in the Python wheel).
 
 Any other OpenType math font works too: an `.otf` or `.ttf` with a MATH table, such as Libertinus Math, Fira Math or the TeX Gyre math fonts. Load it from its bytes and set it as `Options::font`. Fonts without a MATH table are refused, because they have no fraction, radical or tall delimiter metrics. A font is kept for as long as the program runs, and the same bytes give the same font. The SVG carries the font's outlines, so check that its license allows that.
 
@@ -243,6 +244,17 @@ let svg = mathra::convert(r"e^{i\pi} + 1 = 0", &mathra::Options { font, ..Defaul
 The same in each package: `--font file.otf` in the terminal, `loadFont(bytes)` and `{ font }` in JavaScript, `mathra.load_font(path)` and `font=` in Python. The [playground](https://matheusmota-dev-br.github.io/mathra/) loads one from your computer, and the file stays in your browser.
 
 To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a catalog of 30 math fonts that are free to share, each one checked with mathra and shown in it. The JavaScript and Python packages load one by its name, and the playground lists them all: `await loadFontFromCatalog("euler-math")` in JavaScript, `mathra.load_font_from_catalog("euler-math")` in Python (kept in `~/.cache/mathra`). A font is downloaded only when asked for, and only if it matches the catalog's sha256, so the same name always gives the same SVG. The Rust crate and the terminal do not download anything: download the file from the catalog and pass it as above.
+
+A character the math font lacks (an emoji, Chinese in `\text{…}`) is looked up in the fallback fonts, in order, and its outline goes in the SVG like every other glyph, scaled to the math font's em, on the baseline, in the text color (S-SVG-5). A fallback font is any `.otf` or `.ttf` with outlines; it needs no MATH table, and color layers are not read. A character no font has is a box (E-REC-8), or refused in strict mode.
+
+```rust
+let cjk = mathra::font::FallbackFont::load(std::fs::read("NotoSansSC-Regular.otf")?)?;
+let mut options = mathra::Options::default();
+options.fallback_fonts.insert(0, cjk); // before Noto Emoji, with the `emoji` feature
+let svg = mathra::convert(r"\text{面积} = \pi r^2", &options)?.svg;
+```
+
+In each package: `--fallback-font file.otf` (repeatable) in the terminal, `loadFallbackFont(bytes)` and `{ fallbackFonts: [font] }` in JavaScript, `mathra.load_fallback_font(path)` and `fallback_fonts=[font]` in Python; a math font loaded as above can be a fallback too. The terminal and Python try yours first, then the embedded Noto Emoji; the npm package embeds no emoji font, so pass one there.
 
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
@@ -345,4 +357,4 @@ mathra is free and open source. If it is useful to you, you can support its work
 
 ## Licenses
 
-Code: your choice of [MIT](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`). With the `latin-modern` feature, also Latin Modern Math, GUST Font License (`crates/core/fonts/GUST-FONT-LICENSE-LatinModernMath.txt`).
+Code: your choice of [MIT](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-MIT) or [Apache-2.0](https://github.com/matheusmota-dev-br/mathra/blob/main/LICENSE-APACHE), as is common in the Rust ecosystem. Embedded font: STIX Two Math, SIL Open Font License 1.1 (`crates/core/fonts/OFL-STIXTwoMath.txt`). With the `latin-modern` feature, also Latin Modern Math, GUST Font License (`crates/core/fonts/GUST-FONT-LICENSE-LatinModernMath.txt`). With the `emoji` feature (the CLI and the Python package), also Noto Emoji, SIL Open Font License 1.1 (`crates/core/fonts/OFL-NotoEmoji.txt`).
