@@ -395,3 +395,40 @@ fn the_table_has_no_marker_twice() {
         assert!(font::font().glyph(a.symbol).is_none(), "the font draws the marker of \\{}", a.command);
     }
 }
+
+/// #207: the tree's JSON (`--tree`, the SVG's metadata) names a symbol drawn by composition by its command,
+/// not by its private marker; the MathML fallback keeps the command in its annotation, and `Node` keeps
+/// its size.
+#[test]
+fn the_tree_names_the_symbol_by_its_command() {
+    let private = |s: &str| s.chars().any(composite::is);
+    for options in [strict(), Options::default()] {
+        let out = convert(r"\llceil x \rrceil", &options).unwrap();
+        let json = out.tree.to_json();
+        assert!(json.contains(r#""symbol":"\\llceil""#) && json.contains(r#""symbol":"\\rrceil""#), "{json}");
+        assert!(!private(&json) && !json.contains(r"\u{f0b") && !json.contains(r"\uDB82"), "{json}");
+        assert!(!private(&out.svg), "the SVG's metadata");
+        assert!(out.svg.contains(r"&quot;symbol&quot;:&quot;\\llceil&quot;"), "{}", out.svg);
+        assert!(out.mathml.contains(r"\llceil x \rrceil"), "{}", out.mathml);
+    }
+    // every place a marker can be: an operator, a large operator, \left, \middle, \right and \big
+    let json = convert(r"\left\llfloor x \middle\llceil y \right\rrfloor + \bigbox_a b \big\llceil \varovee", &strict()).unwrap().tree.to_json();
+    for k in [
+        r#""open":"\\llfloor""#,
+        r#""close":"\\rrfloor""#,
+        r#""middles":["\\llceil"]"#,
+        r#""symbol":"\\bigbox""#,
+        r#""type":"fixed-delimiter","symbol":"\\llceil""#,
+        r#""symbol":"\\varovee""#,
+    ] {
+        assert!(json.contains(k), "{k} in {json}");
+    }
+    assert!(!private(&json), "{json}");
+    // every composite symbol, and the others still their character
+    for k in composite::ALL {
+        let json = convert(&format!(r"\{}", k.command), &strict()).unwrap().tree.to_json();
+        assert!(json.contains(&format!(r#""symbol":"\\{}""#, k.command)), "{json}");
+    }
+    assert!(convert(r"\lceil x \rceil", &strict()).unwrap().tree.to_json().contains(r#""symbol":"⌈""#));
+    assert_eq!(std::mem::size_of::<Node>(), 176);
+}

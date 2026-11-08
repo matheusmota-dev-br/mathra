@@ -36,17 +36,20 @@ pub enum Node {
     },
     /// Operator, relation, punctuation or delimiter.
     Operator {
+        #[serde(serialize_with = "composite_json::symbol")]
         symbol: char,
         class: Class,
     },
     /// Fixed-size delimiter: `\big(`, `\Bigg]`. Size from 1 to 4.
     FixedDelimiter {
+        #[serde(serialize_with = "composite_json::symbol")]
         symbol: char,
         class: Class,
         size: u8,
     },
     /// Sum, product, integral. `limits`: None lets the style decide.
     LargeOperator {
+        #[serde(serialize_with = "composite_json::symbol")]
         symbol: char,
         #[serde(skip_serializing_if = "Option::is_none")]
         limits: Option<bool>,
@@ -85,12 +88,12 @@ pub enum Node {
     },
     /// `\left( … \middle| … \right)`: delimiters that follow the height of the content.
     Delimited {
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", serialize_with = "composite_json::optional")]
         open: Option<char>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none", serialize_with = "composite_json::optional")]
         close: Option<char>,
         parts: Vec<Node>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
+        #[serde(skip_serializing_if = "Vec::is_empty", serialize_with = "composite_json::list")]
         middles: Vec<char>,
     },
     /// Matrices, cases, alignments and `array`.
@@ -706,5 +709,36 @@ impl Node {
             Node::Row { mut children } if children.len() == 1 => children.pop().unwrap().simplify(),
             other => other,
         }
+    }
+}
+
+/// #207: a symbol drawn by composition (#176) is kept in the tree as a private marker character
+/// (`crate::composite`), which means nothing outside mathra; the JSON of the tree (`--tree`,
+/// [`Node::to_json`], the SVG's metadata) names it by its command instead: `"symbol":"\\llceil"`.
+/// Every other symbol is its character.
+mod composite_json {
+    use serde::{Serialize, Serializer};
+
+    struct Symbol(char);
+
+    impl Serialize for Symbol {
+        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            match crate::composite::get(self.0) {
+                Some(k) => s.collect_str(&format_args!("\\{}", k.command)),
+                None => s.serialize_char(self.0),
+            }
+        }
+    }
+
+    pub fn symbol<S: Serializer>(c: &char, s: S) -> Result<S::Ok, S::Error> {
+        Symbol(*c).serialize(s)
+    }
+
+    pub fn optional<S: Serializer>(c: &Option<char>, s: S) -> Result<S::Ok, S::Error> {
+        c.map(Symbol).serialize(s)
+    }
+
+    pub fn list<S: Serializer>(c: &[char], s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(c.iter().map(|c| Symbol(*c)))
     }
 }
