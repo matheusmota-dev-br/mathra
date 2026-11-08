@@ -479,16 +479,25 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
     let mut pending: Option<(&Arrow, Drawing, Drawing)> = None;
     let mut plus_pending = false;
     let gap = 0.45 * EM;
+    // the compounds placed so far, in order, each as the box of what chemfig takes for one compound,
+    // what `\+` joins included (a \merge or a branching arrow names them by index), the first of the
+    // group being filled, and where a \merge left the border of the next one, with its direction
+    let mut placed_boxes: Vec<Rect> = Vec::new();
+    let mut group_start = 0;
+    let mut after_merge: Option<(P, P)> = None;
     for item in &s.items {
         match item {
             Item::Compound(c) => {
                 let mut local = Hooks { points: BTreeMap::new() };
                 let placed = compound(c, ctx, &mut local)?;
                 let b = placed.drawing.bounds();
+                let merged = after_merge.take().map(|(at, u)| sub(add(at, mul(u, b.reach(u))), b.center()));
                 let target = match (&pending, last, plus_pending) {
+                    _ if merged.is_some() => merged.unwrap_or_default(),
                     (Some((arrow, above, below)), Some(prev), _) => {
                         // C-SCH-1: the arrow leaves the previous compound along its direction
                         let u = direction(arrow.angle);
+                        let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
                         let len = base_length(arrow, above, below) * arrow.length;
                         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                         let end = add(start, mul(u, len));
@@ -514,31 +523,54 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                     hooks.points.insert(k, (add(p, target), r.shifted(target)));
                 }
                 last = Some(b.shifted(target));
+                let r = b.shifted(target);
+                if plus_pending && !placed_boxes.is_empty() {
+                    let whole = placed_boxes[group_start..].iter().fold(r, |a, b| a.union(*b));
+                    placed_boxes.push(whole);
+                    placed_boxes[group_start..].iter_mut().for_each(|x| *x = whole);
+                } else {
+                    group_start = placed_boxes.len();
+                    placed_boxes.push(r);
+                }
                 pending = None;
                 plus_pending = false;
             }
             Item::Plus => plus_pending = true,
+            Item::Merge(m) => {
+                if let (Some((arrow, ab, be)), Some(prev)) = (pending.take(), last) {
+                    // an arrow with no compound after it ends in empty space, as two arrows in a row do
+                    let u = direction(arrow.angle);
+                    let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
+                    let start = add(prev.center(), mul(u, prev.reach(u) + gap));
+                    let end = add(start, mul(u, 2.6 * EM * arrow.length));
+                    draw_arrow(&mut out, arrow, start, end, &ab, &be);
+                }
+                let above = label_drawing(&m.above, ctx)?;
+                let below = label_drawing(&m.below, ctx)?;
+                if let Some((end, u)) = merge(&mut out, m, &placed_boxes, &above, &below) {
+                    last = Some(Rect::around(end, 0.0));
+                    after_merge = Some((add(end, mul(u, gap)), u));
+                }
+                plus_pending = false;
+            }
             Item::Arrow(a) => {
-                let label = |l: &Option<super::model::Label>, ctx: &mut Ctx| -> R<Drawing> {
-                    let mut d = Drawing::default();
-                    match l {
-                        None => {}
-                        Some(super::model::Label::Text { tex }) => {
-                            let m = ctx.text(tex)?;
-                            d.math(m, (0.0, 0.0));
-                        }
-                        Some(super::model::Label::Structure(m)) => {
-                            let mut ignored = Hooks { points: BTreeMap::new() };
-                            d = molecule(m, ctx, &mut ignored)?.scaled(0.85);
-                        }
-                    }
-                    Ok(d)
-                };
-                let above = label(&a.above, ctx)?;
-                let below = label(&a.below, ctx)?;
+                let above = label_drawing(&a.above, ctx)?;
+                let below = label_drawing(&a.below, ctx)?;
+                let source = a.from.and_then(|k| placed_boxes.get(k).copied()).or(last);
+                if let (Some(target), Some(source)) = (a.to.and_then(|k| placed_boxes.get(k).copied()), source) {
+                    // chemfig manual, section 6.7: an arrow between two compounds already placed, straight
+                    // from border to border; the next arrow leaves from its target
+                    let u = unit(sub(target.center(), source.center()));
+                    let start = add(source.center(), mul(u, source.reach(u) + gap));
+                    let end = sub(target.center(), mul(u, target.reach(u) + gap));
+                    draw_arrow(&mut out, a, start, end, &above, &below);
+                    last = Some(target);
+                    continue;
+                }
                 if let (Some((arrow, ab, be)), Some(prev)) = (pending.take(), last) {
                     // two arrows in a row: the first one ends in empty space
                     let u = direction(arrow.angle);
+                    let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
                     let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                     let end = add(start, mul(u, 2.6 * EM * arrow.length));
                     draw_arrow(&mut out, arrow, start, end, &ab, &be);
@@ -550,6 +582,7 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
     }
     if let (Some((arrow, above, below)), Some(prev)) = (pending, last) {
         let u = direction(arrow.angle);
+        let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
         let end = add(start, mul(u, base_length(arrow, &above, &below) * arrow.length));
         draw_arrow(&mut out, arrow, start, end, &above, &below);
@@ -558,6 +591,71 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
         electron_move(&mut out, m, &hooks)?;
     }
     Ok(out)
+}
+
+/// An arrow's label drawn: text, or a structure at 0.85 of its size; nothing without one.
+fn label_drawing(l: &Option<super::model::Label>, ctx: &mut Ctx) -> R<Drawing> {
+    let mut d = Drawing::default();
+    match l {
+        None => {}
+        Some(super::model::Label::Text { tex }) => {
+            let m = ctx.text(tex)?;
+            d.math(m, (0.0, 0.0));
+        }
+        Some(super::model::Label::Structure(m)) => {
+            let mut ignored = Hooks { points: BTreeMap::new() };
+            d = molecule(m, ctx, &mut ignored)?.scaled(0.85);
+        }
+    }
+    Ok(d)
+}
+
+/// C-SCH-6: chemfig's `\merge` (manual, section 6.11, and its `\CF_merge`). From each compound joined, at
+/// the anchor on its border (the direction's, or the angle given), a line along the direction to the
+/// junction line, which stands across the direction `c1` × the space between compounds beyond the
+/// farthest anchor and spans the anchors; from the point `c` along it (from its top, or its left end
+/// for `^` and `v`), an arrow `c2` × that space long, ending where the next compound's border goes.
+/// The space between compounds is mathra's: an arrow (2.6 em) and the gap on each side. Returns the
+/// arrow's end and direction.
+fn merge(out: &mut Drawing, m: &super::model::Merge, placed: &[Rect], above: &Drawing, below: &Drawing) -> Option<(P, P)> {
+    let gap = 0.45 * EM;
+    let sep = 2.6 * EM + 2.0 * gap;
+    let u = direction(m.angle);
+    let anchors: Vec<P> = m
+        .from
+        .iter()
+        .filter_map(|&(k, angle)| {
+            let r = placed.get(k)?;
+            let d = angle.map_or(u, direction);
+            Some(add(r.center(), mul(d, r.reach(d))))
+        })
+        .collect();
+    if anchors.is_empty() {
+        return None;
+    }
+    let along = |p: P| p.0 * u.0 + p.1 * u.1;
+    let (c1, c2, c) = m.coefficients;
+    let junction = anchors.iter().map(|p| along(*p)).fold(f32::MIN, f32::max) + c1 * sep;
+    let horizontal = u.0.abs() > 0.5;
+    for &a in &anchors {
+        let start = add(a, mul(u, gap));
+        let end = add(a, mul(u, junction - along(a)));
+        if along(end) > along(start) {
+            out.line(start, end, STROKE);
+        }
+    }
+    let (xs, ys): (Vec<f32>, Vec<f32>) = anchors.iter().copied().unzip();
+    let (x_min, x_max) = (xs.iter().copied().fold(f32::MAX, f32::min), xs.iter().copied().fold(f32::MIN, f32::max));
+    let (y_min, y_max) = (ys.iter().copied().fold(f32::MAX, f32::min), ys.iter().copied().fold(f32::MIN, f32::max));
+    // drawn from its top down (from its left end for ^ and v), as chemfig draws it
+    let (first, last) = if horizontal { ((junction * u.0, y_max), (junction * u.0, y_min)) } else { ((x_min, junction * u.1), (x_max, junction * u.1)) };
+    if length(sub(last, first)) > 1e-3 {
+        out.line(first, last, STROKE);
+    }
+    let point = add(first, mul(sub(last, first), c));
+    let end = add(point, mul(u, (c2 * sep - gap).max(0.3 * EM)));
+    draw_arrow(out, &m.as_arrow(), point, end, above, below);
+    Some((end, u))
 }
 
 fn compound(c: &Compound, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Placed> {

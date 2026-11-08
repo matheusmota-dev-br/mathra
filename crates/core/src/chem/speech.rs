@@ -119,6 +119,15 @@ fn hook_name(s: &Scheme, hook: &str) -> String {
 pub fn speak(s: &Scheme, loc: Locale) -> String {
     let mut parts: Vec<String> = Vec::new();
     for item in &s.items {
+        // a merge is read as the arrow it ends in
+        let merged;
+        let item = match item {
+            Item::Merge(m) => {
+                merged = Item::Arrow(m.as_arrow());
+                &merged
+            }
+            other => other,
+        };
         match item {
             Item::Compound(c) => {
                 let body = match &c.body {
@@ -131,6 +140,8 @@ pub fn speak(s: &Scheme, loc: Locale) -> String {
                 });
             }
             Item::Plus => parts.push(loc.phrase("op.+").to_string()),
+            // read as its arrow, above
+            Item::Merge(_) => {}
             Item::Arrow(a) => {
                 let mut p = if a.kind == ArrowKind::Invisible { String::new() } else { phrase(loc, arrow_key(a.kind)).to_string() };
                 let mut labels = Vec::new();
@@ -162,12 +173,23 @@ pub fn speak(s: &Scheme, loc: Locale) -> String {
 pub fn linear(s: &Scheme, loc: Locale) -> String {
     let mut parts: Vec<String> = Vec::new();
     for item in &s.items {
+        // a merge is read as the arrow it ends in
+        let merged;
+        let item = match item {
+            Item::Merge(m) => {
+                merged = Item::Arrow(m.as_arrow());
+                &merged
+            }
+            other => other,
+        };
         match item {
             Item::Compound(c) => parts.push(match &c.body {
                 Body::Structure(m) => formula::of(m).written(),
                 Body::Math { tex } => math_text(tex, loc),
             }),
             Item::Plus => parts.push("+".to_string()),
+            // read as its arrow, above
+            Item::Merge(_) => {}
             Item::Arrow(a) => {
                 let sign = match a.kind {
                     ArrowKind::Forward => "→",
@@ -209,12 +231,23 @@ pub fn as_nodes(s: &Scheme) -> Node {
     };
     let mut children = Vec::new();
     for item in &s.items {
+        // a merge is read as the arrow it ends in
+        let merged;
+        let item = match item {
+            Item::Merge(m) => {
+                merged = Item::Arrow(m.as_arrow());
+                &merged
+            }
+            other => other,
+        };
         match item {
             Item::Compound(c) => children.push(match &c.body {
                 Body::Structure(m) => read(&formula::of(m).tex()),
                 Body::Math { tex } => read(tex),
             }),
             Item::Plus => children.push(Node::Operator { symbol: '+', class: Class::Bin }),
+            // read as its arrow, above
+            Item::Merge(_) => {}
             Item::Arrow(a) => {
                 let symbol = match a.kind {
                     ArrowKind::Forward | ArrowKind::NoReaction => '→',

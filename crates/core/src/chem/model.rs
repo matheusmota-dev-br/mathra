@@ -21,6 +21,33 @@ pub enum Item {
     Compound(Compound),
     Plus,
     Arrow(Arrow),
+    Merge(Merge),
+}
+
+/// chemfig's `\merge` (manual, section 6.11): a line from each compound it joins to a junction line
+/// across the direction, and an arrow from that line on to the next compound.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Merge {
+    /// The compounds joined, as indices among the scheme's compounds (from 0), each with the angle of
+    /// the anchor its line leaves from, when one is given (`(c1.120)`); otherwise the direction's.
+    pub from: Vec<(usize, Option<f32>)>,
+    /// The direction: 0 (`>`), 180 (`<`), 90 (`^`), -90 (`v`).
+    pub angle: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub above: Option<Label>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub below: Option<Label>,
+    /// `[c1,c2,c]`: the shortest line to the junction and the arrow, as fractions of the space between
+    /// compounds, and where on the junction line the arrow leaves (0: its top end, or its left end for
+    /// `^` and `v`). 0.5 each by default.
+    pub coefficients: (f32, f32, f32),
+}
+
+impl Merge {
+    /// The arrow a merge ends in, as speech, text and braille read it: "reacts to give", with its labels.
+    pub fn as_arrow(&self) -> Arrow {
+        Arrow { kind: ArrowKind::Forward, above: self.above.clone(), below: self.below.clone(), angle: self.angle, length: 1.0, arc: None, from: None, to: None }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -210,6 +237,14 @@ pub struct Arrow {
     /// its middle, from the label above (a reagent coming in) to the label below (a product going out).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arc: Option<UArc>,
+    /// chemfig's branching, `\arrow(@name--…)` (manual, section 6.7): the compound the arrow leaves
+    /// from, as an index among the scheme's compounds (from 0); the last one placed otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<usize>,
+    /// `\arrow(…--@name)` (section 6.7): an arrow to a compound already placed, as an index; it draws
+    /// straight between the two, and no new compound follows it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<usize>,
 }
 
 /// The arc of a `-U>` arrow: its radius as a multiple of the arrow's length (negative: below the

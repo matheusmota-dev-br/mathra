@@ -114,7 +114,7 @@ pub fn split_top(s: &str, sep: char) -> Vec<String> {
 
 /// Reads a scheme, or a single `\chemfig{…}`, as the LaTeX reader found it.
 pub fn read(src: &str, reader: &mut Reader) -> R<Scheme> {
-    let mut s = SchemeReader { c: src.trim().chars().collect(), pos: 0, reader, scheme: Scheme { items: vec![], moves: vec![] } };
+    let mut s = SchemeReader { c: src.trim().chars().collect(), pos: 0, reader, scheme: Scheme { items: vec![], moves: vec![] }, names: vec![], arrows: (0.0, 1.0), boxes: vec![] };
     s.items()?;
     let mut scheme = s.scheme;
     // a mechanism arrow must point at hooked atoms
@@ -144,6 +144,15 @@ struct SchemeReader<'r, 'w> {
     pos: usize,
     reader: &'r mut Reader<'w>,
     scheme: Scheme,
+    /// Compounds named by `\arrow(a--b)` or by `\merge…--(b)` (chemfig manual, sections 6.4 and 6.11),
+    /// with their index among the scheme's compounds; the last one given for a name counts.
+    names: Vec<(String, usize)>,
+    /// The angle and length coefficient of an arrow that gives none: `\schemestart[arrow angle=…,arrow
+    /// coeff=…]` (chemfig manual, section 6.1); 0 and 1 by default.
+    arrows: (f32, f32),
+    /// Where each `\subscheme` starts, as the index of its first compound: chemfig names its box too,
+    /// with the number before its first compound's (manual, section 6.8), so `ck` counts them.
+    boxes: Vec<usize>,
 }
 
 impl SchemeReader<'_, '_> {
@@ -252,7 +261,12 @@ impl SchemeReader<'_, '_> {
             let start = self.pos;
             let name = self.command();
             match name.as_str() {
-                "schemestart" | "schemestop" | "par" => {}
+                "schemestart" => {
+                    if let Some(options) = self.optional()? {
+                        self.scheme_options(&options);
+                    }
+                }
+                "schemestop" | "par" => {}
                 "chemfig" => {
                     let _ = self.optional()?;
                     let body = self.braced()?;
@@ -271,7 +285,15 @@ impl SchemeReader<'_, '_> {
                     let inner = self.braced()?;
                     let label = self.braced()?;
                     let before = self.scheme.items.len();
-                    let mut sub = SchemeReader { c: inner.chars().collect(), pos: 0, reader: self.reader, scheme: Scheme { items: vec![], moves: vec![] } };
+                    let mut sub = SchemeReader {
+                        c: inner.chars().collect(),
+                        pos: 0,
+                        reader: self.reader,
+                        scheme: Scheme { items: vec![], moves: vec![] },
+                        names: vec![],
+                        arrows: (0.0, 1.0),
+                        boxes: vec![],
+                    };
                     sub.items()?;
                     let (items, moves) = (sub.scheme.items, sub.scheme.moves);
                     self.scheme.moves.extend(moves);
@@ -289,18 +311,8 @@ impl SchemeReader<'_, '_> {
                     self.scheme.items.push(Item::Plus);
                 }
                 "arrow" => self.arrow()?,
-                // chemfig manual, section 6.11: arrows from compounds named by \arrow(name--name),
-                // which mathra does not name nor place in two dimensions
-                "merge" => {
-                    let end = merge_end(&self.c, self.pos);
-                    let written: String = self.c[start..end].iter().collect();
-                    self.pos = end;
-                    self.reader.tolerate(
-                        rules::E_REC_1,
-                        format!("unsupported command: {} (it joins compounds named by \\arrow(…--…), which mathra does not name)", written.trim()),
-                        "left out",
-                    )?;
-                }
+                // chemfig manual, section 6.11
+                "merge" => self.merge()?,
                 // section 6.8: delimiters around material, as math the LaTeX reader draws
                 "chemleft" | "chemup" => {
                     let closer = if name == "chemleft" { "chemright" } else { "chemdown" };
@@ -317,8 +329,22 @@ impl SchemeReader<'_, '_> {
                 "subscheme" => {
                     let _ = self.optional()?;
                     let body = self.braced()?;
-                    let mut sub = SchemeReader { c: body.chars().collect(), pos: 0, reader: self.reader, scheme: Scheme { items: vec![], moves: vec![] } };
+                    let arrows = self.arrows;
+                    let first = self.compounds();
+                    let mut sub = SchemeReader {
+                        c: body.chars().collect(),
+                        pos: 0,
+                        reader: self.reader,
+                        scheme: Scheme { items: vec![], moves: vec![] },
+                        names: vec![],
+                        arrows,
+                        boxes: vec![],
+                    };
                     sub.items()?;
+                    // the names given inside are the scheme's (a \merge after it can join them)
+                    self.names.extend(sub.names.into_iter().map(|(n, k)| (n, first + k)));
+                    self.boxes.push(first);
+                    self.boxes.extend(sub.boxes.into_iter().map(|k| first + k));
                     let (items, moves) = (sub.scheme.items, sub.scheme.moves);
                     self.scheme.items.extend(items);
                     self.scheme.moves.extend(moves);
@@ -372,9 +398,202 @@ impl SchemeReader<'_, '_> {
         text.clear();
     }
 
-    /// `\arrow{type[above][below]}[angle,length]`, or a bare `\arrow` (a plain arrow).
+    /// `\schemestart[key=value,…]` (chemfig manual, section 6.1): `arrow angle` and `arrow coeff` set the
+    /// arrows that give no angle or length; the other keys (`arrow style`, `init anchor`,
+    /// `compound sep`…) are ignored, as `\chemfig`'s options are.
+    fn scheme_options(&mut self, options: &str) {
+        for option in split_top(options, ',') {
+            let Some((key, value)) = option.split_once('=') else { continue };
+            let value = value.trim().trim_start_matches('{').trim_end_matches('}').trim().parse::<f32>().ok().filter(|v| v.is_finite());
+            match (key.trim(), value) {
+                ("arrow angle", Some(a)) => self.arrows.0 = a,
+                ("arrow coeff", Some(c)) if c > 0.0 => self.arrows.1 = c,
+                _ => {}
+            }
+        }
+    }
+
+    /// How many compounds the scheme has so far.
+    fn compounds(&self) -> usize {
+        self.scheme.items.iter().filter(|i| matches!(i, Item::Compound(_))).count()
+    }
+
+    /// The compound a name stands for: one given by `\arrow(a--b)` or `\merge`, or chemfig's own name
+    /// of the k-th compound, `ck`. chemfig numbers what lies between two arrows as one compound, `\+`
+    /// and what it joins included (section 6.12), and a `\subscheme`'s box too, before the compounds in
+    /// it (section 6.8); a box, or a sign, is not a compound of mathra's, so its name stands for none.
+    fn named(&self, name: &str) -> Option<usize> {
+        let count = self.compounds();
+        let given = self.names.iter().rev().find(|(n, _)| n == name).map(|&(_, k)| k);
+        if let Some(k) = given.filter(|&k| k < count) {
+            return Some(k);
+        }
+        let wanted = name.strip_prefix('c')?.parse::<usize>().ok()?;
+        let (mut number, mut index, mut joined) = (0, 0, false);
+        for item in &self.scheme.items {
+            match item {
+                Item::Compound(_) => {
+                    number += self.boxes.iter().filter(|&&b| b == index).count();
+                    if number >= wanted {
+                        return None;
+                    }
+                    if !joined {
+                        number += 1;
+                        if number == wanted {
+                            return Some(index);
+                        }
+                    }
+                    index += 1;
+                    joined = false;
+                }
+                Item::Plus => joined = true,
+                Item::Arrow(_) | Item::Merge(_) => joined = false,
+            }
+        }
+        None
+    }
+
+    /// `name.anchor[style]` (chemfig manual, sections 6.4 to 6.6) as the name and the anchor's angle, when
+    /// it is one. A named anchor (`mid east`) is left to mathra, whose arrows meet the border facing them;
+    /// a style, which mathra does not draw, warns.
+    fn node_spec(&mut self, spec: &str) -> R<(String, Option<f32>)> {
+        let (spec, style) = match spec.split_once('[') {
+            Some((s, style)) => (s, style.trim_end_matches(']').trim()),
+            None => (spec, ""),
+        };
+        let (name, anchor) = spec.split_once('.').map_or((spec.trim(), ""), |(n, a)| (n.trim(), a.trim()));
+        let angle = anchor.parse::<f32>().ok().filter(|a| a.is_finite());
+        if !style.is_empty() {
+            self.reader.tolerate(rules::E_REC_9, format!("compound style [{style}]"), "ignored")?;
+        }
+        Ok((name.to_string(), angle))
+    }
+
+    /// chemfig's `\merge` (manual, section 6.11): `\merge>[above][below](n1.a1)(n2)…--(n.a[style])[c1,c2,c,style]`,
+    /// right after its name. The direction is `>` (the default), `<`, `^` or `v`; the compounds joined
+    /// are named as `\arrow(a--b)` names them, or by chemfig's own names `c1`, `c2`…; the name after
+    /// `--` is the next compound's.
+    fn merge(&mut self) -> R<()> {
+        self.skip_spaces();
+        let mut direction = '>';
+        match self.current() {
+            Some(d @ ('>' | '<' | '^' | 'v')) => {
+                direction = d;
+                self.pos += 1;
+            }
+            Some('{') => {
+                let d = self.group('{', '}')?;
+                match d.trim() {
+                    d @ (">" | "<" | "^" | "v") => direction = d.chars().next().unwrap_or('>'),
+                    other => self.reader.tolerate(rules::E_REC_9, format!("\\merge direction {{{other}}}"), "to the right")?,
+                }
+            }
+            _ => {}
+        }
+        let mut labels = Vec::new();
+        while let Some(l) = self.optional()? {
+            labels.push(l);
+        }
+        let mut from = Vec::new();
+        let mut next = None;
+        loop {
+            self.skip_spaces();
+            match self.current() {
+                Some('(') => {
+                    let spec = self.group('(', ')')?;
+                    let (name, anchor) = self.node_spec(&spec)?;
+                    match self.named(&name) {
+                        Some(k) => from.push((k, anchor)),
+                        None => self.reader.tolerate(rules::E_REC_9, format!("\\merge: no compound is named {name}"), "its line left out")?,
+                    }
+                }
+                Some('-') if self.c.get(self.pos + 1) == Some(&'-') => {
+                    self.pos += 2;
+                    self.skip_spaces();
+                    if self.current() == Some('(') {
+                        let spec = self.group('(', ')')?;
+                        next = Some(self.node_spec(&spec)?);
+                    }
+                    break;
+                }
+                _ => break,
+            }
+        }
+        if next.is_none() {
+            self.reader.tolerate(rules::E_REC_9, "\\merge without --(name) for the next compound", "the next compound follows the arrow")?;
+        }
+        let mut coefficients = (0.5f32, 0.5f32, 0.5f32);
+        if let Some(opts) = self.optional()? {
+            let parts = split_top(&opts, ',');
+            let number = |i: usize, default: f32| parts.get(i).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite()).unwrap_or(default);
+            coefficients = (number(0, 0.5), number(1, 0.5), number(2, 0.5).clamp(0.0, 1.0));
+            let style = parts.get(3..).map(|s| s.join(",")).unwrap_or_default();
+            if !style.trim().is_empty() {
+                self.reader.tolerate(rules::E_REC_9, format!("\\merge style {}", style.trim()), "drawn as a plain arrow")?;
+            }
+        }
+        if let Some((name, _)) = next.filter(|(n, _)| !n.is_empty()) {
+            let k = self.compounds();
+            self.names.push((name, k));
+        }
+        let mut label = |l: Option<&String>| -> R<Option<Label>> {
+            let Some(t) = l.map(|t| t.trim()).filter(|t| !t.is_empty()) else { return Ok(None) };
+            // `*{angle.anchor}text`: the rotation and anchor of the label, which mathra does not draw
+            let t = match t.strip_prefix("*{").and_then(|r| r.split_once('}')) {
+                Some((how, text)) => {
+                    self.reader.tolerate(rules::E_REC_9, format!("\\merge label rotation *{{{how}}}"), "the label drawn level")?;
+                    text.trim()
+                }
+                None => t,
+            };
+            Ok((!t.is_empty()).then(|| Label::Text { tex: t.to_string() }))
+        };
+        let above = label(labels.first())?;
+        let below = label(labels.get(1))?;
+        if from.is_empty() {
+            return self.reader.tolerate(rules::E_REC_9, "\\merge joins no compound", "left out");
+        }
+        let angle = match direction {
+            '<' => 180.0,
+            '^' => 90.0,
+            'v' => -90.0,
+            _ => 0.0,
+        };
+        self.scheme.items.push(Item::Merge(Merge { from, angle, above, below, coefficients }));
+        Ok(())
+    }
+
+    /// `\arrow(a--b){type[above][below]}[angle,length]`, or a bare `\arrow` (a plain arrow). `(a--b)`
+    /// names the compound before the arrow `a` and the one after it `b` (chemfig manual, section 6.4).
     fn arrow(&mut self) -> R<()> {
         self.skip_spaces();
+        let (mut from, mut to) = (None, None);
+        if self.current() == Some('(') {
+            let names = self.group('(', ')')?;
+            let (before, after) = names.split_once("--").unwrap_or((&names, ""));
+            let (before, _) = self.node_spec(before)?;
+            let (after, _) = self.node_spec(after)?;
+            let count = self.compounds();
+            if let Some(start) = before.strip_prefix('@') {
+                // section 6.7: the arrow branches from that compound
+                from = self.named(start);
+                if from.is_none() {
+                    self.reader.tolerate(rules::E_REC_9, format!("an arrow from @{start}: no compound is named {start}"), "drawn from the last compound")?;
+                }
+            } else if !before.is_empty() && count > 0 {
+                self.names.push((before, count - 1));
+            }
+            if let Some(end) = after.strip_prefix('@') {
+                // section 6.7: an arrow to a compound already placed
+                to = self.named(end);
+                if to.is_none() {
+                    self.reader.tolerate(rules::E_REC_9, format!("an arrow to @{end}: no compound is named {end}"), "drawn to the next compound")?;
+                }
+            } else if !after.is_empty() {
+                self.names.push((after, count));
+            }
+            self.skip_spaces();
+        }
         let spec = if self.current() == Some('{') { self.group('{', '}')? } else { String::new() };
         let spec = spec.trim();
         let type_end = spec.find('[').unwrap_or(spec.len());
@@ -397,14 +616,30 @@ impl SchemeReader<'_, '_> {
             }
         };
         let mut labels = Vec::new();
-        let mut sub = SchemeReader { c: rest.chars().collect(), pos: 0, reader: self.reader, scheme: Scheme { items: vec![], moves: vec![] } };
+        let mut sub = SchemeReader {
+            c: rest.chars().collect(),
+            pos: 0,
+            reader: self.reader,
+            scheme: Scheme { items: vec![], moves: vec![] },
+            names: vec![],
+            arrows: (0.0, 1.0),
+            boxes: vec![],
+        };
         while let Some(text) = sub.optional()? {
             labels.push(text);
         }
         let mut label = |text: Option<&String>| -> R<Option<Label>> {
             let Some(t) = text.map(|t| t.trim()).filter(|t| !t.is_empty()) else { return Ok(None) };
             if let Some(start) = t.find("\\chemfig") {
-                let mut r = SchemeReader { c: t[start + "\\chemfig".len()..].chars().collect(), pos: 0, reader: self.reader, scheme: Scheme { items: vec![], moves: vec![] } };
+                let mut r = SchemeReader {
+                    c: t[start + "\\chemfig".len()..].chars().collect(),
+                    pos: 0,
+                    reader: self.reader,
+                    scheme: Scheme { items: vec![], moves: vec![] },
+                    names: vec![],
+                    arrows: (0.0, 1.0),
+                    boxes: vec![],
+                };
                 let _ = r.optional()?;
                 let body = r.braced()?;
                 return Ok(Some(Label::Structure(chemfig::molecule(&body, self.reader)?)));
@@ -416,7 +651,7 @@ impl SchemeReader<'_, '_> {
         // -U>[above][below][shift][radius][half angle]: the radius 0.333 of the length, the half angle 60°
         let number = |i: usize| labels.get(i).and_then(|v| v.trim().parse::<f32>().ok());
         let arc = u_arrow.then(|| UArc { radius: number(3).unwrap_or(0.333), half_angle: number(4).map_or(60.0, f32::abs) });
-        let (mut angle, mut length) = (0.0, 1.0);
+        let (mut angle, mut length) = self.arrows;
         if let Some(opts) = self.optional()? {
             let parts = split_top(&opts, ',');
             if let Some(a) = parts.first().and_then(|a| a.trim().parse::<f32>().ok()) {
@@ -426,7 +661,7 @@ impl SchemeReader<'_, '_> {
                 length = l;
             }
         }
-        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc }));
+        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc, from, to }));
         Ok(())
     }
 
@@ -442,7 +677,15 @@ impl SchemeReader<'_, '_> {
                 self.reader.tolerate(rules::E_REC_1, format!("only \\draw is read inside \\chemmove: {st}"), "ignored")?;
                 continue;
             };
-            let mut p = SchemeReader { c: path.chars().collect(), pos: 0, reader: self.reader, scheme: Scheme { items: vec![], moves: vec![] } };
+            let mut p = SchemeReader {
+                c: path.chars().collect(),
+                pos: 0,
+                reader: self.reader,
+                scheme: Scheme { items: vec![], moves: vec![] },
+                names: vec![],
+                arrows: (0.0, 1.0),
+                boxes: vec![],
+            };
             let options = p.optional()?.unwrap_or_default();
             let single = ["harpoon", "left to", "right to", "fishhook", "half"].iter().any(|k| options.contains(k));
             let names: Vec<String> = parens(path).into_iter().filter(|n| !n.contains(':')).collect();
