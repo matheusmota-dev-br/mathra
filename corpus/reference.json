@@ -1352,6 +1352,9 @@
      "tex": "\\num{6.022e23}"
     },
     {
+     "tex": "\\begin{array}{c} \\tablenum{1.2} \\\\ \\tablenum{-12.345} \\end{array}"
+    },
+    {
      "tex": "\\ang{12;30;15}"
     },
     {
