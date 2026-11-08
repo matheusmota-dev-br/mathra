@@ -679,3 +679,59 @@ fn stackbin_is_stackrel_with_the_spacing_of_a_binary_operator() {
     assert_eq!(width(r"\stackbin{*}{+} b"), width(r"\overset{*}{\mathord{+}} b"));
     assert_eq!(read(r"a \stackbin{*}{+} b").speech, read(r"a \overset{*}{+} b").speech);
 }
+
+// ---------- stmaryrd, marvosym, wasysym and \mathbold (#124) ----------
+
+#[test]
+fn stmaryrd_marvosym_wasysym_symbols_and_mathbold() {
+    let first = |tex: &str| {
+        let out = read(tex);
+        format!("{:?}", out.tree.children().first().unwrap_or(&out.tree))
+    };
+    // stmaryrd declares \lightning \mathord; marvosym's \Lightning is the same sign
+    for tex in [r"\lightning", r"\Lightning"] {
+        assert!(first(tex).contains("symbol: '↯', class: Ord"), "{tex}: {}", first(tex));
+    }
+    for (tex, symbol, class) in [
+        (r"\Mapsto", '⤇', "Rel"),
+        (r"\Mapsfrom", '⤆', "Rel"),
+        (r"\Longmapsto", '⟾', "Rel"),
+        (r"\Longmapsfrom", '⟽', "Rel"),
+        (r"\longmapsfrom", '⟻', "Rel"),
+        (r"\boxbox", '⧈', "Bin"),
+        (r"\boxslash", '⧄', "Bin"),
+        (r"\boxbslash", '⧅', "Bin"),
+        (r"\boxast", '⧆', "Bin"),
+        (r"\boxcircle", '⧇', "Bin"),
+        (r"\obar", '⦶', "Bin"),
+        (r"\obslash", '⦸', "Bin"),
+        (r"\olessthan", '⧀', "Bin"),
+        (r"\ogreaterthan", '⧁', "Bin"),
+        (r"\fatsemi", '⨟', "Bin"),
+        (r"\interleave", '⫴', "Bin"),
+        (r"\talloblong", '⫾', "Bin"),
+        (r"\sslash", '⫽', "Bin"),
+        (r"\Lbag", '⟅', "Open"),
+        (r"\Rbag", '⟆', "Close"),
+        (r"\llparenthesis", '⦇', "Open"),
+        (r"\rrparenthesis", '⦈', "Close"),
+        (r"\invneg", '⌐', "Rel"),
+        (r"\checked", '✓', "Ord"),
+        (r"\diameter", '⌀', "Ord"),
+    ] {
+        let tex = format!("a {tex} b");
+        let out = read(&tex);
+        let tree = format!("{:?}", out.tree);
+        assert!(tree.contains(&format!("symbol: '{symbol}', class: {class}")), "{tex}: {tree}");
+        // the font has it
+        assert!(font::font().glyph(symbol).is_some(), "{symbol}");
+    }
+    // the bags and the image brackets grow with \left and \right
+    read(r"\left\Lbag \frac{a}{b} \right\Rbag \left\llparenthesis \frac{a}{b} \right\rrparenthesis");
+    // \mathbold is \boldsymbol: bold italic, Latin and Greek
+    assert_eq!(read(r"\mathbold{x} + \mathbold{\alpha}").tree, read(r"\boldsymbol{x} + \boldsymbol{\alpha}").tree);
+    assert_eq!(read(r"\mathbold\alpha").tree, read(r"\boldsymbol\alpha").tree);
+    // in text, where tolerant mode reads it as math, as \boldsymbol
+    let tolerant = |tex: &str| convert(tex, &Options::default()).unwrap();
+    assert_eq!(tolerant(r"\text{a \mathbold{x}}").tree, tolerant(r"\text{a \boldsymbol{x}}").tree);
+}
