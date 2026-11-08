@@ -107,6 +107,16 @@ texToSvg(String.raw`e^{i\pi} + 1 = 0`, { font });
 
 A font without a MATH table is refused. The SVG carries the font's outlines, so check that its license allows that.
 
+The fonts of [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/), a catalog of math fonts checked with mathra, load by their name. Nothing is downloaded until you ask; each font is downloaded once and refused if it does not match the catalog's sha256 (in Node this needs Web Crypto, Node 19 or later):
+
+```js
+const fonts = await catalogFonts(); // [{ slug, name, style, license, url, size, sha256, coverage, … }]
+const font = await loadFontFromCatalog("euler-math");
+texToSvg(String.raw`e^{i\pi} + 1 = 0`, { font });
+```
+
+All the fonts of the catalog are under licenses that let the SVG carry their outlines (OFL, GUST, Apache-2.0, MIT).
+
 ## Also for Python, Rust and the terminal
 
 The same core is a Python module, a Rust crate and a command-line tool, and every one gives the same SVG, byte for byte. How to install each: [github.com/matheusmota-dev-br/mathra](https://github.com/matheusmota-dev-br/mathra#install-and-use). Rules, languages and the full list of supported commands are there too.
