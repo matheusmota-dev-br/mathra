@@ -1248,6 +1248,8 @@ impl Reader<'_> {
                     node
                 }
             }
+            // #173: unicode-math's alphabets and its \sym… commands, and bbm's
+            other if symbols::unicode_math_alphabet(other).is_some() => self.unicode_math_alphabet(other)?,
             "operatorname" => {
                 let raw = self.raw_text()?;
                 // in math mode TeX ignores spaces: \operatorname{ l i m } is "lim"
@@ -1872,6 +1874,15 @@ impl Reader<'_> {
         };
         items.push(node);
         Ok(None)
+    }
+
+    /// #173: `\mathbfcal{L}`, `\symup{d}`: the argument in the alphabet the command names. Out of line,
+    /// so that `text_command`'s frame, on the stack of every nested argument, does not grow.
+    #[inline(never)]
+    fn unicode_math_alphabet(&mut self, name: &str) -> R<Node> {
+        let variant = symbols::unicode_math_alphabet(name).unwrap_or(Variant::Upright);
+        let raw = self.raw_text()?;
+        self.sub_reader(&raw, variant)
     }
 
     /// The optional `[length]` of a graphicx box: `None` without brackets; `Some(None)` for a length it

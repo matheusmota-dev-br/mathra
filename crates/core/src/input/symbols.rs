@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::tree::Class;
+use crate::tree::{Class, Variant};
 
 /// The 118 element symbols, and D and T (hydrogen's isotopes, written as elements): what mhchem's
 /// formulas and chemfig's labels are made of.
@@ -707,6 +707,28 @@ pub fn greek(name: &str) -> Option<char> {
 /// Upright Greek (`\upmu`) takes no italic.
 pub fn greek_upright(name: &str) -> bool {
     name.starts_with("up") || name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+}
+
+/// #173: unicode-math's alphabet commands (its manual, "Maths style commands": `\mathbfcal`, `\mathsfit`,
+/// `\symcal`…) and bbm's sans-serif and typewriter blackboard bold, which Unicode has no letters for
+/// and are drawn as the double-struck ones. `\mathbfcal` and `\mathbfscr` are the one bold script.
+pub fn unicode_math_alphabet(name: &str) -> Option<Variant> {
+    Some(match name {
+        "mathbfup" => Variant::Bold,
+        "mathsfup" | "symsf" => Variant::SansSerif,
+        "mathbfsf" | "mathbfsfup" => Variant::BoldSansSerif,
+        "mathsfit" => Variant::SansSerifItalic,
+        "mathbfsfit" => Variant::SansSerifBoldItalic,
+        "mathbfcal" | "mathbfscr" => Variant::BoldScript,
+        "mathbffrak" => Variant::BoldFraktur,
+        "symup" => Variant::Upright,
+        "symnormal" => Variant::Italic,
+        "symcal" | "symscr" => Variant::Calligraphic,
+        "symfrak" => Variant::Fraktur,
+        "symtt" => Variant::Monospace,
+        "symbb" | "mathbbmss" | "mathbbmtt" => Variant::DoubleStruck,
+        _ => return None,
+    })
 }
 
 /// Named functions: (canonical name, limits below in display style). Accepts the Brazilian names.

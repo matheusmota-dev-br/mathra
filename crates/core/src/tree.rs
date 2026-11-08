@@ -384,6 +384,13 @@ pub enum Variant {
     Fraktur,
     SansSerif,
     Monospace,
+    // #173: the other alphabets of Unicode's Mathematical Alphanumeric Symbols, which unicode-math
+    // names (`\mathbfcal`, `\mathbffrak`, `\mathbfsf`, `\mathsfit`, `\mathbfsfit`)
+    BoldScript,
+    BoldFraktur,
+    BoldSansSerif,
+    SansSerifItalic,
+    SansSerifBoldItalic,
 }
 
 impl Variant {
