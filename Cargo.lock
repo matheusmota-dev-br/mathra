@@ -232,7 +232,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "mathra"
-version = "1.10.1"
+version = "1.11.0"
 dependencies = [
  "resvg",
  "roxmltree",
@@ -245,14 +245,14 @@ dependencies = [
 
 [[package]]
 name = "mathra-cli"
-version = "1.10.1"
+version = "1.11.0"
 dependencies = [
  "mathra",
 ]
 
 [[package]]
 name = "mathra-python"
-version = "1.10.1"
+version = "1.11.0"
 dependencies = [
  "mathra",
  "pyo3",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "mathra-wasm"
-version = "1.10.1"
+version = "1.11.0"
 dependencies = [
  "mathra",
  "serde_json",
