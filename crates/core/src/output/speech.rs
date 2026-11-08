@@ -482,6 +482,17 @@ fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
                 .iter()
                 .map(|c| match c {
                     Node::Row { children: inner } if inner.iter().any(is_unit) => Node::row(words(inner)),
+                    // siunitx's per-mode=fraction: the units over the others, read as with the slash
+                    Node::Row { children: inner } if matches!(inner.as_slice(), [Node::Fraction { den, .. }] if den.children().iter().any(is_unit)) => {
+                        let [Node::Fraction { num, den, .. }] = inner.as_slice() else { unreachable!("matched above") };
+                        let mut flat = match num.as_ref() {
+                            Node::Row { children } => children.clone(),
+                            other => vec![other.clone()],
+                        };
+                        flat.push(Node::Operator { symbol: '/', class: Class::Ord });
+                        flat.extend(den.children().iter().cloned());
+                        Node::row(words(&flat))
+                    }
                     other => other.clone(),
                 })
                 .collect(),
