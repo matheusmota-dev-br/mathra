@@ -1191,6 +1191,9 @@
      "tex": "\\le \\ge \\ne \\approx \\equiv \\sim \\cong \\propto"
     },
     {
+     "tex": "f\\colon \\R \\to \\R \\quad \\alef_0 < \\cnums \\quad A \\sube B \\Rarr x \\isin A \\quad \\hearts \\spades \\clubs \\diamonds"
+    },
+    {
      "tex": "\\Gamma \\vdash \\lightning \\quad a \\boxast b \\quad \\Lbag x \\Rbag \\quad \\mathbold{x} + \\mathbold{\\alpha}"
     },
     {
