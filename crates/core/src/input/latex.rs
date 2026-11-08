@@ -1232,7 +1232,8 @@ impl Reader<'_> {
                 let unit = self.raw_text()?;
                 self.quantity(None, &unit, col)?
             }
-            "num" => {
+            // \tablenum: the number as \num (the alignment on the decimal marker of an S column is not done)
+            "num" | "tablenum" => {
                 self.raw_optional();
                 let value = self.raw_text()?;
                 self.raw_optional();
@@ -3161,6 +3162,7 @@ fn siunitx_in_text(name: &str) -> Option<&'static str> {
         "SI" | "qty" | "SIlist" | "qtylist" | "SIproduct" | "qtyproduct" => "[{{",
         "si" | "unit" | "ang" | "numlist" | "anglist" | "numproduct" => "[{",
         "num" => "[{[",
+        "tablenum" => "[{",
         "SIrange" | "qtyrange" => "[{{{",
         "numrange" | "angrange" => "[{{",
         _ => return None,

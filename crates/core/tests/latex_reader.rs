@@ -478,6 +478,22 @@ fn siunitx_numbers() {
     has(&tree(r"\ang{30}"), &["'°'"]);
 }
 
+#[test]
+fn siunitx_tablenum_is_num() {
+    // the alignment of an S column on the decimal marker is not done: \tablenum reads as \num
+    for value in ["1.2", "-12.345", "100", "1e5", "2,5"] {
+        assert_eq!(tree(&format!(r"\tablenum{{{value}}}")), tree(&format!(r"\num{{{value}}}")), "{value}");
+    }
+    assert_eq!(tree(r"\tablenum[table-format=3.1]{1.2}"), tree(r"\num{1.2}"));
+    // with the language's decimal marker (L-NUM-1), in math and in text, in a table
+    let pt = Options { locale: Locale::PtBr, strict: true, ..Options::default() };
+    let text = |tex: &str| convert(tex, &pt).unwrap_or_else(|e| panic!("{tex}: {e}")).text;
+    assert_eq!(text(r"\tablenum{1.2}"), "1,2");
+    assert_eq!(text(r"\text{x = \tablenum{1.5}}"), "x = 1,5");
+    assert_eq!(text(r"\begin{array}{c} \tablenum{1.2} \\ \tablenum{-12.345} \\ \tablenum{100} \end{array}"), "1,2; −12,345; 100");
+    assert!(strict_error(r"\tablenum{1.2.3}").contains("is not a number"));
+}
+
 // ---------- arithmetic and other commands ----------
 
 #[test]
