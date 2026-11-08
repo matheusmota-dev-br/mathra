@@ -641,7 +641,7 @@ impl Writer {
     #[inline(never)]
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>) {
         // limits under and over: a large operator that takes them (∑ by default, ∫ with \limits), lim
-        let under = match base {
+        let under = match base.operator_core() {
             Node::LargeOperator { symbol, limits } => limits.unwrap_or_else(|| symbols::limits_by_default(*symbol)),
             Node::Function { limits, .. } => *limits,
             _ => false,
@@ -1206,14 +1206,14 @@ impl Writer {
 fn applies(n: &Node) -> bool {
     match n {
         Node::Function { .. } => true,
-        Node::Scripts { base, .. } => matches!(base.as_ref(), Node::Function { .. }),
+        Node::Scripts { base, .. } => matches!(base.operator_core(), Node::Function { .. }),
         _ => false,
     }
 }
 
 /// What follows a function is its argument, unless it is a relation, an operation or punctuation.
 fn takes_argument(n: &Node) -> bool {
-    !matches!(n, Node::Operator { class: Class::Rel | Class::Bin | Class::Punct | Class::Close, .. } | Node::Space { .. })
+    !matches!(n, Node::Operator { class: Class::Rel | Class::Bin | Class::Punct | Class::Close, .. } | Node::Space { .. } | Node::Phantom { .. })
 }
 
 /// A node that starts with an opening delimiter: `\sin(x)` takes no space before it.

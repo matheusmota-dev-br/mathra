@@ -654,6 +654,25 @@ impl Node {
         }
     }
 
+    /// The function or large operator a `\mathop{…}` holds, with phantoms beside it at most (as
+    /// mathtools' `\adjustlimits` writes it): what speech, text, braille and MathML take the limits
+    /// of. The node itself otherwise.
+    pub fn operator_core(&self) -> &Node {
+        let Node::ForcedClass { class: Class::Op, base } = self else { return self };
+        let mut kept = base.single();
+        if let Node::Row { children } = kept {
+            let mut operators = children.iter().filter(|c| !matches!(c, Node::Phantom { .. }));
+            match (operators.next(), operators.next()) {
+                (Some(only), None) => kept = only,
+                _ => return self,
+            }
+        }
+        match kept {
+            Node::Function { .. } | Node::LargeOperator { .. } => kept,
+            _ => self,
+        }
+    }
+
     /// A single node, without the surrounding Row when it has only one child.
     pub fn simplify(self) -> Node {
         match self {
