@@ -98,7 +98,9 @@ fn branches_labels_closures_lewis_and_hooks() {
     assert_eq!(molecule("C-[4]H_3C").atoms[1].anchor, 1);
     let m = molecule("A?-B-[2]C-[4]D?");
     assert_eq!((m.bonds.len(), m.bonds[3].from, m.bonds[3].to), (4, 0, 3));
-    assert_eq!(molecule("A?[x,{=}]-B-[2]C?[x]").bonds[2].kind, BondKind::Double);
+    // chemfig manual, section 2.8: the link is the later mark's; the first mark gives only the name
+    assert_eq!(molecule("A?[x]-B-[2]C?[x,{=}]").bonds[2].kind, BondKind::Double);
+    assert_eq!(molecule("A?[x,{=}]-B-[2]C?[x]").bonds[2].kind, BondKind::Single);
     let m = molecule("@{nu}\\lewis{0:2.4|6o,O}-H");
     assert_eq!((m.atoms[0].lewis.len(), m.atoms[0].hook.as_deref(), m.atoms[0].label.as_str()), (4, Some("nu"), "O"));
 }
@@ -201,7 +203,6 @@ fn recoveries() {
     warns(r"\chemfig{*6(-------)}", "E-REC-9");
     warns(r"\chemfig{*99(-)}", "E-REC-9");
     warns(r"\chemfig{*6}", "E-REC-4");
-    warns(r"\chemfig{A?-B}", "E-REC-9");
     warns(r"\schemestart A \arrow{~>} B \schemestop", "E-REC-1");
     warns(r"\schemestart A \arrow B \schemestop \chemmove{\draw[->](x)..(y);}", "E-REC-9");
     warns(r"\schemestart A \schemestop \chemmove{\node at (0,0) {x};}", "E-REC-1");

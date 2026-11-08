@@ -65,6 +65,38 @@ pub struct Atom {
     /// `@{name}`: the name a mechanism arrow uses to point at this atom.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hook: Option<String>,
+    /// `\charge{90=\|,45=$\oplus$}{X}`: marks and text placed around one piece of the label.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub charges: Vec<Charge>,
+    /// `\chemskipalign`: the label's baseline on the bonds' line instead of its letters' middle.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub skip_align: bool,
+}
+
+/// What chemfig's `\charge` puts around an atom (chemfig manual, section 5.8): at `angle` degrees on
+/// the border of the piece's box (grown by 1.5 pt), `offset` em further out, the center of `content`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Charge {
+    pub angle: f32,
+    #[serde(skip_serializing_if = "is_zero_f32")]
+    pub offset: f32,
+    /// The piece of the label the charge is around.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub piece: usize,
+    /// TikZ's `anchor=`: the point of the content's border at this angle goes on the position, in
+    /// place of its center (`anchor=180+\chargeangle` sets it just outside).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<f32>,
+    pub content: ChargeContent,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ChargeContent {
+    /// The Lewis shortcuts `\.`, `\:`, `\|` and `\"`.
+    Mark { mark: LewisMark },
+    /// Anything else: LaTeX text, `$…$` for math (`$\oplus$`, `$\delta^+$`).
+    Text { tex: String },
 }
 
 fn is_zero(v: &usize) -> bool {
@@ -170,6 +202,18 @@ pub struct Arrow {
     pub angle: f32,
     #[serde(skip_serializing_if = "is_one")]
     pub length: f32,
+    /// chemfig's `-U>` (manual, sections 6.2 and 6.9): a forward arrow with a circular arc tangent at
+    /// its middle, from the label above (a reagent coming in) to the label below (a product going out).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arc: Option<UArc>,
+}
+
+/// The arc of a `-U>` arrow: its radius as a multiple of the arrow's length (negative: below the
+/// arrow) and the angle each half of it turns, in degrees.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct UArc {
+    pub radius: f32,
+    pub half_angle: f32,
 }
 
 fn is_zero_f32(v: &f32) -> bool {

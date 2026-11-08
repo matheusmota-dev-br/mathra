@@ -139,7 +139,9 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
         let piece = l.pieces.get(k)?;
         let left = pos[atom].0 - l.center(m.atoms[atom].anchor) + piece.x;
         let y = pos[atom].1;
-        Some(Rect { x0: left - LABEL_MARGIN, y0: y - LETTER_HALF - LABEL_MARGIN, x1: left + piece.math_box.width + LABEL_MARGIN, y1: y + LETTER_HALF + LABEL_MARGIN })
+        // \chemskipalign: the baseline on the bond's line, the letters' own height above it
+        let (below, above) = if m.atoms[atom].skip_align { (piece.math_box.depth, piece.math_box.height) } else { (LETTER_HALF, LETTER_HALF) };
+        Some(Rect { x0: left - LABEL_MARGIN, y0: y - below - LABEL_MARGIN, x1: left + piece.math_box.width + LABEL_MARGIN, y1: y + above + LABEL_MARGIN })
     };
     let centers: Vec<P> = m
         .rings
@@ -180,8 +182,8 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
         let mut around = Rect::around(here, 0.12 * EM);
         if let Some(l) = &labels[id] {
             let left = here.0 - l.center(atom.anchor);
-            // C-LAY-4: the letters' middle on the atom's position
-            let baseline = here.1 - half_letter + 0.02 * EM;
+            // C-LAY-4: the letters' middle on the atom's position; C-LAY-8: with \chemskipalign, the baseline
+            let baseline = if atom.skip_align { here.1 } else { here.1 - half_letter + 0.02 * EM };
             for p in &l.pieces {
                 d.math(p.math_box.clone(), (left + p.x, baseline));
             }
@@ -190,6 +192,17 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
         }
         for mark in &atom.lewis {
             lewis(&mut d, around, *mark);
+        }
+        // C-LAY-9: \charge, around the box of its piece (an empty label: around the vertex)
+        for charge in &atom.charges {
+            let piece_box = labels[id].as_ref().and_then(|l| {
+                let p = l.pieces.get(charge.piece)?;
+                let x = here.0 - l.center(atom.anchor) + p.x;
+                let baseline = if atom.skip_align { here.1 } else { here.1 - half_letter + 0.02 * EM };
+                Some(Rect { x0: x, y0: baseline - p.math_box.depth, x1: x + p.math_box.width, y1: baseline + p.math_box.height })
+            });
+            let piece_box = piece_box.unwrap_or(Rect::around(here, 0.0));
+            charge_mark(&mut d, ctx, piece_box, charge)?;
         }
         if let Some(h) = &atom.hook {
             hooks.points.insert(h.clone(), (here, around));
@@ -249,11 +262,48 @@ fn bond(d: &mut Drawing, b: &Bond, a: P, z: P, ring_center: Option<P>) {
 /// C-LAY-7: a Lewis mark beside the atom, in its direction.
 fn lewis(d: &mut Drawing, around: Rect, mark: Lewis) {
     let dir = direction(mark.angle);
-    let n = left(dir);
     let c = around.center();
     let at = add(c, mul(dir, around.reach(dir) + 0.17 * EM + 0.08 * EM * dir.1.abs()));
+    lewis_mark(d, at, dir, mark.mark);
+}
+
+/// chemfig's `extra sep`: the border charges are placed on is 1.5 pt outside the atom's box.
+const CHARGE_SEP: f32 = 0.15 * EM;
+
+/// C-LAY-9: a `\charge` (chemfig manual, section 5.8). Its position is the point at its angle on the
+/// border of the piece's box grown by 1.5 pt, then its offset further out; the content's center goes
+/// there, or, with `anchor`, the point of the content's border at that angle.
+fn charge_mark(d: &mut Drawing, ctx: &mut Ctx, piece_box: Rect, charge: &Charge) -> R<()> {
+    let grown = Rect { x0: piece_box.x0 - CHARGE_SEP, y0: piece_box.y0 - CHARGE_SEP, x1: piece_box.x1 + CHARGE_SEP, y1: piece_box.y1 + CHARGE_SEP };
+    let dir = direction(charge.angle);
+    let at = add(grown.center(), mul(dir, grown.reach(dir) + charge.offset * EM));
+    match &charge.content {
+        ChargeContent::Mark { mark } => {
+            // a mark has no border to anchor: its center, as the shortcuts draw it
+            lewis_mark(d, at, dir, *mark);
+        }
+        ChargeContent::Text { tex } => {
+            let m = ctx.text(tex)?;
+            let r = Rect { x0: 0.0, y0: -m.depth, x1: m.width, y1: m.height };
+            let center = match charge.anchor {
+                Some(a) => {
+                    let ad = direction(a);
+                    sub(at, mul(ad, r.reach(ad)))
+                }
+                None => at,
+            };
+            let origin = sub(center, r.center());
+            d.math(m, origin);
+        }
+    }
+    Ok(())
+}
+
+/// A Lewis mark centered at `at`, turned to face the direction `dir` it lies in from its atom.
+fn lewis_mark(d: &mut Drawing, at: P, dir: P, mark: LewisMark) {
+    let n = left(dir);
     let dot = 0.05 * EM;
-    match mark.mark {
+    match mark {
         LewisMark::Pair => {
             d.circle(add(at, mul(n, 0.09 * EM)), dot, 0.0, true);
             d.circle(sub(at, mul(n, 0.09 * EM)), dot, 0.0, true);
@@ -337,6 +387,80 @@ fn reaction_arrow(d: &mut Drawing, kind: ArrowKind, a: P, b: P) {
     }
 }
 
+/// C-SCH-1: an arrow is 2.6 em, or longer for its labels: 1 em more than the wider one; for `-U>`,
+/// long enough that the ends of its arc are 0.3 em more apart than half the labels' widths.
+fn base_length(arrow: &Arrow, above: &Drawing, below: &Drawing) -> f32 {
+    let (wa, wb) = (above.bounds.map_or(0.0, |r| r.width()), below.bounds.map_or(0.0, |r| r.width()));
+    match arrow.arc {
+        Some(arc) => {
+            // the ends of the arc are 2·r·sin(half angle) apart, r a fraction of the length
+            let spread = 2.0 * arc.radius.abs() * arc.half_angle.min(90.0).to_radians().sin();
+            let needed = if spread > 1e-3 { ((wa + wb) / 2.0 + 0.3 * EM) / spread } else { 0.0 };
+            (2.6 * EM).max(needed)
+        }
+        None => (2.6 * EM).max(wa.max(wb) + EM),
+    }
+}
+
+/// A scheme's arrow from `a` to `b` with its labels: on each side (C-SCH-3), or, for `-U>`, at the ends
+/// of its arc (C-SCH-5).
+fn draw_arrow(out: &mut Drawing, arrow: &Arrow, a: P, b: P, above: &Drawing, below: &Drawing) {
+    reaction_arrow(out, arrow.kind, a, b);
+    match arrow.arc {
+        Some(arc) => u_arc(out, arc, a, b, above, below),
+        None => arrow_labels(out, a, b, above, below),
+    }
+}
+
+/// C-SCH-5: the arc of chemfig's `-U>` (manual, sections 6.2 and 6.9, and its `\definearrow` of `-U>`).
+/// A circle of radius `radius` × the arrow's length touches the arrow at its middle, on its left (on
+/// its right for a negative radius); from there one half turns back by `half_angle` toward the label
+/// above, drawn when that label is given, and the other forward to the label below, drawn when that
+/// label is given and ending in a head. Each label sits beyond its end of the arc, 3 pt away.
+fn u_arc(out: &mut Drawing, arc: UArc, a: P, b: P, above: &Drawing, below: &Drawing) {
+    let u = unit(sub(b, a));
+    let theta = u.1.atan2(u.0).to_degrees();
+    let radius = arc.radius * length(sub(b, a));
+    let middle = mul(add(a, b), 0.5);
+    let center = add(middle, mul(left(u), radius));
+    let at = |phi: f32| add(center, mul(direction(phi), radius));
+    let start = theta - 90.0;
+    let ends = [start - arc.half_angle, start + arc.half_angle];
+    let drawn = [above.bounds.is_some(), below.bounds.is_some()];
+    for (k, &end) in ends.iter().enumerate() {
+        if !drawn[k] {
+            continue;
+        }
+        // in pieces of at most 45°, each a cubic
+        let steps = ((end - start).abs() / 45.0).ceil().max(1.0) as usize;
+        let step = (end - start) / steps as f32;
+        for i in 0..steps {
+            let (p0, p1) = (start + step * i as f32, start + step * (i + 1) as f32);
+            let kappa = 4.0 / 3.0 * (step.to_radians() / 4.0).tan() * radius;
+            let t0 = direction(p0 + 90.0);
+            let t1 = direction(p1 + 90.0);
+            out.curve(at(p0), add(at(p0), mul(t0, kappa)), sub(at(p1), mul(t1, kappa)), at(p1), STROKE);
+        }
+        if k == 1 {
+            let tangent = mul(direction(end + 90.0), (step * radius).signum());
+            head(out, at(end), unit(tangent), None);
+        }
+    }
+    // the labels: above at the first end and below at the second (swapped below the arrow), on the
+    // arc's side of the arrow, 3 pt from the ends
+    let (first, second) = if radius > 0.0 { (above, below) } else { (below, above) };
+    let (p, q) = (at(ends[0]), at(ends[1]));
+    let n = mul(left(u), radius.signum());
+    for (label, point) in [(first, p), (second, q)] {
+        if label.bounds.is_none() {
+            continue;
+        }
+        let r = label.bounds();
+        let center = add(point, mul(n, 0.3 * EM + r.reach(n)));
+        out.place(label, sub(center, r.center()));
+    }
+}
+
 /// Where a compound sits in a scheme, and what it holds.
 struct Placed {
     drawing: Drawing,
@@ -360,12 +484,10 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                     (Some((arrow, above, below)), Some(prev), _) => {
                         // C-SCH-1: the arrow leaves the previous compound along its direction
                         let u = direction(arrow.angle);
-                        let base = (2.6 * EM).max(above.bounds().width().max(below.bounds().width()) + 1.0 * EM);
-                        let len = base * arrow.length;
+                        let len = base_length(arrow, above, below) * arrow.length;
                         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                         let end = add(start, mul(u, len));
-                        reaction_arrow(&mut out, arrow.kind, start, end);
-                        arrow_labels(&mut out, start, end, above, below);
+                        draw_arrow(&mut out, arrow, start, end, above, below);
                         let center = add(end, mul(u, gap + b.reach(u)));
                         sub(center, b.center())
                     }
@@ -414,8 +536,7 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                     let u = direction(arrow.angle);
                     let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                     let end = add(start, mul(u, 2.6 * EM * arrow.length));
-                    reaction_arrow(&mut out, arrow.kind, start, end);
-                    arrow_labels(&mut out, start, end, &ab, &be);
+                    draw_arrow(&mut out, arrow, start, end, &ab, &be);
                     last = Some(Rect::around(end, 0.0));
                 }
                 pending = Some((a, above, below));
@@ -425,9 +546,8 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
     if let (Some((arrow, above, below)), Some(prev)) = (pending, last) {
         let u = direction(arrow.angle);
         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
-        let end = add(start, mul(u, (2.6 * EM).max(above.bounds().width() + EM) * arrow.length));
-        reaction_arrow(&mut out, arrow.kind, start, end);
-        arrow_labels(&mut out, start, end, &above, &below);
+        let end = add(start, mul(u, base_length(arrow, &above, &below) * arrow.length));
+        draw_arrow(&mut out, arrow, start, end, &above, &below);
     }
     for m in &s.moves {
         electron_move(&mut out, m, &hooks)?;

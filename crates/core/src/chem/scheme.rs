@@ -1,6 +1,7 @@
 //! The reaction scheme reader (L-CHE-2): `\schemestart … \schemestop` with `\arrow`, `\+`,
 //! `\chemname`, `\subscheme` and `\chemmove`, and the compounds in it (`\chemfig{…}`, `\ce{…}`,
-//! `$…$`, loose formulas). The LaTeX reader hands it the whole construction as written.
+//! `$…$`, loose formulas, material between `\chemleft…\chemright` or `\chemup…\chemdown`). The
+//! LaTeX reader hands it the whole construction as written.
 
 use super::chemfig;
 use super::model::*;
@@ -288,6 +289,26 @@ impl SchemeReader<'_, '_> {
                     self.scheme.items.push(Item::Plus);
                 }
                 "arrow" => self.arrow()?,
+                // chemfig manual, section 6.11: arrows from compounds named by \arrow(name--name),
+                // which mathra does not name nor place in two dimensions
+                "merge" => {
+                    let end = merge_end(&self.c, self.pos);
+                    let written: String = self.c[start..end].iter().collect();
+                    self.pos = end;
+                    self.reader.tolerate(
+                        rules::E_REC_1,
+                        format!("unsupported command: {} (it joins compounds named by \\arrow(…--…), which mathra does not name)", written.trim()),
+                        "left out",
+                    )?;
+                }
+                // section 6.8: delimiters around material, as math the LaTeX reader draws
+                "chemleft" | "chemup" => {
+                    let closer = if name == "chemleft" { "chemright" } else { "chemdown" };
+                    let end = delimited_end(&self.c, self.pos, &name, closer);
+                    let tex: String = self.c[start..end].iter().collect();
+                    self.pos = end;
+                    self.compound(Body::Math { tex }, None);
+                }
                 "chemmove" => {
                     let _ = self.optional()?;
                     let body = self.braced()?;
@@ -338,7 +359,7 @@ impl SchemeReader<'_, '_> {
             return true;
         }
         let name: String = rest.iter().take_while(|c| c.is_ascii_alphabetic()).collect();
-        matches!(name.as_str(), "chemfig" | "schemestart" | "schemestop" | "ce" | "arrow" | "chemname" | "chemmove" | "subscheme")
+        matches!(name.as_str(), "chemfig" | "schemestart" | "schemestop" | "ce" | "arrow" | "chemname" | "chemmove" | "subscheme" | "merge" | "chemleft" | "chemup")
     }
 
     /// Loose text between commands is a formula for mhchem: `A`, `2 H2O`.
@@ -358,7 +379,9 @@ impl SchemeReader<'_, '_> {
         let spec = spec.trim();
         let type_end = spec.find('[').unwrap_or(spec.len());
         let (kind_text, rest) = spec.split_at(type_end);
+        let u_arrow = kind_text.trim() == "-U>";
         let kind = match kind_text.trim() {
+            "-U>" => ArrowKind::Forward,
             "" | "->" => ArrowKind::Forward,
             "<-" => ArrowKind::Backward,
             "<=>" => ArrowKind::Equilibrium,
@@ -390,6 +413,9 @@ impl SchemeReader<'_, '_> {
         };
         let above = label(labels.first())?;
         let below = label(labels.get(1))?;
+        // -U>[above][below][shift][radius][half angle]: the radius 0.333 of the length, the half angle 60°
+        let number = |i: usize| labels.get(i).and_then(|v| v.trim().parse::<f32>().ok());
+        let arc = u_arrow.then(|| UArc { radius: number(3).unwrap_or(0.333), half_angle: number(4).map_or(60.0, f32::abs) });
         let (mut angle, mut length) = (0.0, 1.0);
         if let Some(opts) = self.optional()? {
             let parts = split_top(&opts, ',');
@@ -400,7 +426,7 @@ impl SchemeReader<'_, '_> {
                 length = l;
             }
         }
-        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length }));
+        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc }));
         Ok(())
     }
 
@@ -458,6 +484,80 @@ impl SchemeReader<'_, '_> {
         }
         Ok(())
     }
+}
+
+/// Where chemfig's `\merge` ends, from right after its name: the direction (`>`, `<`, `^`, `v`, or
+/// braced), the labels in brackets, the names of the compounds it joins in parentheses, `--`, the name
+/// of the next one and its `[c1,c2,c,style]`.
+pub fn merge_end(c: &[char], mut i: usize) -> usize {
+    let skip = |i: &mut usize| {
+        while c.get(*i).is_some_and(|x| x.is_whitespace()) {
+            *i += 1;
+        }
+    };
+    let group = |i: &mut usize, open: char, close: char| {
+        let mut level = 0;
+        while let Some(&x) = c.get(*i) {
+            *i += 1;
+            if x == open {
+                level += 1;
+            } else if x == close {
+                level -= 1;
+                if level == 0 {
+                    break;
+                }
+            }
+        }
+    };
+    skip(&mut i);
+    match c.get(i) {
+        Some('>' | '<' | '^' | 'v') => i += 1,
+        Some('{') => group(&mut i, '{', '}'),
+        _ => {}
+    }
+    loop {
+        skip(&mut i);
+        match c.get(i) {
+            Some('[') => group(&mut i, '[', ']'),
+            Some('(') => group(&mut i, '(', ')'),
+            Some('-') if c.get(i + 1) == Some(&'-') => i += 2,
+            _ => return i,
+        }
+    }
+}
+
+/// Where `\chemleft<d>…\chemright<d>` (or `\chemup…\chemdown`) ends, from right after the opening
+/// name: after the closing name's delimiter, or at the end.
+pub fn delimited_end(c: &[char], mut i: usize, open: &str, close: &str) -> usize {
+    let word =
+        |i: usize, w: &str| c.get(i) == Some(&'\\') && c[i + 1..].iter().take(w.len()).copied().eq(w.chars()) && !c.get(i + 1 + w.len()).is_some_and(|x| x.is_ascii_alphabetic());
+    let mut level = 0;
+    while i < c.len() {
+        if word(i, open) {
+            level += 1;
+            i += 1 + open.len();
+        } else if word(i, close) {
+            i += 1 + close.len();
+            if level == 0 {
+                // the delimiter: a character, or a control sequence (\}, \rangle)
+                while c.get(i).is_some_and(|x| x.is_whitespace()) {
+                    i += 1;
+                }
+                if c.get(i) == Some(&'\\') {
+                    i += 1;
+                    let letters = c[i..].iter().take_while(|x| x.is_ascii_alphabetic()).count();
+                    i += letters.max(1);
+                } else {
+                    i += 1;
+                }
+                return i.min(c.len());
+            }
+            level -= 1;
+        } else {
+            i += 1;
+        }
+    }
+    c.len()
 }
 
 /// The contents of each `( … )` in a TikZ path.
