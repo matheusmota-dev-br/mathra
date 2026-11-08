@@ -53,6 +53,14 @@ test("braille", () => {
   assert.throws(() => render("x", { braille: "ueb" }), /unknown braille code/);
 });
 
+test("mathml", () => {
+  const r = render(String.raw`\frac{1}{2}`);
+  assert.equal(r.mathml, '<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>');
+  assert.match(render("x", { display: false }).mathml, /display="inline"/);
+  assert.match(render(String.raw`\sen x`, { locale: "pt-BR" }).mathml, /<mi intent="sine">sen<\/mi>/);
+  assert.deepEqual(render(r.mathml, { input: "mathml" }).tree, r.tree);
+});
+
 test("the writing animation and the steps", () => {
   assert.doesNotMatch(texToSvg("x+1"), /data-step/);
   assert.match(texToSvg("x+1", { animate: true }), /@keyframes mr-f/);

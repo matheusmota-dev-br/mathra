@@ -155,6 +155,7 @@ println!("{}", r.speech);</pre>
           <tr><td><code>speech</code></td><td>The phrase a screen reader says, in the language of the locale. The same phrase is in the SVG's <code>&lt;title&gt;</code>.</td></tr>
           <tr><td><code>text</code></td><td>Linear text close to UnicodeMath: <code>(n ¦ k)</code>, <code>x^2</code>. It is the SVG's selectable text layer.</td></tr>
           <tr><td><code>braille</code>, <code>braille_code</code></td><td>The equation in Unicode braille cells, and the code used: <code>"cmu"</code> or <code>"nemeth"</code>.</td></tr>
+          <tr><td><code>mathml</code></td><td>The equation as presentation MathML, in MathML Core's elements, with <code>display="block"</code> or <code>"inline"</code> and an <code>intent</code> where the tree knows what the drawing does not say. What MathML cannot draw is a <code>&lt;semantics&gt;</code> with the source (<a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/mathml.md">spec/mathml.md</a>).</td></tr>
           <tr><td><code>tree</code></td><td>The tree of meaning: what each piece is (<code>{"type": "number", "value": "3.14"}</code>). Also in the SVG's <code>&lt;metadata&gt;</code>.</td></tr>
           <tr><td><code>applied</code></td><td>The numbered rules that changed something in this equation, as <code>{rule, description}</code>, in the order they acted.</td></tr>
           <tr><td><code>warnings</code></td><td>What tolerant mode fixed (<code>E-REC-*</code>), as <code>{rule, description}</code>. Always empty in strict mode.</td></tr>
@@ -212,7 +213,7 @@ echo '&lt;equation&gt;' | mathra [options]</pre>
           <tr><td><code>--inline</code></td><td>Inline style, as in <code>$…$</code></td></tr>
           <tr><td><code>--strict</code></td><td>Refuse invalid LaTeX, like TeX</td></tr>
           <tr><td><code>--explain</code></td><td>Show the text, the speech, the braille, the tree and the rules applied</td></tr>
-          <tr><td><code>--tree</code>, <code>--speech</code>, <code>--text</code>, <code>--braille</code></td><td>Print only that output</td></tr>
+          <tr><td><code>--tree</code>, <code>--speech</code>, <code>--text</code>, <code>--braille</code>, <code>--mathml</code></td><td>Print only that output</td></tr>
           <tr><td><code>--braille-code &lt;c&gt;</code></td><td><code>cmu</code> or <code>nemeth</code></td></tr>
           <tr><td><code>--animate</code></td><td>The SVG writes itself in the browser, in the order the layout set it (CSS in the SVG)</td></tr>
           <tr><td><code>--steps</code></td><td>Each element numbered by that order (<code>data-step</code>), with no animation</td></tr>
@@ -247,7 +248,7 @@ $ mathra 'x^2 + 1' --braille                                     # ⠭⠘⠆⠐�
 
       <section id="more">
         <h2>Specs and source</h2>
-        <p>Every decision is a numbered rule with a test: <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/rules.md">rules</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/svg.md">the SVG</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/input.md">input notations</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/tolerance.md">tolerance</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/locales.md">languages</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md">braille</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/chemistry.md">chemistry</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/boundary.md">the boundary</a>. The ideas behind them are in the <a href="philosophy.html">philosophy</a>. The code is on <a href="https://github.com/matheusmota-dev-br/mathra">GitHub</a>, under MIT or Apache-2.0.</p>
+        <p>Every decision is a numbered rule with a test: <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/rules.md">rules</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/svg.md">the SVG</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/input.md">input notations</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/tolerance.md">tolerance</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/locales.md">languages</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md">braille</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/mathml.md">MathML output</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/chemistry.md">chemistry</a>, <a href="https://github.com/matheusmota-dev-br/mathra/blob/main/spec/boundary.md">the boundary</a>. The ideas behind them are in the <a href="philosophy.html">philosophy</a>. The code is on <a href="https://github.com/matheusmota-dev-br/mathra">GitHub</a>, under MIT or Apache-2.0.</p>
       </section>
     </main>
   </div>

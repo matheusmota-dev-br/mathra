@@ -219,6 +219,26 @@ fn braille_output() {
 }
 
 #[test]
+fn mathml_output() {
+    let o = mathra(&[r"\frac{-b \pm \sqrt{b^2-4ac}}{2a}", "--mathml"], None);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).starts_with(r#"<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mfrac>"#), "{}", stdout(&o));
+    let o = mathra(&["x", "--mathml", "--inline"], None);
+    assert!(stdout(&o).contains(r#"display="inline""#), "{}", stdout(&o));
+    let o = mathra(&[r"\sen x", "--mathml", "--locale", "pt-BR"], None);
+    assert!(stdout(&o).contains(r#"<mi intent="sine">sen</mi>"#), "{}", stdout(&o));
+    // what MathML cannot draw: a <semantics> with the source, and the note on stderr
+    let o = mathra(&[r"\divchave{125}{5}", "--mathml"], None);
+    assert!(o.status.success());
+    assert!(stdout(&o).contains(r#"<annotation encoding="application/x-tex">\divchave{125}{5}</annotation>"#), "{}", stdout(&o));
+    assert!(stderr(&o).contains("note S-MML-1"), "{}", stderr(&o));
+    // and the output reads back
+    let mml = stdout(&mathra(&[r"\sqrt{x^2}", "--mathml"], None));
+    let back = mathra(&["--from", "mathml", "--text"], Some(mml.trim().as_bytes()));
+    assert_eq!(stdout(&back).trim(), stdout(&mathra(&[r"\sqrt{x^2}", "--text"], None)).trim());
+}
+
+#[test]
 fn animate_and_steps() {
     let plain = stdout(&mathra(&[r"\frac{a}{b}"], None));
     let steps = stdout(&mathra(&[r"\frac{a}{b}", "--steps"], None));

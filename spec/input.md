@@ -21,6 +21,8 @@ Presentation MathML, as Word, Google Docs, LibreOffice, MathType and MathJax exp
 | `menclose` | `box`/`roundedbox`, `circle`, the strikes, `top`, `bottom`, `radical` |
 | `semantics`, `maction`, `merror`, `mphantom` | the presentation child (annotations are ignored); the selected child; content in red; space without drawing |
 
+What MathML Core writes, and mathra's own MathML output, read back to the tree they came from: Unicode's mathematical letters, `stretchy`, `minsize`/`maxsize`, `lspace`/`rspace`, `movablelimits`, `mpadded`, `columnspan` and the rest are listed in [`mathml.md`](mathml.md#reading-it-back).
+
 ### L-ENT-4 · MathML pasted as LaTeX
 
 In LaTeX mode, an input that starts with a `<math>` element (after an optional prolog or comments) is read as MathML. LaTeX never starts that way, and editors put MathML on the clipboard.

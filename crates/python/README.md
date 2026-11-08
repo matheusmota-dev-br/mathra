@@ -31,7 +31,7 @@ mathra.render(r"\chemfig{H_3C-*6(=-=-=-)}")["speech"]                     # 'str
 | | |
 |---|---|
 | `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The SVG as a string. |
-| `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
+| `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `mathml`, `tree`, `applied`, `warnings`. `mathml` is the equation as MathML Core (`display` decides `display="block"` or `"inline"`), with `intent` where it adds meaning, and a `<semantics>` with the source for what MathML cannot draw ([spec/mathml.md](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/mathml.md)). |
 | `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False)` | The tree of meaning as JSON. |
 | `locales()` | `[{"code": "en", "name": "English"}, …]`: en, pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar, id, tr, nl, pl. |
 

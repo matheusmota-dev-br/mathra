@@ -70,7 +70,7 @@ Without a bundler, from a CDN:
 |---|---|
 | `init(input?)` | Loads the wasm. Needed once in browsers and bundlers; does nothing in Node. `input` overrides where the wasm comes from (a URL, a `Response`, bytes or a `WebAssembly.Module`). |
 | `texToSvg(tex, options?)` | The SVG as a string. |
-| `render(tex, options?)` | `{ svg, speech, text, braille, braille_code, tree, applied, warnings }`. |
+| `render(tex, options?)` | `{ svg, speech, text, braille, braille_code, mathml, tree, applied, warnings }`. `mathml` is the equation as MathML Core (`display` decides `display="block"` or `"inline"`), with `intent` where it adds meaning, and a `<semantics>` with the source for what MathML cannot draw ([spec/mathml.md](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/mathml.md)). |
 | `locales()` | `[{ code: "en", name: "English" }, …]`. |
 | `version` | The version of mathra's core inside the package (the npm package has its own version). |
 

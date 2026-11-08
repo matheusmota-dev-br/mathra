@@ -64,7 +64,7 @@ pub fn load_font(bytes: Vec<u8>) -> Result<String, JsError> {
     load_font_bytes(bytes).map(|(id, name)| serde_json::json!({ "id": id, "name": name }).to_string()).map_err(|e| JsError::new(&e))
 }
 
-/// Everything at once, as JSON: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied` and `warnings`.
+/// Everything at once, as JSON: `svg`, `speech`, `text`, `braille`, `braille_code`, `mathml`, `tree`, `applied` and `warnings`.
 #[allow(clippy::too_many_arguments)]
 pub fn render_json(tex: &str, locale: Option<&str>, display: bool, strict: bool, input: Option<&str>, braille: Option<&str>, animate: bool, steps: bool) -> Result<String, String> {
     convert_with(tex, locale, display, strict, input, braille, animate, steps).map(|r| r.to_json())

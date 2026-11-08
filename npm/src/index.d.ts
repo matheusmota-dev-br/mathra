@@ -45,6 +45,8 @@ export interface Result {
   braille: string;
   /** The braille code used: "cmu" or "nemeth". */
   braille_code: "cmu" | "nemeth";
+  /** The equation as presentation MathML: a `<math>` element with MathML Core's elements, `display="block"` or `"inline"` as `options.display`, and `intent` where the tree knows what the drawing does not say. What MathML cannot draw (chemfig, diagrams, `\cancel`) is a `<semantics>` with the source as an annotation. */
+  mathml: string;
   /** The tree of meaning. */
   tree: unknown;
   /** Rules that changed something in this equation, in the order they acted. */
