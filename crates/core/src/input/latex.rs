@@ -11,6 +11,7 @@ use super::symbols::{self, Symbol};
 
 #[cfg(feature = "chem")]
 mod chemistry;
+mod color;
 mod diagram;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
@@ -38,6 +39,8 @@ pub fn read_in_font(tex: &str, locale: Locale, registry: &mut Registry, strict: 
 struct Macros {
     commands: std::collections::HashMap<String, Macro>,
     environments: std::collections::HashMap<String, (String, String)>,
+    /// Colors defined by `\definecolor` and `\colorlet`, for the rest of the input.
+    colors: color::Colors,
     expansions: usize,
     /// How much the text may grow through expansions, counting the original size.
     max_size: usize,
@@ -1713,10 +1716,13 @@ impl Reader<'_> {
         let col = self.column();
         let model = self.raw_optional();
         let raw = self.raw_text()?.trim().to_string();
-        let color = match model.as_deref() {
+        let color = match model.as_deref().map(str::trim) {
+            // the digits as written
             Some("HTML") => format!("#{raw}"),
-            Some("rgb") => format!("rgb({raw})"),
-            _ => raw,
+            // a name the equation defined, or an xcolor mix (red!40!blue); any other name as written
+            None | Some("named") => color::expression(&raw, &self.macros.colors).map_or(raw, |d| d.css),
+            // a model's value as #rrggbb; a value that does not fit stays invalid, with its model
+            Some(m) => color::model(m, &raw).map_or_else(|| format!("[{m}]{{{raw}}}"), color::hex),
         };
         let valid = color.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c)) && !color.is_empty() && color.len() < 40;
         if valid {
@@ -3602,6 +3608,34 @@ impl Reader<'_> {
                 let open = self.raw_text()?;
                 let close = self.raw_text()?;
                 self.macros.environments.insert(target, (open, close));
+                Ok(true)
+            }
+            // xcolor: a color for the rest of the input, as \newcommand defines a macro
+            "definecolor" | "providecolor" => {
+                self.raw_optional();
+                let target = self.raw_text()?.trim().to_string();
+                let model = self.raw_text()?;
+                let value = self.raw_text()?;
+                match color::model(&model, &value) {
+                    Some(rgb) if name == "definecolor" || !self.macros.colors.contains_key(&target) => {
+                        self.macros.colors.insert(target, color::Defined { css: color::hex(rgb), rgb: Some(rgb) });
+                    }
+                    Some(_) => {}
+                    None => self.tolerate(rules::E_REC_9, col, format!("invalid color: {{{}}}{{{}}}", model.trim(), value.trim()), "not defined")?,
+                }
+                Ok(true)
+            }
+            "colorlet" => {
+                self.raw_optional();
+                let target = self.raw_text()?.trim().to_string();
+                self.raw_optional();
+                let expression = self.raw_text()?.trim().to_string();
+                match color::expression(&expression, &self.macros.colors).or_else(|| color::name(&expression)) {
+                    Some(defined) => {
+                        self.macros.colors.insert(target, defined);
+                    }
+                    None => self.tolerate(rules::E_REC_9, col, format!("invalid color: {expression}"), "not defined")?,
+                }
                 Ok(true)
             }
             "usepackage" | "RequirePackage" | "require" => {

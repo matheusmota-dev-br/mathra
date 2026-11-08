@@ -147,6 +147,20 @@ fn batch_flags_non_utf8_line_and_continues() {
     assert_eq!(stdout(&o), "ok\nerror\tthe line is not UTF-8\nok\n");
 }
 
+#[test]
+fn batch_colors_are_defined_per_line_like_macros() {
+    let p = folder("batch-colors");
+    let input = b"\\definecolor{brand}{HTML}{1F6FEB}\\newcommand{\\b}{b}\\textcolor{brand}{x}\\b\n\\textcolor{brand}{x}\\b\n";
+    let o = mathra(&["--batch", "-o", p.to_str().unwrap()], Some(input));
+    let lines: Vec<String> = stdout(&o).lines().map(str::to_string).collect();
+    assert_eq!(lines[0], "ok");
+    // the second line knows neither the macro nor the color of the first
+    assert!(lines[1].contains(r"\b"), "{lines:?}");
+    assert!(std::fs::read_to_string(p.join("1.svg")).unwrap().contains(r##"fill="#1f6feb""##));
+    let second = std::fs::read_to_string(p.join("2.svg")).unwrap();
+    assert!(!second.contains("#1f6feb") && second.contains(r#"fill="brand""#), "{second}");
+}
+
 // --- problem cases ---
 
 #[test]
