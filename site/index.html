@@ -87,6 +87,14 @@
           </select>
         </label>
         <input type="file" id="font-file" accept=".otf,.ttf,font/otf,font/ttf" hidden>
+        <label class="lang">Max width
+          <select id="max-width" title="Break lines wider than this, after a relation or an operator (L-BRK-1)">
+            <option value="">off</option>
+            <option value="20">20em</option>
+            <option value="30">30em</option>
+            <option value="40">40em</option>
+          </select>
+        </label>
         <label><input type="checkbox" id="inline"> Inline</label>
         <label><input type="checkbox" id="strict"> Strict</label>
       </div>
@@ -343,14 +351,16 @@ println!("{}", r.speech);</pre>
 
   const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  function convert(src, loc, display, strictMode, inp = "latex", braille = null, animate = false, steps = false, font = null) {
-    return JSON.parse(render(src, loc, display, strictMode, inp, braille, animate, steps, font));
+  function convert(src, loc, display, strictMode, inp = "latex", braille = null, animate = false, steps = false, font = null, width = null) {
+    return JSON.parse(render(src, loc, display, strictMode, inp, braille, animate, steps, font, width));
   }
   // the equation as now on screen, again with its steps numbered or animated
-  const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps, fontId()).svg;
+  const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps, fontId(), maxWidth()).svg;
   const brailleCode = () => $("braille").value || null;
   // the font of the playground: STIX Two Math, or the id of one the visitor loaded
   const fontId = () => { const v = $("font").value; return v === "" || v === "load" ? null : Number(v); };
+  // lines wider than this many em are broken (L-BRK-1); none, one line
+  const maxWidth = () => Number($("max-width").value) || null;
 
   // the wordmark, drawn by mathra
   function drawLogo() {
@@ -381,6 +391,8 @@ println!("{}", r.speech);</pre>
     setLocale(p.get("locale") || "en");
     setInput(p.get("input") || "latex");
     $("braille").value = p.get("braille") || "";
+    $("max-width").value = p.get("width") || "";
+    if ($("max-width").selectedIndex < 0) $("max-width").value = "";
     inline.checked = p.get("inline") === "1";
     strict.checked = p.get("strict") === "1";
   }
@@ -390,6 +402,7 @@ println!("{}", r.speech);</pre>
     if (locale !== "en") p.set("locale", locale);
     if (input !== "latex") p.set("input", input);
     if (brailleCode()) p.set("braille", brailleCode());
+    if (maxWidth()) p.set("width", String(maxWidth()));
     if (inline.checked) p.set("inline", "1");
     if (strict.checked) p.set("strict", "1");
     return `${location.href.split("#")[0]}#${p}`;
@@ -511,7 +524,7 @@ println!("{}", r.speech);</pre>
   }
   async function measure() {
     if (!last) return;
-    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId()];
+    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId(), maxWidth()];
     let runs = 0;
     const start = performance.now();
     while (runs < 400 && performance.now() - start < 30) { render(...args); runs++; }
@@ -533,7 +546,7 @@ println!("{}", r.speech);</pre>
     messages.replaceChildren();
     stopAnimation();
     try {
-      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId());
+      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId(), maxWidth());
       preview.innerHTML = tex.value.trim() ? last.svg : `<span class="status">Type some ${INPUT_NAMES[input]} on the left.</span>`;
       fit();
       scheduleStats();
@@ -591,6 +604,14 @@ println!("{}", r.speech);</pre>
     setLocale(loc);
     setInput(inp);
     update();
+  }
+
+  // a line under the preview that is neither a warning nor an error
+  function note(text, cls = "") {
+    const el = document.createElement("div");
+    el.className = `msg note ${cls}`.trim();
+    el.textContent = text;
+    messages.append(el);
   }
 
   function flash(button, label) {
@@ -744,6 +765,7 @@ println!("{}", r.speech);</pre>
   }
   $("locale").addEventListener("change", (e) => { setLocale(e.target.value); update(); });
   $("braille").addEventListener("change", update);
+  $("max-width").addEventListener("change", update);
   // a font of the visitor's own: read in the browser, nothing is sent anywhere
   let fontChoice = "";
   $("font").addEventListener("change", () => {
@@ -839,7 +861,12 @@ println!("{}", r.speech);</pre>
   };
   // the equation written by a pen: mathra's SMIL plays by itself, in a loop
   let penOn = false;
-  const penSvg = () => pen(tex.value, locale, !inline.checked, input, null, fontId());
+  const penSvg = () => { notePenLines(); return pen(tex.value, locale, !inline.checked, input, null, fontId()); };
+  // mathra's pen does not break lines yet: say so, once, when the drawing is broken and the pen is not
+  function notePenLines() {
+    if (!last?.applied.some((r) => r.rule === "L-BRK-1") || messages.querySelector(".pen-lines")) return;
+    note("The pen writes the equation on one line: max width does not reach it yet.", "pen-lines");
+  }
   function stopPen() {
     if (!penOn) return;
     penOn = false;
