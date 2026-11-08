@@ -486,6 +486,18 @@ pub struct DiagramArrow {
     /// Parallel offset in em, positive to the left of its direction (two arrows between the same cells).
     #[serde(skip_serializing_if = "is_zero_f32")]
     pub shift: f32,
+    /// xy-pic's 2-cell curves: a quadratic curve whose control point is the middle of the straight
+    /// path moved this many em to its left (negative: to its right). For an `across` arrow, how many em
+    /// it is moved along itself.
+    #[serde(skip_serializing_if = "is_zero_f32")]
+    pub sag: f32,
+    /// xy-pic's 2-cell Arrow (`\rtwocell`): not an arrow between the cells but a short one across the
+    /// middle of `from`–`to`, from its left side to its right (clockwise, looking from `from`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub across: bool,
+    /// Cells the path goes through on its way, in straight segments (xymatrix's `\ar'[d][dd]`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub via: Vec<(usize, usize)>,
 }
 
 impl DiagramArrow {
@@ -507,7 +519,13 @@ impl DiagramArrow {
             _ if self.head == ArrowHead::None => '—',
             _ => '→',
         };
-        let above = self.labels.first().map(|l| Box::new(l.node.clone()));
+        // a label that draws nothing (xymatrix's \hole) is not written
+        let invisible = |n: &Node| match n {
+            Node::Phantom { .. } => true,
+            Node::Row { children } => children.iter().all(|c| matches!(c, Node::Phantom { .. })),
+            _ => false,
+        };
+        let above = self.labels.iter().find(|l| !invisible(&l.node)).map(|l| Box::new(l.node.clone()));
         Node::row(vec![cell(self.from), Node::Arrow { symbol, above, below: None }, cell(self.to)])
     }
 }
@@ -528,6 +546,13 @@ pub struct ArrowLabel {
     /// Where along the arrow, from 0 (start) to 1 (end): tikz-cd's `near start`, xymatrix's `^<`.
     #[serde(skip_serializing_if = "is_middle")]
     pub position: f32,
+    /// On an arrow with waypoints (`via`), the straight segment it is on, from 0; `position` is along it.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub segment: usize,
+}
+
+fn is_zero_usize(v: &usize) -> bool {
+    *v == 0
 }
 
 fn is_middle(v: &f32) -> bool {

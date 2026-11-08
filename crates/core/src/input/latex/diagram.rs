@@ -261,7 +261,7 @@ impl Reader<'_> {
                 let Some(end) = quote_end(rest) else {
                     self.tolerate(rules::E_REC_4, col, format!("label without its closing quote: {item}"), "read up to the end")?;
                     let node = self.sub_reader(rest, Variant::Italic)?;
-                    a.labels.push(ArrowLabel { node, side: LabelSide::Left, position: f32::NAN });
+                    a.labels.push(ArrowLabel { node, side: LabelSide::Left, position: f32::NAN, segment: 0 });
                     continue;
                 };
                 let (text, keys) = (&rest[..end], rest[end + 1..].trim());
@@ -285,7 +285,7 @@ impl Reader<'_> {
                     side = LabelSide::Right;
                 }
                 let node = self.sub_reader(text, Variant::Italic)?;
-                a.labels.push(ArrowLabel { node, side, position: at.unwrap_or(f32::NAN) });
+                a.labels.push(ArrowLabel { node, side, position: at.unwrap_or(f32::NAN), segment: 0 });
                 continue;
             }
             let (key, value) = match item.split_once('=') {
@@ -433,6 +433,14 @@ impl Reader<'_> {
                 name.push(c[i]);
                 i += 1;
             }
+            // xy-pic's \hole (reference manual, note 24j) is an empty object: as an entry, an empty cell
+            if name == "hole" {
+                continue;
+            }
+            if two_cell_name(&name).is_some() {
+                arrows.extend(self.xy_two_cell(&c, &mut i, &name, from, col)?);
+                continue;
+            }
             if name != "ar" {
                 text.extend(&c[start..i]);
                 if name.is_empty() && i < c.len() {
@@ -443,6 +451,9 @@ impl Reader<'_> {
             }
             let mut a = blank_arrow(from);
             let mut target = None;
+            // waypoints (`'[d]`), and for each label the segment it follows (usize::MAX: the last)
+            let mut via: Vec<(isize, isize)> = Vec::new();
+            let mut segments: Vec<usize> = Vec::new();
             loop {
                 while i < c.len() && c[i].is_whitespace() {
                     i += 1;
@@ -490,6 +501,19 @@ impl Reader<'_> {
                         match step(word.trim()) {
                             Some(s) => target = Some(s),
                             None => self.tolerate(rules::E_REC_1, col, format!("unsupported xymatrix direction: [{word}]"), "arrow left out")?,
+                        }
+                    }
+                    // xy-pic's straight segment (reference manual, note 24d): the path goes through
+                    // that entry, given like the target, relative to the arrow's own entry
+                    Some('\'') if target.is_none() => {
+                        i += 1;
+                        while i < c.len() && c[i].is_whitespace() {
+                            i += 1;
+                        }
+                        let word = if c.get(i) == Some(&'[') { group(&c, &mut i, '[', ']') } else { String::new() };
+                        match step(word.trim()) {
+                            Some(s) => via.push(s),
+                            None => self.tolerate(rules::E_REC_1, col, format!("unsupported xymatrix waypoint: '[{word}]"), "the path goes straight")?,
                         }
                     }
                     Some('"') => {
@@ -544,8 +568,11 @@ impl Reader<'_> {
                             }
                             None => String::new(),
                         };
+                        // \hole: an empty break (note 24j), as wide as an empty object with its 3 pt margins
+                        let label = if label.trim() == "\\hole" { "\\phantom{\\rule[-0.18em]{0.36em}{0.36em}}".to_string() } else { label };
                         let node = self.sub_reader(&label, Variant::Italic)?;
-                        a.labels.push(ArrowLabel { node, side, position: at });
+                        segments.push(if target.is_none() && !via.is_empty() { via.len() - 1 } else { usize::MAX });
+                        a.labels.push(ArrowLabel { node, side, position: at, segment: 0 });
                     }
                     _ => break,
                 }
@@ -555,6 +582,21 @@ impl Reader<'_> {
                     l.side = LabelSide::On;
                 }
             }
+            for (l, k) in a.labels.iter_mut().zip(segments) {
+                l.segment = k.min(via.len());
+            }
+            let mut through = Vec::new();
+            for (di, dj) in via {
+                match destination(from, di, dj) {
+                    Some(cell) => through.push(cell),
+                    None => self.tolerate(rules::E_REC_7, col, "\\ar going through a cell outside the diagram", "the path goes straight")?,
+                }
+            }
+            if through.len() < a.labels.iter().map(|l| l.segment).max().unwrap_or(0) {
+                a.labels.iter_mut().for_each(|l| l.segment = 0);
+                through.clear();
+            }
+            a.via = through;
             match target.and_then(|(di, dj)| destination(from, di, dj)) {
                 Some(to) => arrows.push(DiagramArrow { to, ..a }),
                 None if target.is_none() => self.tolerate(rules::E_REC_7, col, "\\ar without a direction", "left out")?,
@@ -573,7 +615,7 @@ impl Reader<'_> {
         let mut kept = Vec::new();
         for a in arrows {
             let inside = |(r, c): (usize, usize)| r < cells.len() && c < ncol;
-            if !inside(a.from) || !inside(a.to) {
+            if !inside(a.from) || !inside(a.to) || !a.via.iter().all(|v| inside(*v)) {
                 self.tolerate(rules::E_REC_7, col, format!("arrow to a cell outside the diagram: row {}, column {}", a.to.0 + 1, a.to.1 + 1), "left out")?;
             } else if a.from == a.to {
                 self.tolerate(rules::E_REC_7, col, "arrow from a cell to itself", "left out")?;
@@ -585,8 +627,220 @@ impl Reader<'_> {
     }
 }
 
+impl Reader<'_> {
+    /// xy-pic's 2-cells in a matrix (reference manual, section 25, figure 17): `\rtwocell`,
+    /// `\rruppertwocell`, `\dlowertwocell`… with their switches (`<nudge>`, `^label`, `_label`,
+    /// `\omit`) and the central Arrow's `{token label}`. Two arrows curved as quadratics through the
+    /// middle moved 3.5 dashes (17.5 pt, or the nudge × 5 pt) to each side, the upper one (anticlockwise)
+    /// labelled by `^`, the lower one by `_`, and the Arrow across the middle, clockwise by default.
+    /// What xy-pic draws otherwise (`!` module maps, `~` objects, label nudges) is left out with a
+    /// warning. `i` is right after the name.
+    fn xy_two_cell(&mut self, c: &[char], i: &mut usize, name: &str, from: (usize, usize), col: usize) -> R<Vec<DiagramArrow>> {
+        let Some((word, part)) = two_cell_name(name) else { return Ok(vec![]) };
+        let skip = |i: &mut usize| {
+            while *i < c.len() && c[*i].is_whitespace() {
+                *i += 1;
+            }
+        };
+        let mut nudge = 3.5f32;
+        let mut curves = true;
+        let (mut upper, mut lower): (Option<String>, Option<String>) = (None, None);
+        loop {
+            skip(i);
+            match c.get(*i) {
+                Some('<') => {
+                    let n = group(c, i, '<', '>');
+                    match n.trim().parse::<f32>() {
+                        Ok(v) => nudge = v,
+                        Err(_) if n.trim() == "\\omit" => curves = false,
+                        Err(_) => self.tolerate(rules::E_REC_9, col, format!("2-cell nudge <{n}>"), "ignored")?,
+                    }
+                }
+                Some(m @ ('^' | '_')) => {
+                    let upper_side = *m == '^';
+                    *i += 1;
+                    skip(i);
+                    if c.get(*i) == Some(&'<') {
+                        let n = group(c, i, '<', '>');
+                        self.tolerate(rules::E_REC_9, col, format!("2-cell label nudge <{n}>"), "the label at its default place")?;
+                        skip(i);
+                    }
+                    let label = label_token(c, i);
+                    if upper_side {
+                        upper = Some(label);
+                    } else {
+                        lower = Some(label);
+                    }
+                }
+                Some('\\') if c[*i + 1..].starts_with(&['o', 'm', 'i', 't']) => {
+                    *i += 5;
+                    curves = false;
+                }
+                Some(x @ ('!' | '~')) => {
+                    let x = *x;
+                    *i += 1;
+                    if x == '~' {
+                        while *i < c.len() && c[*i] != '{' {
+                            *i += 1;
+                        }
+                        group(c, i, '{', '}');
+                    }
+                    self.tolerate(rules::E_REC_9, col, format!("2-cell switch {x}"), "left out")?;
+                }
+                _ => break,
+            }
+        }
+        // the central Arrow: {token nudge label}; without the group, the default one, unlabelled
+        let central = if c.get(*i) == Some(&'{') { Some(group(c, i, '{', '}')) } else { None };
+        let (di, dj) = step(word).unwrap_or((0, 0));
+        let Some(to) = destination(from, di, dj).filter(|_| (di, dj) != (0, 0)) else {
+            self.tolerate(rules::E_REC_7, col, format!("\\{name} pointing outside the diagram"), "left out")?;
+            return Ok(vec![]);
+        };
+        let mut central = central.unwrap_or_default();
+        let mut token = '_';
+        let mut tips = None;
+        let trimmed = central.trim_start().to_string();
+        if let Some(rest) = trimmed.strip_prefix("\\omit") {
+            token = 'o';
+            central = rest.to_string();
+        } else if let Some(t) = trimmed.chars().next().filter(|t| matches!(t, '_' | '^' | '=' | '\'' | '`' | '"' | '!')) {
+            if matches!(t, '\'' | '`' | '"' | '!') {
+                tips = Some(t);
+                token = 'o';
+            } else {
+                token = t;
+            }
+            central = trimmed[t.len_utf8()..].to_string();
+        }
+        let mut arrow_nudge = 0.0;
+        let rest = central.trim_start().to_string();
+        if rest.starts_with('<') {
+            let rc: Vec<char> = rest.chars().collect();
+            let mut k = 0;
+            let n = group(&rc, &mut k, '<', '>');
+            arrow_nudge = n.trim().parse::<f32>().unwrap_or(0.0);
+            central = rc[k..].iter().collect();
+        }
+        // a dash is 5 pt, half an em
+        let sag = nudge * 0.5;
+        let mut out = Vec::new();
+        let curve = |this: &mut Self, sag: f32, label: &Option<String>, side: LabelSide, reversed: bool, head: ArrowHead, tail: ArrowTail| -> R<DiagramArrow> {
+            let mut a = blank_arrow(from);
+            a.to = to;
+            a.sag = sag;
+            a.head = head;
+            a.tail = tail;
+            if let Some(l) = label {
+                let node = this.sub_reader(l, Variant::Italic)?;
+                a.labels.push(ArrowLabel { node, side, position: 0.5, segment: 0 });
+            }
+            if reversed {
+                std::mem::swap(&mut a.from, &mut a.to);
+                a.sag = -a.sag;
+                for l in &mut a.labels {
+                    l.side = if l.side == LabelSide::Left { LabelSide::Right } else { LabelSide::Left };
+                }
+            }
+            Ok(a)
+        };
+        // the tips: '\'' clockwise, '`' anticlockwise, '"' both ends, '!' none; by default heads at the target
+        let ends = |upper_curve: bool| -> (bool, ArrowHead, ArrowTail) {
+            match tips {
+                Some('\'') => (!upper_curve, ArrowHead::Normal, ArrowTail::None),
+                Some('`') => (upper_curve, ArrowHead::Normal, ArrowTail::None),
+                Some('"') => (false, ArrowHead::Normal, ArrowTail::Head),
+                Some(_) => (false, ArrowHead::None, ArrowTail::None),
+                None => (false, ArrowHead::Normal, ArrowTail::None),
+            }
+        };
+        if curves {
+            if part != 'l' {
+                let (reversed, head, tail) = ends(true);
+                out.push(curve(self, sag, &upper, LabelSide::Left, reversed, head, tail)?);
+            }
+            if part != 'u' && !(part == 'b' && nudge == 0.0) {
+                let (reversed, head, tail) = ends(false);
+                out.push(curve(self, -sag, &lower, LabelSide::Right, reversed, head, tail)?);
+            } else if part == 'b' && nudge == 0.0 {
+                // nudge 0: a single straight arrow, with both labels
+                if let (Some(l), Some(a)) = (&lower, out.last_mut()) {
+                    let node = self.sub_reader(l, Variant::Italic)?;
+                    a.labels.push(ArrowLabel { node, side: LabelSide::Right, position: 0.5, segment: 0 });
+                }
+            }
+        }
+        if token != 'o' || !central.trim().is_empty() {
+            let mut a = blank_arrow(from);
+            a.to = to;
+            a.across = true;
+            a.line = if token == 'o' { ArrowLine::None } else { ArrowLine::Double };
+            a.head = if matches!(token, '_' | '^') { ArrowHead::Normal } else { ArrowHead::None };
+            // a positive nudge moves the Arrow clockwise
+            a.sag = arrow_nudge * 0.5;
+            if !central.trim().is_empty() {
+                let node = self.sub_reader(central.trim(), Variant::Italic)?;
+                a.labels.push(ArrowLabel { node, side: if token == 'o' { LabelSide::On } else { LabelSide::Left }, position: 0.5, segment: 0 });
+            }
+            if token == '^' {
+                std::mem::swap(&mut a.from, &mut a.to);
+                a.sag = -a.sag;
+            }
+            out.push(a);
+        }
+        Ok(out)
+    }
+}
+
+/// A 2-cell's name: its direction word and which curves (`b` both, `u` upper, `l` lower).
+fn two_cell_name(name: &str) -> Option<(&str, char)> {
+    let (word, part) = if let Some(w) = name.strip_suffix("uppertwocell") {
+        (w, 'u')
+    } else if let Some(w) = name.strip_suffix("lowertwocell") {
+        (w, 'l')
+    } else {
+        (name.strip_suffix("twocell")?, 'b')
+    };
+    (!word.is_empty() && step(word).is_some()).then_some((word, part))
+}
+
+/// A label after `^`, `_` or `|`: a group, a control sequence or one character.
+fn label_token(c: &[char], i: &mut usize) -> String {
+    match c.get(*i) {
+        Some('{') => group(c, i, '{', '}'),
+        Some('\\') => {
+            let s = *i;
+            *i += 1;
+            while *i < c.len() && c[*i].is_ascii_alphabetic() {
+                *i += 1;
+            }
+            if *i == s + 1 && *i < c.len() {
+                *i += 1;
+            }
+            c[s..*i].iter().collect()
+        }
+        Some(x) => {
+            *i += 1;
+            x.to_string()
+        }
+        None => String::new(),
+    }
+}
+
 fn blank_arrow(from: (usize, usize)) -> DiagramArrow {
-    DiagramArrow { from, to: from, labels: vec![], line: ArrowLine::Solid, head: ArrowHead::Normal, tail: ArrowTail::None, bend: 0, shift: 0.0 }
+    DiagramArrow {
+        from,
+        to: from,
+        labels: vec![],
+        line: ArrowLine::Solid,
+        head: ArrowHead::Normal,
+        tail: ArrowTail::None,
+        bend: 0,
+        shift: 0.0,
+        sag: 0.0,
+        across: false,
+        via: vec![],
+    }
 }
 
 fn destination(from: (usize, usize), di: isize, dj: isize) -> Option<(usize, usize)> {
