@@ -1218,6 +1218,9 @@
      "tex": "a \\coloneqq b \\quad c \\eqqcolon d \\quad e \\Coloneq f \\quad g \\colonapprox h \\quad i \\dblcolon j"
     },
     {
+     "tex": "\\Ketbra{\\psi}{\\phi} \\quad \\Koppa \\koppa \\Stigma \\stigma \\Sampi \\sampi \\quad \\smiley \\quad \\openone \\quad \\lAngle x \\rAngle \\quad a \\wedgeq b \\quad \\text{\\sout{old} \\textcircled{a}}"
+    },
+    {
      "tex": "\\backepsilon \\gtreqqless \\lesseqqgtr \\circledcirc \\circledR \\maltese"
     },
     {
