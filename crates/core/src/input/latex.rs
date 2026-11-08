@@ -4894,7 +4894,9 @@ impl Reader<'_> {
             _ if PHYSICS.contains(&name) || physics_long_name(name).is_some() => return self.physics_expansion(name, col),
             // #172: KaTeX's texvc aliases (\R, \cnums, \bold…)
             _ if symbols::texvc_macro(name).is_some() => return Ok(symbols::texvc_macro(name).map(str::to_string)),
-            _ => return self.mathtools_expansion(name, col),
+            // #169's mathtools, asked by name too
+            _ if mathtools::is_mathtools(name, &self.c, self.pos) => return self.mathtools_expansion(name, col),
+            _ => return Ok(None),
         }))
     }
 

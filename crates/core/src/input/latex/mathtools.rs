@@ -6,6 +6,50 @@
 
 use super::*;
 
+/// The commands `mathtools_expansion` reads.
+const COMMANDS: [&str; 26] = [
+    "splitfrac",
+    "splitdfrac",
+    "cramped",
+    "crampedllap",
+    "crampedrlap",
+    "crampedclap",
+    "crampedsubstack",
+    "adjustlimits",
+    "MoveEqLeft",
+    "Aboxed",
+    "ArrowBetweenLines",
+    "xlongrightarrow",
+    "xLongrightarrow",
+    "xlongleftarrow",
+    "xLongleftarrow",
+    "nuparrow",
+    "ndownarrow",
+    "vcentercolon",
+    "ordinarycolon",
+    "mathmbox",
+    "mathmakebox",
+    "refeq",
+    "newtagform",
+    "renewtagform",
+    "providetagform",
+    "usetagform",
+];
+
+/// The environments `mathtools_environment` reads (and their starred forms).
+const ENVIRONMENTS: [&str; 10] =
+    ["psmallmatrix", "bsmallmatrix", "Bsmallmatrix", "vsmallmatrix", "Vsmallmatrix", "multlined", "lgathered", "rgathered", "spreadlines", "crampedsubarray"];
+
+/// Is `name` (with, for `\begin`, the environment at `c[pos]`) one `mathtools_expansion` reads?
+/// `package_expansion` asks it first, so the frame of `mathtools_expansion` stays off the stack of
+/// every other command, \frac and \sqrt among them, at the deepest level of their nesting.
+pub(super) fn is_mathtools(name: &str, c: &[char], pos: usize) -> bool {
+    match name {
+        "begin" => ENVIRONMENTS.contains(&environment_name(c, pos).trim().trim_end_matches('*')),
+        _ => COMMANDS.contains(&name),
+    }
+}
+
 impl Reader<'_> {
     /// The mathtools command `name`, written through other commands; None when it is not one.
     /// Out of line: `package_expansion` is asked for every command.
