@@ -186,7 +186,7 @@ def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bo
     return _mathra.tex_to_svg(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width)
 
 
-def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, font: Optional[Font] = None, dpi: float = 300, background: Optional[str] = None, color: str = "#111") -> bytes:
+def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, font: Optional[Font] = None, dpi: float = 300, background: Optional[str] = None, color: str = "#111", max_width: Optional[float] = None) -> bytes:
     """Converts an equation to PNG, as bytes.
 
     ``dpi`` is the resolution over a 12pt body: an em is ``dpi * 12 / 72`` pixels (50 at 300 dpi), and
@@ -195,7 +195,7 @@ def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bo
     color; colors set in the equation (``\\color``) keep their own. The other arguments are those of
     :func:`tex_to_svg`. Raises ValueError on input it cannot read or a color it does not know.
     """
-    return _mathra.tex_to_png(tex, locale, display=display, strict=strict, input=input, braille=braille, font=_font_id(font), dpi=dpi, background=background, color=color)
+    return _mathra.tex_to_png(tex, locale, display=display, strict=strict, input=input, braille=braille, font=_font_id(font), dpi=dpi, background=background, color=color, max_width=max_width)
 
 
 def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None) -> str:

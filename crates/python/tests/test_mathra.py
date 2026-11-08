@@ -199,3 +199,12 @@ def test_a_font_from_a_catalog(tmp_path):
             mathra.load_font_from_catalog("latin-modern-math", catalog=f"{base}/bad.json", cache=tmp_path / "other")
     finally:
         server.shutdown()
+
+
+def test_png_breaks_lines_like_the_svg():
+    tex = "f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3 + a_4 x^4 + a_5 x^5 + a_6 x^6"
+    one_line = mathra.tex_to_png(tex)
+    broken = mathra.tex_to_png(tex, max_width=8)
+    height = lambda png: int.from_bytes(png[20:24], "big")
+    width = lambda png: int.from_bytes(png[16:20], "big")
+    assert width(broken) < width(one_line) and height(broken) > height(one_line)

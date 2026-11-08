@@ -55,7 +55,7 @@ fn tex_to_svg(
 /// The equation as PNG bytes: `dpi` over a 12pt body (an em is dpi × 12 / 72 pixels), `background`
 /// and `color` as CSS colors (transparent and `#111` by default).
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111"))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111", max_width = None))]
 #[allow(clippy::too_many_arguments)]
 fn tex_to_png(
     py: Python<'_>,
@@ -69,10 +69,11 @@ fn tex_to_png(
     dpi: f32,
     background: Option<String>,
     color: &str,
+    max_width: Option<f32>,
 ) -> PyResult<Py<pyo3::types::PyBytes>> {
     let options = mathra::PngOptions { dpi, background, color: color.to_string() };
     options.check().map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let png = convert(tex, locale, display, strict, input, braille, false, false, font)?.png(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let png = convert(tex, locale, display, strict, input, braille, false, false, font, max_width)?.png(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(pyo3::types::PyBytes::new(py, &png).unbind())
 }
 

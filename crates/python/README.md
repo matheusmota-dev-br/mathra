@@ -35,7 +35,7 @@ open("euler.png", "wb").write(png)
 |---|---|
 | `tex_to_svg(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False, max_width=None)` | The SVG as a string. |
 | `render(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False, max_width=None)` | A dict: `svg`, `speech`, `text`, `braille`, `braille_code`, `tree`, `applied`, `warnings`. |
-| `tex_to_png(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, font=None, dpi=300, background=None, color="#111")` | The PNG as bytes. |
+| `tex_to_png(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, font=None, dpi=300, background=None, color="#111", max_width=None)` | The PNG as bytes. |
 | `tex_to_tree(tex, locale="en", *, display=True, strict=False, input="latex", braille=None, animate=False, steps=False, max_width=None)` | The tree of meaning as JSON. |
 | `locales()` | `[{"code": "en", "name": "English"}, …]`: en, pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar, id, tr, nl, pl. |
 
