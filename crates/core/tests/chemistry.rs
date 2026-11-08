@@ -317,3 +317,23 @@ fn l_che_1_words_in_other_languages() {
     let r = read(r"\ce{Água + sódio}", Locale::PtBr);
     assert_eq!(texts(&r.tree), [word("Água"), word("sódio")]);
 }
+
+#[test]
+fn l_che_1_command_in_an_isotope_superscript() {
+    // #252: a command in the superscript is read, as mhchem does: the metastable state of 234mPa is the
+    // same superscript as the one written without the command
+    let plain = en(r"\ce{^{234m}_{91}Pa}");
+    for tex in [r"\ce{^{234\mathrm{m}}_{91}Pa}", r"\ce{^{234\text{m}}_{91}Pa}"] {
+        let out = en(tex);
+        assert_eq!(out.tree, plain.tree, "{tex}");
+        assert_eq!((out.text.as_str(), out.speech.as_str()), (plain.text.as_str(), plain.speech.as_str()), "{tex}");
+    }
+    // a symbol stays a symbol (no raw "\alpha" text)
+    has(&tree(r"\ce{X^{\alpha}}"), &["\"α\""]);
+    // a command it does not know warns and is drawn in red; strict mode refuses it
+    let tex = r"\ce{^{234\foo{m}}_{91}Pa}";
+    assert!(convert(tex, &Options { strict: true, ..Options::default() }).is_err());
+    let out = convert(tex, &Options::default()).unwrap();
+    assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1"), "{:?}", out.warnings);
+    assert!(!format!("{:?}", out.tree).contains("234\\\\foo"), "{:?}", out.tree);
+}

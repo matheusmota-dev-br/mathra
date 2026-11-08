@@ -3243,7 +3243,13 @@ impl Reader<'_> {
                     }
                     p
                 };
-                let node = if ch == '^' { charge(&payload) } else { self.chemical_subscript(&payload)? };
+                let node = if ch != '^' {
+                    self.chemical_subscript(&payload)?
+                } else if payload.contains('\\') {
+                    self.chemical_superscript(&payload)?
+                } else {
+                    charge(&payload)
+                };
                 if ch == '^' {
                     attach_script(&mut children, Some(node), None);
                 } else {
@@ -3309,6 +3315,30 @@ impl Reader<'_> {
             }
         }
         Ok(Node::row(children))
+    }
+
+    /// #252: a superscript with a command in it (an isotope's `^{234\mathrm{m}}`): read as math, upright as
+    /// mhchem sets it, so an unknown command warns (E-REC-1) and strict mode refuses it. Digits and upright
+    /// letters alone are joined as the superscript written without the command (`^{234m}`) is.
+    #[inline(never)]
+    fn chemical_superscript(&mut self, payload: &str) -> R<Node> {
+        let node = self.sub_reader(payload, Variant::Upright)?;
+        let children = match &node {
+            Node::Row { children } => children.as_slice(),
+            other => std::slice::from_ref(other),
+        };
+        let mut plain = String::new();
+        for child in children {
+            match child {
+                Node::Number { value, .. } => plain.push_str(value),
+                Node::Identifier { name, variant: Variant::Upright } => plain.push_str(name),
+                Node::Text { parts } if parts.iter().all(|p| matches!(p, TextPart::Text(_))) => {
+                    plain.extend(parts.iter().filter_map(|p| if let TextPart::Text(t) = p { Some(t.as_str()) } else { None }));
+                }
+                _ => return Ok(node),
+            }
+        }
+        Ok(charge(&plain))
     }
 
     /// Subscript in a formula: a number, a state (`_{(aq)}`) as text, anything else as math (`NO_x`).
