@@ -429,6 +429,31 @@ fn siunitx_units() {
     has(&tree(r"\unit[3]{m}"), &["\"3\"", "\"m\""]);
 }
 
+/// \raiseto is \tothe's prefix form; a value with an uncertainty is a number, drawn as written (#161).
+#[test]
+fn siunitx_raiseto_and_uncertainties() {
+    // read alike in both modes, with no warning; the text output
+    let text = |tex: &str| {
+        tree(tex);
+        convert(tex, &Options::default()).unwrap().text
+    };
+    assert_eq!(tree(r"\unit{\raiseto{4}\metre}"), tree(r"\unit{\metre\tothe{4}}"));
+    has(&tree(r"\unit{\raiseto{4}\metre}"), &["\"m\"", "\"4\""]);
+    has(&tree(r"\unit{\raiseto{2}\metre\per\raiseto{3}\second}"), &["\"m\"", "\"2\"", "\"s\"", "\"3\""]);
+    assert_eq!(text(r"\unit{\raiseto{4}\metre}"), "m^4");
+    // compact, as written (siunitx's default uncertainty-mode)
+    assert_eq!(text(r"\qty{1.23(4)}{\kilo\gram}"), "1.23(4) kg");
+    assert_eq!(text(r"\num{1.23(4)}"), "1.23(4)");
+    assert_eq!(text(r"\num{1.23(4)e3}"), "1.23(4) × 10^3");
+    // separate, in parentheses before a unit (separate-uncertainty-units = bracket)
+    assert_eq!(text(r"\qty{1.23 \pm 0.04}{\kilo\gram}"), "(1.23 ± 0.04) kg");
+    assert_eq!(text(r"\qty{1.23 +- 0.04}{\metre}"), "(1.23 ± 0.04) m");
+    assert_eq!(text(r"\num{1.23 \pm 0.04}"), "1.23 ± 0.04");
+    // something that is not a number still warns
+    assert!(strict_error(r"\qty{1.23 \pm x}{\kilo\gram}").contains("is not a number"));
+    assert!(strict_error(r"\num{1.23(x)}").contains("is not a number"));
+}
+
 #[test]
 fn every_unit_has_a_symbol() {
     for name in [

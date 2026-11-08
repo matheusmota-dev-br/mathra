@@ -48,7 +48,7 @@ In **pt-BR, fr, de and it**, where `]a, b[` is the usual notation, a `]` without
 
 ### L-UNI-1 · siunitx quantities
 
-`\SI{9,8}{\meter\per\second\squared}` and `\qty{…}{…}` write the number, a thin space and the unit in upright letters. Negative exponents (`\per`) become a slash: `m/s²`, and more than one unit in the denominator gets parentheses: `J/(mol·K)`. `\num{…}` groups with thin spaces from five digits on; `\ang{30}` writes `30°`.
+`\SI{9,8}{\meter\per\second\squared}` and `\qty{…}{…}` write the number, a thin space and the unit in upright letters. Negative exponents (`\per`) become a slash: `m/s²`, and more than one unit in the denominator gets parentheses: `J/(mol·K)`. `\num{…}` groups with thin spaces from five digits on; `\ang{30}` writes `30°`. `\tothe{4}` raises the unit before it and `\raiseto{4}` the unit after it: `\unit{\raiseto{4}\metre}` is m⁴. A value with an uncertainty is a number and is drawn as written, with no warning: `\qty{1.23(4)}{\kilo\gram}` is `1.23(4) kg` (the compact form, siunitx's default `uncertainty-mode`), and `\qty{1.23 \pm 0.04}{\kilo\gram}` (or `+-`) is `(1.23 ± 0.04) kg`, in parentheses before a unit as siunitx's `separate-uncertainty-units = bracket` sets them (`\num{1.23 \pm 0.04}` has none).
 
 ### L-UNI-2 · Ranges, lists and products
 

@@ -2785,11 +2785,21 @@ impl Reader<'_> {
 
     /// A siunitx number; in tolerant mode, something else is drawn as math, with a warning.
     fn number_value(&mut self, value: &str, col: usize) -> R<Node> {
+        Ok(self.uncertain_value(value, col)?.0)
+    }
+
+    /// A siunitx number, perhaps with an uncertainty, drawn as written: `1.23(4)` (compact, siunitx's
+    /// default `uncertainty-mode`) or `1.23 \pm 0.04` (separate, `true` in the answer: a unit after it puts
+    /// the value in parentheses, siunitx's default `separate-uncertainty-units = bracket`).
+    fn uncertain_value(&mut self, value: &str, col: usize) -> R<(Node, bool)> {
         if let Some(n) = siunitx_number(value, true) {
-            return Ok(n);
+            return Ok((n, false));
+        }
+        if let Some(uncertain) = siunitx_uncertainty(value) {
+            return Ok(uncertain);
         }
         self.tolerate(rules::E_REC_9, col, format!("{value} is not a number"), "drawn as written")?;
-        self.sub_reader(value, Variant::Italic)
+        Ok((self.sub_reader(value, Variant::Italic)?, false))
     }
 
     /// `\ang{30}` → 30°; `\ang{12;30;15}` → 12°30′15″ (degrees, minutes and seconds; any of them may be empty).
@@ -2827,6 +2837,7 @@ impl Reader<'_> {
             let mut prefix_names = String::new();
             let mut per = false;
             let mut last_in_den = false;
+            let mut raised: Option<i32> = None;
             for token in unit.split('\\').map(str::trim).filter(|t| !t.is_empty()) {
                 let (name, remainder) = token.split_at(token.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(token.len()));
                 match name {
@@ -2838,13 +2849,15 @@ impl Reader<'_> {
                         }
                     }
                     "square" | "cubic" => prefix.push(if name == "square" { '²' } else { '³' }),
-                    "tothe" | "raiseto" => {
+                    "tothe" => {
                         let n: i32 = remainder.trim_matches(['{', '}', ' ']).parse().unwrap_or(1);
                         let target = if last_in_den { denominator.last_mut() } else { numerator.last_mut() };
                         if let Some(u) = target {
                             u.1 *= n;
                         }
                     }
+                    // \raiseto{4}\metre: the prefix form of \tothe, for the next unit (m⁴)
+                    "raiseto" => raised = remainder.trim_matches(['{', '}', ' ']).parse().ok(),
                     _ => {
                         if let Some(p) = symbols::prefix(name) {
                             // \square\kilo\meter: the pending exponent still applies (km²)
@@ -2859,7 +2872,9 @@ impl Reader<'_> {
                                 name.to_string()
                             }
                         };
-                        let exponent = if prefix.contains('²') {
+                        let exponent = if let Some(n) = raised.take() {
+                            n
+                        } else if prefix.contains('²') {
                             2
                         } else if prefix.contains('³') {
                             3
@@ -2879,6 +2894,10 @@ impl Reader<'_> {
                         }
                     }
                 }
+            }
+            // a \raiseto with no unit after it (\second\raiseto{2}): the unit before it, as \tothe
+            if let Some((n, u)) = raised.zip(if last_in_den { denominator.last_mut() } else { numerator.last_mut() }) {
+                u.1 *= n;
             }
             let mut children = Vec::new();
             let unit_node = |u: &(String, i32, String, String)| -> Node {
@@ -2928,7 +2947,11 @@ impl Reader<'_> {
     /// Value, thin space and unit, as one quantity.
     fn quantity_node(&mut self, value: Option<String>, unit_node: Node, col: usize) -> R<Node> {
         let value = match value {
-            Some(v) => Some(self.number_value(&v, col)?),
+            // (1.23 ± 0.04) kg: the value with its uncertainty in parentheses before the unit
+            Some(v) => Some(match self.uncertain_value(&v, col)? {
+                (node, true) => Node::row(vec![Node::Operator { symbol: '(', class: Class::Open }, node, Node::Operator { symbol: ')', class: Class::Close }]),
+                (node, false) => node,
+            }),
             None => None,
         };
         let text_value = value.as_ref().map(|v| match v {
@@ -3931,6 +3954,36 @@ pub(crate) fn safe_style(value: &str) -> Option<String> {
             _ => return None,
         }
     }
+}
+
+/// A siunitx number with an uncertainty, as written: compact, `1.23(4)` (and `1.23(4)e3`), or separate,
+/// `1.23 \pm 0.04` (and `+-`), which answers `true`.
+fn siunitx_uncertainty(raw: &str) -> Option<(Node, bool)> {
+    let raw = raw.replace("+-", "\\pm");
+    if let Some((value, uncertainty)) = raw.split_once("\\pm") {
+        let value = siunitx_number(value, true)?;
+        let uncertainty = siunitx_number(uncertainty, true)?;
+        return Some((Node::row(vec![value, Node::Operator { symbol: '±', class: Class::Bin }, uncertainty]), true));
+    }
+    let (value, rest) = raw.split_once('(')?;
+    let (uncertainty, exponent) = rest.split_once(')')?;
+    let uncertainty = uncertainty.trim();
+    if uncertainty.is_empty() || !uncertainty.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | ',')) {
+        return None;
+    }
+    // the parenthesized digits right after the number, before any exponent
+    let mut children = match siunitx_number(&format!("{value}{exponent}"), true)? {
+        Node::Row { children } => children,
+        number => vec![number],
+    };
+    let at = children.iter().position(|n| matches!(n, Node::Number { .. }))? + 1;
+    let compact = [
+        Node::Operator { symbol: '(', class: Class::Open },
+        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None },
+        Node::Operator { symbol: ')', class: Class::Close },
+    ];
+    children.splice(at..at, compact);
+    Some((Node::row(children), false))
 }
 
 /// A number in siunitx format: decimal comma or dot, spaces, exponent with `e`.
