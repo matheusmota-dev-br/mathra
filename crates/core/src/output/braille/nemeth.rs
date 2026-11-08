@@ -638,8 +638,8 @@ impl Writer {
             // two dots over: the dot twice, as in the compound ⩷ (Rule 21 table)
             '\u{0308}' => "16 16",
             // arcs concave downward and upward (Ex. 15-53 to 15-56)
-            '⏜' => "1246 1",
-            '⏝' => "1246 3",
+            '⏜' | '⏠' => "1246 1",
+            '⏝' | '⏡' => "1246 3",
             '\u{0303}' => "4 156",
             other => {
                 self.node(base, ctx);

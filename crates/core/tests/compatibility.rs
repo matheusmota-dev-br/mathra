@@ -661,3 +661,44 @@ fn url_is_the_address_as_written_in_typewriter() {
     assert!(has(r"\textbf{a}", font.glyph('𝐚').unwrap()));
     assert!(!has(r"\text{a}", mono));
 }
+
+// ---------- group accents (#118) ----------
+
+#[test]
+fn overgroup_and_undergroup_are_stretchy_accents_over_and_under() {
+    let accent = |tex: &str| {
+        let out = read(tex);
+        match nodes(&out.tree).into_iter().find(|n| matches!(n, Node::Accent { .. })) {
+            Some(Node::Accent { accent, stretchy, below, .. }) => (*accent, *stretchy, *below),
+            _ => panic!("{tex}: {:?}", out.tree),
+        }
+    };
+    assert_eq!(accent(r"\overgroup{AB}"), ('⏠', true, false));
+    assert_eq!(accent(r"\undergroup{AB}"), ('⏡', true, true));
+    // \underparen goes under its base too, as the "under" in its name says
+    assert_eq!(accent(r"\underparen{AB}"), ('⏝', true, true));
+    // over: ink above the base and none below; under: the other way round
+    let (base, over, under) = (math_box("AB"), math_box(r"\overgroup{AB}"), math_box(r"\undergroup{AB}"));
+    assert!(over.height > base.height && over.depth <= base.depth + 0.01);
+    assert!(under.depth > base.depth && under.height <= base.height + 0.01);
+    // the speech reads the arc, as \overparen
+    assert_eq!(read(r"\overgroup{AB}").speech, read(r"\overparen{AB}").speech);
+}
+
+#[test]
+fn overgroup_covers_a_base_wider_than_the_widest_size_of_the_font() {
+    // STIX Two Math has sizes of ⏠ and ⏡ up to 2.6 em and no assembly: past that, the corners and
+    // a rule as long as needed
+    for tex in [r"\overgroup{ABCDEFGHIJKL}", r"\undergroup{a+b+c+d+e+f+g+h}", r"\overgroup{x+y+z}", r"\overgroup{A}"] {
+        let base = math_box(tex.split_once('{').unwrap().1.trim_end_matches('}'));
+        let b = math_box(tex);
+        let (x0, _, x1, _) = ink(&b);
+        let (b0, _, b1, _) = ink(&base);
+        assert!(x1 - x0 >= (b1 - b0) * 0.9, "{tex}: accent {x0}..{x1}, base {b0}..{b1}");
+        assert_ink_inside(tex, &Options::default());
+    }
+    // a wide one has its corners at the ends, the rule between them
+    let wide = math_box(r"\overgroup{ABCDEFGHIJKL}");
+    let drawn = wide.items.iter().filter(|i| matches!(i, Item::Line { .. } | Item::Rule { .. })).count();
+    assert_eq!(drawn, 3, "{:?}", wide.items);
+}

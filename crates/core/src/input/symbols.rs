@@ -835,6 +835,9 @@ pub fn accent(name: &str) -> Option<(char, bool)> {
         "overrightharpoon" => ('⇀', true),
         "overarc" | "wideparen" | "overparen" | "arc" => ('⏜', true),
         "underparen" => ('⏝', true),
+        // KaTeX's group accents (MnSymbol, yhmath): a wide arc with corners over or under the base
+        "overgroup" => ('⏠', true),
+        "undergroup" => ('⏡', true),
         _ => return None,
     })
 }

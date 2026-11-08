@@ -167,7 +167,7 @@ impl Speaker {
                     '\u{0307}' => "accent.dot",
                     '\u{0308}' => "accent.ddot",
                     '\u{0303}' => "accent.tilde",
-                    '⏜' => "accent.arc",
+                    '⏜' | '⏠' => "accent.arc",
                     _ => {
                         self.say(b);
                         return;

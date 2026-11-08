@@ -1287,6 +1287,9 @@
      "tex": "\\overleftharpoon{AB} \\quad \\overrightharpoon{AB} \\quad \\utilde{AB}"
     },
     {
+     "tex": "\\overgroup{AB} \\quad \\undergroup{AB} \\quad \\underparen{AB}"
+    },
+    {
      "tex": "\\cancelto{0}{x} \\quad \\reflectbox{abc}"
     }
    ]
