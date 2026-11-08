@@ -1606,7 +1606,9 @@ impl Reader<'_> {
             }
             "xymatrix" => self.xymatrix(col)?,
             #[cfg(feature = "chem")]
-            "chemfig" | "schemestart" | "chemname" => self.chem_construction(name, col)?,
+            "chemfig" | "schemestart" | "chemname" | "subscheme" | "charge" | "Charge" => self.chem_construction(name, col)?,
+            #[cfg(feature = "chem")]
+            "chemleft" | "chemright" | "chemup" | "chemdown" | "chemskipalign" | "merge" => return self.chem_delimiters(name, start, col).map(|()| Some(None)),
             "divchave" => {
                 let dividend = self.raw_text()?.trim().to_string();
                 let divisor = self.raw_text()?.trim().to_string();

@@ -1,5 +1,6 @@
 //! chemfig's molecule language (spec/input.md): atoms, bonds with their angles, branches, rings
-//! (fused or not, aromatic or not), distant bonds (`?`), Lewis marks and hooks for mechanisms.
+//! (fused or not, aromatic or not), distant bonds (`?`), Lewis marks, charges (`\charge`) and hooks
+//! for mechanisms, and the default bond values a structure may start with (`[:20,1.5]`).
 
 use std::collections::BTreeMap;
 
@@ -8,7 +9,7 @@ use super::scheme::{split_top, Reader, R};
 use crate::rules;
 
 /// Characters that end an atom label.
-const STOPS: &[char] = &['-', '=', '~', '<', '>', '(', ')', '*', '?', '[', ']', '@'];
+const STOPS: &[char] = &['-', '=', '~', '<', '>', '(', ')', '*', '[', ']', '@'];
 
 /// The state of the ring being read: how its bonds turn and where it closes.
 #[derive(Clone, Copy)]
@@ -29,16 +30,61 @@ struct Mol<'r, 'w> {
     reader: &'r mut Reader<'w>,
     /// Exterior bisector of each ring vertex: the default direction of a branch there.
     bisector: BTreeMap<AtomId, f32>,
-    /// `?[name]` marks waiting for their partner: the atom and the bond kind given.
-    closures: BTreeMap<String, (AtomId, Option<BondKind>)>,
+    /// The first `?[name]` of each name: the atom and the piece every later mark of the name is bonded to.
+    closures: BTreeMap<String, (AtomId, usize)>,
     hook: Option<String>,
+    /// `[angle,length,departure,arrival,tikz]` at the start of the structure.
+    defaults: Defaults,
+    /// What the label being read asks of its atom, given to it once its bond is drawn.
+    pending: Pending,
+}
+
+/// chemfig manual, section 2.6: the values a bond takes for the fields it leaves empty, which a
+/// structure may set by starting with `[angle,length,departure,arrival,tikz]`. Without them, an empty
+/// angle keeps the previous direction, as mathra always read it (spec/chemistry.md).
+struct Defaults {
+    angle: Option<f32>,
+    length: f32,
+    departure: Option<usize>,
+    arrival: Option<usize>,
+    tikz: String,
+}
+
+impl Default for Defaults {
+    fn default() -> Self {
+        Defaults { angle: None, length: 1.0, departure: None, arrival: None, tikz: String::new() }
+    }
+}
+
+/// Read in a label, applied to its atom: the `?[…]` marks with the piece they follow, the
+/// `\charge`s and a `\chemskipalign`.
+#[derive(Default)]
+struct Pending {
+    closures: Vec<(Option<String>, usize)>,
+    charges: Vec<Charge>,
+    skip_align: bool,
 }
 
 /// Reads a `\chemfig{…}` body.
 pub fn molecule(src: &str, reader: &mut Reader) -> R<Molecule> {
-    let mut p = Mol { c: src.chars().collect(), pos: 0, m: Molecule::default(), reader, bisector: BTreeMap::new(), closures: BTreeMap::new(), hook: None };
+    let mut p = Mol {
+        c: src.chars().collect(),
+        pos: 0,
+        m: Molecule::default(),
+        reader,
+        bisector: BTreeMap::new(),
+        closures: BTreeMap::new(),
+        hook: None,
+        defaults: Defaults::default(),
+        pending: Pending::default(),
+    };
+    p.skip_spaces();
+    if p.current() == Some('[') {
+        p.read_defaults()?;
+    }
     let start = p.atom(None, None)?;
-    p.chain(start, 0.0, None)?;
+    p.attach(start)?;
+    p.chain(start, p.defaults.angle.unwrap_or(0.0), None)?;
     p.skip_spaces();
     while p.pos < p.c.len() {
         let ch = p.c[p.pos];
@@ -46,9 +92,7 @@ pub fn molecule(src: &str, reader: &mut Reader) -> R<Molecule> {
         p.pos += 1;
         p.chain(start, 0.0, None)?;
     }
-    for name in p.closures.keys() {
-        p.reader.tolerate(rules::E_REC_9, format!("distant bond ?[{name}] opened and never closed"), "left out")?;
-    }
+    // a ?[name] no other mark names draws nothing, as in chemfig
     Ok(p.m)
 }
 
@@ -94,6 +138,8 @@ impl Mol<'_, '_> {
     /// `angle` is the default direction of the first bond (each bond's is then the previous one's).
     fn chain(&mut self, start: AtomId, angle: f32, ring: Option<RingState>) -> R<()> {
         let mut cur = start;
+        // with the structure's defaults, an empty angle is the branch's default, not the previous one
+        let default_angle = self.defaults.angle.map(|_| angle);
         let mut angle = angle;
         // in a ring, the bond count so far and the direction of the last ring bond
         let mut k = 0usize;
@@ -106,7 +152,7 @@ impl Mol<'_, '_> {
             match ch {
                 ')' => break,
                 '(' => {
-                    let default = self.bisector.get(&cur).copied().unwrap_or(angle);
+                    let default = self.bisector.get(&cur).copied().unwrap_or(self.defaults.angle.unwrap_or(angle));
                     self.pos += 1;
                     self.chain(cur, default, None)?;
                     self.skip_spaces();
@@ -131,7 +177,9 @@ impl Mol<'_, '_> {
                 }
                 '?' => {
                     self.pos += 1;
-                    self.closure(cur)?;
+                    let spec = if self.current() == Some('[') { Some(self.group('[', ']')?) } else { None };
+                    let piece = self.m.atoms[cur].anchor;
+                    self.closure(cur, piece, spec)?;
                 }
                 '@' => {
                     self.pos += 1;
@@ -142,10 +190,19 @@ impl Mol<'_, '_> {
                 }
                 c if is_bond_start(c) => {
                     let (kind, args) = self.bond_spec()?;
-                    let mut bond_angle = resolve_angle(args.first().map(String::as_str).unwrap_or(""), angle);
-                    let length = args.get(1).and_then(|l| l.trim().parse::<f32>().ok()).filter(|l| *l > 0.0).unwrap_or(1.0);
-                    let explicit = |i: usize| args.get(i).and_then(|v| v.trim().parse::<usize>().ok()).filter(|v| *v > 0).map(|v| v - 1);
-                    let kind = tikz_kind(args.get(4).map(String::as_str).unwrap_or(""), kind);
+                    let written = args.first().map(|a| a.trim()).unwrap_or("");
+                    let mut bond_angle = match default_angle {
+                        Some(d) if written.is_empty() => d,
+                        _ => resolve_angle(written, angle),
+                    };
+                    let length = args.get(1).and_then(|l| l.trim().parse::<f32>().ok()).filter(|l| *l > 0.0).unwrap_or(self.defaults.length);
+                    let (default_departure, default_arrival) = (self.defaults.departure, self.defaults.arrival);
+                    let explicit = |i: usize| {
+                        let given = args.get(i).and_then(|v| v.trim().parse::<usize>().ok()).filter(|v| *v > 0).map(|v| v - 1);
+                        given.or(if i == 2 { default_departure } else { default_arrival })
+                    };
+                    let tikz = args.get(4).map(String::as_str).filter(|t| !t.trim().is_empty()).unwrap_or(&self.defaults.tikz);
+                    let kind = tikz_kind(tikz, kind);
                     let mut target = None;
                     let mut ring_id = None;
                     if let Some(r) = ring {
@@ -153,6 +210,7 @@ impl Mol<'_, '_> {
                             self.reader.tolerate(rules::E_REC_9, format!("ring of {} sides with more bonds than it can take", self.m.rings[r.id].size), "extra bond left out")?;
                             // read and drop what follows the extra bond
                             let _ = self.atom(None, None)?;
+                            self.pending = Pending::default();
                             continue;
                         }
                         bond_angle = r.first + r.turn * k as f32;
@@ -184,6 +242,7 @@ impl Mol<'_, '_> {
                     };
                     let arrival = if target.is_some() { explicit(3).unwrap_or(self.m.atoms[to].anchor) } else { self.m.atoms[to].anchor };
                     self.add_bond(Bond { from: cur, to, kind, angle: normalize(bond_angle), length, departure, arrival, ring: ring_id });
+                    self.attach(to)?;
                     if let Some(r) = ring {
                         if target.is_none() && !self.m.rings[r.id].atoms.contains(&to) {
                             self.m.rings[r.id].atoms.push(to);
@@ -275,34 +334,53 @@ impl Mol<'_, '_> {
         self.m.bonds.push(b);
     }
 
-    /// `?`, `?[name]` or `?[name,{=}]`: the first mark of a name waits, the second draws the bond.
-    fn closure(&mut self, at: AtomId) -> R<()> {
-        let mut name = "a".to_string();
-        let mut kind = None;
-        if self.current() == Some('[') {
-            let inside = self.group('[', ']')?;
-            let parts = split_top(&inside, ',');
-            if let Some(n) = parts.first().map(|n| n.trim()).filter(|n| !n.is_empty()) {
-                name = n.to_string();
-            }
-            if let Some(b) = parts.get(1) {
-                kind = Some(match b.trim().trim_matches(['{', '}']) {
-                    "=" => BondKind::Double,
-                    "~" => BondKind::Triple,
-                    _ => BondKind::Single,
-                });
-            }
-        }
-        match self.closures.remove(&name) {
+    /// `?`, `?[name]`, `?[name,link,tikz]` (chemfig manual, section 2.8): the first mark of a name is
+    /// the hook, and every later mark of the same name is bonded to it, with the link it gives (a bond
+    /// number 1 to 9 or its characters in braces, `{=}`) and its TikZ options. `piece`: the piece of the
+    /// label the mark follows.
+    fn closure(&mut self, at: AtomId, piece: usize, spec: Option<String>) -> R<()> {
+        let parts = spec.map(|s| split_top(&s, ',')).unwrap_or_default();
+        let name = parts.first().map(|n| n.trim()).filter(|n| !n.is_empty()).unwrap_or("a").to_string();
+        match self.closures.get(&name) {
             None => {
-                self.closures.insert(name, (at, kind));
+                self.closures.insert(name, (at, piece));
             }
-            Some((other, first_kind)) => {
-                let kind = kind.or(first_kind).unwrap_or(BondKind::Single);
-                let (a, b) = (self.m.atoms[other].anchor, self.m.atoms[at].anchor);
-                self.add_bond(Bond { from: other, to: at, kind, angle: 0.0, length: 1.0, departure: a, arrival: b, ring: None });
+            Some(&(other, other_piece)) => {
+                let link = parts.get(1).map(String::as_str).unwrap_or("");
+                let tikz = parts.get(2..).map(|t| t.join(",")).unwrap_or_default();
+                let kind = tikz_kind(&tikz, hook_kind(link));
+                self.add_bond(Bond { from: other, to: at, kind, angle: 0.0, length: 1.0, departure: other_piece, arrival: piece, ring: None });
             }
         }
+        Ok(())
+    }
+
+    /// Gives an atom what its label asked for: its charges, `\chemskipalign`, and its `?` marks, once
+    /// the bond that places it is drawn.
+    fn attach(&mut self, id: AtomId) -> R<()> {
+        let pending = std::mem::take(&mut self.pending);
+        let atom = &mut self.m.atoms[id];
+        atom.charges.extend(pending.charges);
+        atom.skip_align |= pending.skip_align;
+        for (spec, piece) in pending.closures {
+            self.closure(id, piece, spec)?;
+        }
+        Ok(())
+    }
+
+    /// The structure's `[angle,length,departure,arrival,tikz]` (chemfig manual, section 2.6); the
+    /// current character is `[`.
+    fn read_defaults(&mut self) -> R<()> {
+        let args = split_top(&self.group('[', ']')?, ',');
+        let field = |i: usize| args.get(i).map(|a| a.trim()).filter(|a| !a.is_empty());
+        let piece = |i: usize| field(i).and_then(|v| v.parse::<usize>().ok()).filter(|v| *v > 0).map(|v| v - 1);
+        self.defaults = Defaults {
+            angle: field(0).map(|a| resolve_angle(a, 0.0)),
+            length: field(1).and_then(|l| l.parse::<f32>().ok()).filter(|l| *l > 0.0).unwrap_or(1.0),
+            departure: piece(2),
+            arrival: piece(3),
+            tikz: args.get(4..).map(|t| t.join(",")).unwrap_or_default(),
+        };
         Ok(())
     }
 
@@ -355,7 +433,7 @@ impl Mol<'_, '_> {
             None => default_arrival(&pieces, arriving),
         };
         let hook = self.hook.take();
-        self.m.atoms.push(Atom { label, pieces, anchor, lewis, hook });
+        self.m.atoms.push(Atom { label, pieces, anchor, lewis, hook, ..Atom::default() });
         Ok(self.m.atoms.len() - 1)
     }
 
@@ -374,6 +452,13 @@ impl Mol<'_, '_> {
                     }
                 }
                 c if STOPS.contains(&c) => break,
+                // a distant bond's mark, on the piece it follows (on the next one at the start)
+                '?' => {
+                    self.pos += 1;
+                    let spec = if self.current() == Some('[') { Some(self.group('[', ']')?) } else { None };
+                    let piece = pieces(&s).len().saturating_sub(1);
+                    self.pending.closures.push((spec, piece));
+                }
                 '{' => {
                     let inner = self.group('{', '}')?;
                     s.push('{');
@@ -422,6 +507,20 @@ impl Mol<'_, '_> {
                             lewis.extend(lewis_marks(spec));
                             s.push_str(inner.trim());
                         }
+                        "charge" | "Charge" => {
+                            let mut args = Vec::new();
+                            for _ in 0..2 {
+                                self.skip_spaces();
+                                args.push(if self.current() == Some('{') { self.group('{', '}')? } else { String::new() });
+                            }
+                            let before = pieces(&s).len();
+                            let piece = if args[1].trim().is_empty() { before.saturating_sub(1) } else { before };
+                            let charges = self.charges(&args[0], piece)?;
+                            self.pending.charges.extend(charges);
+                            s.push_str(args[1].trim());
+                        }
+                        // chemfig manual, section 5.4.3
+                        "chemskipalign" => self.pending.skip_align = true,
                         "chemabove" | "chembelow" => {
                             let mut args = Vec::new();
                             for _ in 0..2 {
@@ -451,6 +550,76 @@ impl Mol<'_, '_> {
             }
         }
         Ok((s, lewis))
+    }
+
+    /// The list of `\charge{[params]position[tikz]=charge, …}` (chemfig manual, section 5.8): each
+    /// position an angle in degrees or a TikZ anchor (`north east`), with `:offset`; each charge one of
+    /// the Lewis shortcuts `\.`, `\:`, `\|`, `\"` or LaTeX text. Of the general parameters, `extra sep`
+    /// is kept (in the offset), and of the TikZ options `anchor` (`anchor=-90`,
+    /// `anchor=180+\chargeangle`); the others style the nodes and are left out.
+    fn charges(&mut self, spec: &str, piece: usize) -> R<Vec<Charge>> {
+        let mut spec = spec.trim();
+        // of the general parameters, `extra sep` (1.5 pt by default) moves every position
+        let mut extra = 0.0;
+        if spec.starts_with('[') {
+            let end = spec.find(']').map_or(spec.len(), |e| e + 1);
+            for key in split_top(&spec[1..end.saturating_sub(1).max(1)], ',') {
+                if let Some(v) = key.trim().strip_prefix("extra sep").map(|v| v.trim().trim_start_matches('=').trim()) {
+                    extra = super::scheme::length_em(v).map_or(0.0, |v| v - 0.15);
+                }
+            }
+            spec = &spec[end..];
+        }
+        let mut out = Vec::new();
+        for item in split_top(spec, ',') {
+            if item.trim().is_empty() {
+                continue;
+            }
+            // the first '=' outside the TikZ options (`45[anchor=…]=$\oplus$`)
+            let mut depth = 0i32;
+            let equals = item.char_indices().find(|&(_, c)| {
+                depth += match c {
+                    '[' | '{' => 1,
+                    ']' | '}' => -1,
+                    _ => 0,
+                };
+                c == '=' && depth == 0
+            });
+            let Some((position, content)) = equals.map(|(i, _)| (&item[..i], &item[i + 1..])) else {
+                self.reader.tolerate(rules::E_REC_9, format!("\\charge{{{item}}} without '='"), "left out")?;
+                continue;
+            };
+            let (position, tikz) = match position.split_once('[') {
+                Some((p, t)) => (p, t.trim_end().trim_end_matches(']')),
+                None => (position, ""),
+            };
+            let (angle, offset) = position.split_once(':').unwrap_or((position, ""));
+            let Some(angle) = charge_angle(angle.trim()) else {
+                self.reader.tolerate(rules::E_REC_9, format!("\\charge position {:?}", angle.trim()), "left out")?;
+                continue;
+            };
+            let anchor = match split_top(tikz, ',').iter().find_map(|o| o.trim().strip_prefix("anchor").map(|v| v.trim().trim_start_matches('=').trim().to_string())) {
+                None => None,
+                Some(a) if a.replace(' ', "") == "180+\\chargeangle" => Some(normalize(angle + 180.0)),
+                Some(a) => match charge_angle(&a) {
+                    Some(a) => Some(a),
+                    None => {
+                        self.reader.tolerate(rules::E_REC_9, format!("\\charge anchor {a:?}"), "the charge centered on its position")?;
+                        None
+                    }
+                },
+            };
+            let offset = super::scheme::length_em(offset.trim()).unwrap_or(0.0) + extra;
+            let content = match content.trim() {
+                "\\." => ChargeContent::Mark { mark: LewisMark::Radical },
+                "\\:" => ChargeContent::Mark { mark: LewisMark::Pair },
+                "\\|" => ChargeContent::Mark { mark: LewisMark::Line },
+                "\\\"" => ChargeContent::Mark { mark: LewisMark::Vacancy },
+                tex => ChargeContent::Text { tex: tex.to_string() },
+            };
+            out.push(Charge { angle, offset, piece, anchor, content });
+        }
+        Ok(out)
     }
 
     /// The piece a bond leaves from by default: the last one going right, the first going left, and for
@@ -554,6 +723,39 @@ fn lewis_marks(spec: &str) -> Vec<Lewis> {
         i += 1;
     }
     out
+}
+
+/// A `\charge` position: degrees, or one of TikZ's anchors on the border of a node.
+fn charge_angle(position: &str) -> Option<f32> {
+    if let Ok(a) = position.parse::<f32>() {
+        return Some(normalize(a));
+    }
+    Some(match position {
+        "east" => 0.0,
+        "north east" => 45.0,
+        "north" => 90.0,
+        "north west" => 135.0,
+        "west" => 180.0,
+        "south west" => -135.0,
+        "south" => -90.0,
+        "south east" => -45.0,
+        _ => return None,
+    })
+}
+
+/// The link of a distant bond: chemfig's bond number (1 to 9) or the bond's characters in braces.
+fn hook_kind(link: &str) -> BondKind {
+    match link.trim().trim_start_matches('{').trim_end_matches('}').trim() {
+        "2" | "=" => BondKind::Double,
+        "3" | "~" => BondKind::Triple,
+        "4" | ">" => BondKind::Wedge,
+        "5" | "<" => BondKind::WedgeBack,
+        "6" | ">:" => BondKind::Hash,
+        "7" | "<:" => BondKind::HashBack,
+        "8" | ">|" => BondKind::Hollow,
+        "9" | "<|" => BondKind::HollowBack,
+        _ => BondKind::Single,
+    }
 }
 
 /// chemfig's angle argument: empty keeps the previous direction, `n` is n × 45°, `:x` is absolute,

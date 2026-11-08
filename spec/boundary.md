@@ -13,6 +13,7 @@ mathra renders **equations**. The goal is to convert 100% of equations; what is 
 | Substitution macros: `\newcommand`, `\renewcommand`, `\providecommand`, `\def` with `#1…#9`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment` without arguments | `\ifx`, `\expandafter`, `\catcode`, `\def` with delimited parameters | replacing text is reading; conditionals and category changes are running a program |
 | Cross-references: `\ref`, `\eqref` and `\cite` show the numbers the caller gives (`labels`, `citations`), `\tag` numbers its line (L-ENT-5) | numbering equations on their own, bibliographies | the document holds the numbers; an equation converted alone can only show what it is given |
 | — | TikZ, pgfplots, `circuitikz` | drawing with coordinates |
+| — | youngtab's Young diagrams (`\yng(2,1)`) | rows of boxes that share their sides and differ in length: a table's vertical rules run the whole column and a `\multicolumn` carries none, so no node of mathra draws them as the package does. `\yng` is refused in strict mode; in tolerant mode it is written in red with its row lengths, with a warning (E-REC-1) |
 
 ## The exception: chemistry
 

@@ -21,9 +21,12 @@ The reader takes, as written: `\chemfig[options]{…}`, `\schemestart … \schem
 | `(…)` | a branch from the current atom; on a ring vertex its first bond points outward |
 | `*n(…)`, `**n(…)` | a ring of n sides (3 to 40), with a circle for `**`; it may list fewer bonds than sides |
 | a ring at a ring vertex | fused: it lies outside and shares the parent's next side, coming back along it |
-| `?`, `?[name]`, `?[name,{=}]` | the first mark waits, the second of the same name draws a bond (single, or the kind given) |
+| `[a,len,dep,arr,tikz]` at the start | the structure's defaults (chemfig manual, section 2.6): every bond whose field is empty takes them; with a default angle, an empty angle is that angle (in a branch from a ring vertex, the vertex's outward direction) instead of the previous bond's |
+| `?`, `?[name]`, `?[name,link,tikz]` | chemfig manual, section 2.8: the first mark of a name is the hook, each later mark of the name draws a bond to it, with the link it gives (a number 1–9 or the bond's characters in braces, `{=}`, `{>}`) and its TikZ options; a mark belongs to the piece it follows, or at the start of a group to its first piece (`-?[a]B`); a lone mark draws nothing |
 | `\lewis{0:2.4|6o,X}` | label X with marks: direction digit 0–7, then `:` pair (default), `.` radical, `|` line, `o` vacancy |
 | `\chemabove{X}{c}`, `\chembelow{X}{c}` | X with c above or below |
+| `\charge{[params]pos[tikz]=c,…}{X}`, `\Charge` | chemfig manual, section 5.8: X with each c around it (C-LAY-9); `pos` is degrees or a TikZ anchor (`north east`) with an optional `:offset`; c is a Lewis shortcut (`\.` radical, `\:` pair, `\|` line, `\"` vacancy) or LaTeX text (`$\oplus$`), and a ⊕, ⊖, `+` or `-` counts in the formula's charge; of the parameters only `extra sep` and the TikZ `anchor` are kept. Outside `\chemfig`, a structure of one atom |
+| `\chemskipalign` | chemfig manual, section 5.4.3: the group's baseline on the bonds' line (C-LAY-8); outside a structure, nothing |
 | `@{name}` | before an atom: the hook a mechanism arrow points at |
 
 ### Schemes
@@ -35,8 +38,10 @@ The reader takes, as written: `\chemfig[options]{…}`, `\schemestart … \schem
 | `\ce{…}`, `$…$`, loose text | a formula or math, typeset by mathra (loose text goes through `\ce`) |
 | `\+` | a plus sign; its spacing arguments are ignored |
 | `\chemname{X}{name}`, `\chemname*`, `\chemname[dim]` | X with its name below |
-| `\subscheme{…}` | its items, in place |
-| `\arrow{type[above][below]}[angle,length]` | a reaction arrow; types `->` `<-` `<=>` `<->>` `<<->` `<->` `=>` `-/>` `0`; labels are LaTeX text with `$…$` and `\ce{…}`, or a `\chemfig{…}` drawn |
+| `\subscheme{…}` | its items, in place; outside a scheme, a scheme of its own |
+| `\chemleft<d>…\chemright<d>`, `\chemup<d>…\chemdown<d>` | chemfig manual, section 6.8: the material between them is one compound, drawn by the LaTeX reader: `\left<d>…\right<d>`, and for `\chemup` the delimiters over and under it (`[` `]` a bracket, `(` `)` a parenthesis, `\{` `\}` a brace, `.` none). A `\chemdown` (or `\chemright`) alone is ignored with a warning (E-REC-9), as chemfig does |
+| `\merge` | chemfig manual, section 6.11: arrows joining compounds named with `\arrow(a--b)`, which mathra does not name: left out with its arguments (E-REC-1; refused in strict mode), also outside a scheme, where chemfig does not define it |
+| `\arrow{type[above][below]}[angle,length]` | a reaction arrow; types `->` `<-` `<=>` `<->>` `<<->` `<->` `=>` `-/>` `0`, and `-U>[above][below][shift][radius][half angle]` (C-SCH-5); labels are LaTeX text with `$…$` and `\ce{…}`, or a `\chemfig{…}` drawn |
 | `\chemmove[opts]{\draw[opts] (a)..controls +(θ:l) and +(θ:l)..(b); …}` | curved arrows between hooks; also `to[out=θ,in=θ]` and `to[bend left=θ]`; `-left to`, `harpoon`, `half`, `fishhook` make a one-electron arrow; lengths in cm, mm, pt, bp, in, ex, em |
 
 ## Reading
@@ -88,6 +93,14 @@ In a ring, the second line of a double bond goes inside the ring and is shortene
 
 A Lewis mark sits in its direction (0 to 7, steps of 45°), 0.17 em beyond the letters of the atom's piece (0.08 em more above and below): two dots 0.18 em apart for a pair, one dot for a radical, a 0.3 em line for a pair line, a small square for a vacancy.
 
+### C-LAY-8 · `\chemskipalign`
+
+A label with `\chemskipalign` has its baseline on the atom's position, the line its bonds come in on, instead of the middle of its letters; bonds stop at the letters' own height and depth.
+
+### C-LAY-9 · Charges
+
+A `\charge` is placed as chemfig places it: the box of its piece (its letters' width, height and depth) is grown by `extra sep`, 1.5 pt (0.15 em); the point at the charge's angle on that box's border, moved `offset` further out along the angle, is where the content's center goes, or, with `anchor=α`, the point of the content's border at α (`anchor=180+\chargeangle` sets the content just outside). A Lewis shortcut is the mark of C-LAY-7 centered there; text is typeset by mathra. An empty atom has a box of no size at its vertex.
+
 ## Schemes
 
 ### C-SCH-1 · Compounds along the arrows
@@ -101,6 +114,10 @@ The first compound is centered on the origin. A compound after an arrow is place
 ### C-SCH-3 · Arrow labels
 
 The label above an arrow goes on its left side, looking along it, and the label below on its right side, 0.24 em from the shaft, centered on the arrow's middle. For a horizontal arrow, above is above. A structure as a label is drawn at 0.85 of its size.
+
+### C-SCH-5 · The `-U>` arrow
+
+As chemfig's `\definearrow` of `-U>` draws it (manual, sections 6.2 and 6.9): a forward arrow, and a circle of radius `radius` × the arrow's length (0.333 by default; negative, on the other side) touching the arrow at its middle on its left. From that point an arc turns back by the half angle (60° by default) toward the label above, drawn only when that label is given, and another turns forward toward the label below, drawn only when it is given and ending in a head. Each label sits beyond its end of the arc, 0.3 em away, on the arc's side. The arrow is long enough (at least 2.6 em) that the ends of the arc are half the labels' widths plus 0.3 em apart. It is read as a forward arrow with its labels.
 
 ### C-SCH-4 · Mechanism arrows
 
@@ -119,5 +136,5 @@ mathra reads a token of `\ce` (up to a space) as a word when it is made of two o
 ## Not yet
 
 - SMILES input, with automatic 2D coordinates (rings first, then chains), so structures can come from databases
-- schemes on several rows, `\subscheme` branching, named compounds as arrow targets (`\arrow(a--b)`)
+- schemes on several rows, `\subscheme` branching, named compounds as arrow targets (`\arrow(a--b)`) and so `\merge`
 - the bond attachment and the charge placement chemists tune by hand (`\chemabove` is read, chemfig's `[,,,,]` atom choice too, but labels like `HO^-` with Lewis marks put the charge where mathra puts a superscript)

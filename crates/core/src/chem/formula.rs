@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use super::model::{Atom, Molecule};
+use super::model::{Atom, ChargeContent, Molecule};
 use crate::input::symbols::ELEMENTS;
 
 /// Group abbreviations of organic chemistry and what they stand for. They take precedence over
@@ -148,8 +148,31 @@ pub fn of(molecule: &Molecule) -> Formula {
         } else {
             label(atom, &mut f);
         }
+        // a \charge that writes a formal charge, ⊕ or ⊖ (a δ+ is not one)
+        for charge in &atom.charges {
+            if let ChargeContent::Text { tex } = &charge.content {
+                f.charge += formal_charge(tex);
+            }
+        }
     }
     f
+}
+
+/// The formal charge a `\charge` writes: `$\oplus$`, `$+$`, `$\scriptstyle\ominus$`, `$2-$`; 0 for
+/// anything else.
+fn formal_charge(tex: &str) -> i32 {
+    let mut t = tex.replace(['$', '{', '}', ' '], "");
+    for style in ["\\scriptscriptstyle", "\\scriptstyle", "\\textstyle", "\\small", "\\scriptsize", "\\tiny"] {
+        t = t.replace(style, "");
+    }
+    let t = t.trim_start_matches('^').replace("\\oplus", "+").replace("\\ominus", "-");
+    let (digits, sign) = t.split_at(t.find(['+', '-']).unwrap_or(t.len()));
+    let n: i32 = if digits.is_empty() { 1 } else { digits.parse().unwrap_or(0) };
+    match sign {
+        "+" => n,
+        "-" => -n,
+        _ => 0,
+    }
 }
 
 /// Counts what a label says: `CH_2OH` is C, H₂, O, H; `(CH_2)_3` repeats; `NH_3^+` adds a charge.

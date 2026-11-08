@@ -360,10 +360,11 @@ fn a_muskip_register_alone_is_an_ignored_assignment() {
 #[test]
 fn unknown_commands_are_never_cut_into_a_known_one_and_letters() {
     for (tex, text) in [
-        (r"\charge{90=\|}{X}", r"\charge90 = ‖X"),
-        (r"\chemleft( x \chemright)", r"\chemleft(x\chemright)"),
-        (r"\chemup", r"\chemup"),
-        (r"\chemskipalign", r"\chemskipalign"),
+        // (#214 made the issue's \charge, \chemleft, \chemup and \chemskipalign real chemfig commands;
+        // names that start with \ch and are still unknown stand in for them)
+        (r"\charged{X}", r"\chargedX"),
+        (r"\chembond( x \chemrel)", r"\chembond(x\chemrel)"),
+        (r"\chemtext", r"\chemtext"),
         (r"\subsection", r"\subsection"),
         (r"\section", r"\section"),
         (r"\nelement", r"\nelement"),
