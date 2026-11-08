@@ -638,6 +638,8 @@ fn decoration(mark: &Node, above: bool, accent: bool) -> Option<Decoration> {
         ('˚' | '\u{030A}', true) => Decoration::Accent('\u{030A}', false, false),
         ('⏜' | '⌒', true) => Decoration::Accent('⏜', true, false),
         ('⏝', false) => Decoration::Accent('⏝', true, true),
+        ('⏠', true) => Decoration::Accent('⏠', true, false),
+        ('⏡', false) => Decoration::Accent('⏡', true, true),
         _ => return None,
     })
 }

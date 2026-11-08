@@ -1627,7 +1627,8 @@ impl Reader<'_> {
             let variant = if symbols::greek_upright(other) && self.variant == Variant::Italic { Variant::Upright } else { self.variant };
             Node::Identifier { name: letter.to_string(), variant }
         } else if let Some((accent, stretchy)) = symbols::accent(other) {
-            Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: false }
+            // the "under" ones (⏝, ⏡) go below the base
+            Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: matches!(accent, '⏝' | '⏡') }
         } else if let Some(Symbol { symbol, class }) = symbols::command(other) {
             Node::Operator { symbol, class }
         } else {
