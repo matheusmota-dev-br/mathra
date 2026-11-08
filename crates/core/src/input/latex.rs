@@ -42,7 +42,7 @@ pub type Labels = std::collections::BTreeMap<String, String>;
 pub fn read_in_document(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont, labels: &Labels, citations: &Labels) -> Result<(Node, Labels), Error> {
     let clean = prepare(tex, registry, strict);
     let c: Vec<char> = clean.chars().collect();
-    let mut macros = Macros { max_size: c.len() + MAX_GROWTH, json_text: json_elsewhere(&c), ..Macros::default() };
+    let mut macros = Macros { max_size: c.len() + MAX_GROWTH, json_text: json_signs(tex, &c), ..Macros::default() };
     let mut refs = References { given: labels.clone(), citations: citations.clone(), ..References::default() };
     let mut reader = Reader { c, pos: 0, locale, registry, macros: &mut macros, refs: &mut refs, variant: Variant::Italic, strict, font };
     let body = reader.top()?;
@@ -108,8 +108,8 @@ struct Macros {
     depth: usize,
     /// mathtools' `\shortvdotswithin` wrote the `\vdotswithin` that comes next: that one is short.
     short_row: bool,
-    /// E-REC-2, [`json_elsewhere`]: `None` when the input has a real tab or line break (a JSON string has
-    /// none, so it shows no escape); otherwise, does it show a JSON escape that cannot be a command.
+    /// E-REC-2, [`json_signs`]: `None` when the input has a real tab or line break (a JSON string has
+    /// none, so it shows no escape); otherwise, does the input show a sign of JSON ([`json_evidence`]).
     json_text: Option<bool>,
 }
 
@@ -5511,30 +5511,42 @@ const SHORT_TEXT_COMMANDS: [&str; 3] = ["th", "ng", "rq"];
 
 impl Reader<'_> {
     /// E-REC-2: an unknown command `\n…`, `\r…` or `\t…` that is really a JSON escape left in the text (the
-    /// escape and the letters after it), as `spec/tolerance.md` defines it: the letter alone (`x\n2`), one or
-    /// two letters after it (`x\nb`, `a\tx`) unless the name is a LaTeX text command (`\th`), or a longer
-    /// run when the input shows another JSON escape (`a\n b\nwhere`). Otherwise the name is a command
-    /// mathra does not know (`\real`, `\rowcolor`, `\newcolumntype`): E-REC-1.
+    /// escape and the letters after it), as `spec/tolerance.md` defines it: the letter alone (`x\n2`), never
+    /// a command; letters after it (`x\nb`, `a\tx`, `\nwhere`) only when the input shows another sign of
+    /// JSON (#253, [`json_evidence`]), and not when the name is a LaTeX text command (`\th`). Otherwise the
+    /// name is a command mathra does not know (`\nm`, `\real`, `\rowcolor`): E-REC-1.
     #[inline(never)]
     fn json_escape<'n>(&self, name: &'n str) -> Option<(char, &'n str)> {
         let escape = name.chars().next().filter(|c| matches!(c, 'n' | 'r' | 't'))?;
         let remainder = &name[1..];
-        let elsewhere = self.macros.json_text?;
+        let signs = self.macros.json_text?;
         let json = match remainder.chars().count() {
             0 => true,
-            1 | 2 => !SHORT_TEXT_COMMANDS.contains(&name),
-            _ => elsewhere,
+            1 | 2 => signs && !SHORT_TEXT_COMMANDS.contains(&name),
+            _ => signs,
         };
         json.then_some((escape, remainder))
     }
 }
 
-/// Does the text show a JSON escape that cannot be a command: `\n`, `\r` or `\t` before something that is
-/// not a letter, `\"`, or `\u` and four hexadecimal digits? `None` when it has a real tab or line break: a
-/// JSON string never has one, so the text is not JSON and shows no escape (#208).
-fn json_elsewhere(c: &[char]) -> Option<bool> {
+/// Does the input (`original`, as it came) show a sign of JSON ([`json_evidence`])? `None` when the text
+/// read (`c`) has a real tab or line break: a JSON string never has one, so the text is not JSON and shows
+/// no escape (#208).
+fn json_signs(original: &str, c: &[char]) -> Option<bool> {
     if c.iter().any(|x| matches!(x, '\t' | '\r' | '\n')) {
         return None;
+    }
+    Some(json_evidence(&original.chars().collect::<Vec<_>>()))
+}
+
+/// #253: does the text show a sign of JSON that hand-written LaTeX never has? A control character JSON
+/// makes of a backslash and a letter that no one types (form feed from `\frac`, backspace from `\beta`,
+/// vertical tab from `\vec`, bell from `\alpha`), `\"`, or `\u` and four hexadecimal digits. A tab or a
+/// line break is not one (an author types them), nor is `\n`, `\r` or `\t` itself: a lost backslash is
+/// rebuilt from them only when the input shows one of these.
+fn json_evidence(c: &[char]) -> bool {
+    if c.iter().any(|x| matches!(x, '\u{0C}' | '\u{08}' | '\u{0B}' | '\u{07}')) {
+        return true;
     }
     let mut i = 0;
     while i + 1 < c.len() {
@@ -5543,20 +5555,18 @@ fn json_elsewhere(c: &[char]) -> Option<bool> {
             continue;
         }
         let next = c[i + 1];
-        let after = c.get(i + 2).copied();
         let escape = match next {
-            'n' | 'r' | 't' => !after.is_some_and(|a| a.is_ascii_alphabetic()),
             '"' => true,
             'u' => c.len() >= i + 6 && c[i + 2..i + 6].iter().all(char::is_ascii_hexdigit),
             _ => false,
         };
         if escape {
-            return Some(true);
+            return true;
         }
         // a doubled backslash is one token (a line break, or an escaped backslash)
         i += if next == '\\' { 2 } else { 1 };
     }
-    Some(false)
+    false
 }
 
 /// Does mathra know this command? Used to rebuild a command whose backslash JSON ate (`repair_controls`).
@@ -5679,7 +5689,8 @@ pub fn undo_doubled_backslashes(s: &str) -> Option<String> {
 /// `\times`, `\right`, `\neq` become tab, CR and line feed. Rebuilds the command when the letters that follow
 /// it make a known command (KaTeX's texvc aliases aside: a tab before `h` is not `\th`); otherwise the control
 /// character becomes a space. A tab or a line break is whitespace, as in TeX, unless the input looks
-/// JSON-decoded ([`json_decoded`]); the other control characters are never the author's whitespace.
+/// JSON-decoded ([`json_decoded`]) and shows another sign of JSON ([`json_evidence`], #253); the other
+/// control characters are never the author's whitespace.
 fn repair_controls(s: &str) -> Option<String> {
     let letter_of = |c: char| match c {
         '\u{0C}' => Some('f'),
@@ -5695,7 +5706,7 @@ fn repair_controls(s: &str) -> Option<String> {
         return None;
     }
     let c: Vec<char> = s.chars().collect();
-    let whitespace_rebuilt = json_decoded(&c);
+    let whitespace_rebuilt = json_decoded(&c) && json_evidence(&c);
     let mut output = String::with_capacity(s.len() + 8);
     let mut changed = false;
     for (i, ch) in c.iter().enumerate() {
