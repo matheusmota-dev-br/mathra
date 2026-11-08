@@ -61,7 +61,7 @@ fn token_elements() {
     assert_eq!(first("<mi mathvariant=\"bold\">AB</mi>"), Node::Identifier { name: "AB".into(), variant: Variant::Bold });
     assert_eq!(first("<mi mathvariant=\"bold\">v</mi>"), Node::Identifier { name: "v".into(), variant: Variant::Bold });
     assert_eq!(first("<mi> x </mi>"), Node::Identifier { name: "x".into(), variant: Variant::Italic });
-    assert_eq!(first("<mn>3.14</mn>"), Node::Number { value: "3.14".into(), group: false, thousands: None });
+    assert_eq!(first("<mn>3.14</mn>"), Node::Number { value: "3.14".into(), group: false, thousands: None, variant: Variant::Upright });
     assert!(matches!(first("<mo>∑</mo>"), Node::LargeOperator { symbol: '∑', .. }));
     assert!(matches!(first("<mo>lim</mo>"), Node::Function { limits: true, .. }));
     assert_eq!(mml("<mtext>if </mtext><ms>s</ms>").text, "if\"s\"");
@@ -73,9 +73,9 @@ fn token_elements() {
 fn numbers_follow_the_locale() {
     let pt = |m: &str| convert(&format!("<math>{m}</math>"), &Options { input: Input::MathMl, locale: Locale::PtBr, ..Options::default() }).unwrap();
     // a decimal comma in pt-BR (L-NUM-1), thousands with a dot (L-NUM-3)
-    assert_eq!(pt("<mn>3,14</mn>").tree.children()[0], Node::Number { value: "3.14".into(), group: false, thousands: None });
-    assert_eq!(pt("<mn>1.000</mn>").tree.children()[0], Node::Number { value: "1000".into(), group: false, thousands: Some('.') });
-    assert_eq!(first("<mn>1,000</mn>"), Node::Number { value: "1000".into(), group: false, thousands: Some(',') });
+    assert_eq!(pt("<mn>3,14</mn>").tree.children()[0], Node::Number { value: "3.14".into(), group: false, thousands: None, variant: Variant::Upright });
+    assert_eq!(pt("<mn>1.000</mn>").tree.children()[0], Node::Number { value: "1000".into(), group: false, thousands: Some('.'), variant: Variant::Upright });
+    assert_eq!(first("<mn>1,000</mn>"), Node::Number { value: "1000".into(), group: false, thousands: Some(','), variant: Variant::Upright });
     assert_eq!(pt("<mn>3.14</mn>").text, "3,14");
 }
 

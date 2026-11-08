@@ -108,8 +108,9 @@ struct Macros {
     depth: usize,
     /// mathtools' `\shortvdotswithin` wrote the `\vdotswithin` that comes next: that one is short.
     short_row: bool,
-    /// The input, as it came, shows a JSON escape that cannot be a command (E-REC-2, `json_elsewhere`).
-    json_text: bool,
+    /// E-REC-2, [`json_elsewhere`]: `None` when the input has a real tab or line break (a JSON string has
+    /// none, so it shows no escape); otherwise, does it show a JSON escape that cannot be a command.
+    json_text: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -170,6 +171,7 @@ fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
             registry.warn(rules::E_REC_9, format!("column {column}: '%' starts a comment in TeX (write \\% for a percent sign); drawn as a percent sign"));
         }
     }
+    control_spaces(&mut s);
     if !strict {
         if let Some(repaired) = repair_controls(&s) {
             registry.warn(rules::E_REC_2, "JSON control character in place of the backslash (\\frac stored unescaped): command rebuilt");
@@ -648,7 +650,7 @@ impl Reader<'_> {
         if written.contains(',') {
             self.registry.note(rules::L_NUM_1, format!("'{written}': comma between digits read as decimal separator ({value})"));
         }
-        Node::Number { value, group: false, thousands: None }
+        Node::Number { value, group: false, thousands: None, variant: self.variant.of_digits() }
     }
 
     /// L-NUM-3: `1.000` and `12.345,67` in pt-BR, `1,000` and `12,345.67` in English: the locale's thousands
@@ -697,7 +699,7 @@ impl Reader<'_> {
         let written: String = self.c[self.pos..i].iter().collect();
         self.pos = i;
         self.registry.note(rules::L_NUM_3, format!("'{written}': '{thousands}' separa milhares ({value})"));
-        Some(Node::Number { value, group: false, thousands: Some(thousands) })
+        Some(Node::Number { value, group: false, thousands: Some(thousands), variant: self.variant.of_digits() })
     }
 
     /// Argument of a command or script: a group or a single token.
@@ -723,7 +725,7 @@ impl Reader<'_> {
             }
             Some(c) if c.is_ascii_digit() => {
                 self.pos += 1;
-                Ok(Node::Number { value: c.to_string(), group: false, thousands: None })
+                Ok(Node::Number { value: c.to_string(), group: false, thousands: None, variant: self.variant.of_digits() })
             }
             Some(_) => Ok(Node::row(self.atom()?).simplify()),
         }
@@ -1067,7 +1069,15 @@ impl Reader<'_> {
                     self.pos += 1;
                 }
                 let measure = if self.c.get(self.pos).is_some_and(|c| *c == '{') || name.starts_with('h') && name != "hskip" { self.raw_text()? } else { self.raw_measure() };
-                Node::Space { em: measure_em(&measure).ok_or(Error::Syntax { column: col, message: format!("unrecognized measure: {measure}") })? }
+                match self.space_measure(&measure, col)? {
+                    Some(em) => Node::Space { em },
+                    None => return Ok(Some(None)),
+                }
+            }
+            // #206: plain TeX's math glue registers, which only an assignment names outside a skip
+            "thinmuskip" | "medmuskip" | "thickmuskip" => {
+                self.muskip_assignment(name, col)?;
+                return Ok(Some(None));
             }
             _ => return Ok(None),
         };
@@ -1646,9 +1656,7 @@ impl Reader<'_> {
                     self.raw_optional();
                 }
                 let raw = self.raw_text()?;
-                let code = raw.trim().trim_start_matches("0x").trim_start_matches(['x', 'X', '#', 'U', '+']);
-                let c = u32::from_str_radix(code, 16).ok().and_then(char::from_u32);
-                match c {
+                match unicode_code_point(&raw) {
                     Some(c) => Node::Operator { symbol: c, class: Class::Ord },
                     None => return self.error(col, format!("\\unicode{{{raw}}}: invalid code point")),
                 }
@@ -1948,6 +1956,25 @@ impl Reader<'_> {
     fn raw_measure(&mut self) -> String {
         self.skip_spaces();
         let mut s = String::new();
+        // #206: a glue register, maybe with a factor: \thinmuskip, 2\medmuskip, -\thickmuskip
+        let factor: String = self.c[self.pos..].iter().take_while(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')).collect();
+        let at = self.pos + factor.chars().count();
+        if self.c.get(at) == Some(&'\\') {
+            let name: String = self.c[at + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
+            if !name.is_empty() {
+                self.pos = at + 1 + name.chars().count();
+                // #213: a box dimension takes its register, a number or a name (\wd0, \ht\mybox)
+                if matches!(name.as_str(), "wd" | "ht" | "dp") {
+                    let rest = &self.c[self.pos..];
+                    let digits = rest.iter().take_while(|c| c.is_ascii_digit()).count();
+                    let len = if digits == 0 && rest.first() == Some(&'\\') { 1 + rest[1..].iter().take_while(|c| c.is_ascii_alphabetic()).count() } else { digits };
+                    let register: String = rest[..len].iter().collect();
+                    self.pos += len;
+                    return format!("{factor}\\{name}{register}");
+                }
+                return format!("{factor}\\{name}");
+            }
+        }
         while let Some(c) = self.current() {
             if c.is_ascii_digit() || c == '.' || c == '-' || c == ',' || (c.is_ascii_alphabetic() && s.len() < 12) {
                 s.push(c);
@@ -2832,6 +2859,16 @@ impl Reader<'_> {
                     current.push(typographic);
                     i += if double { 2 } else { 1 };
                 }
+                // #212: a line break or a tab is a space, as in TeX; with the spaces around it (a line's
+                // indentation, a blank line) it is one space
+                '\n' | '\r' | '\t' => {
+                    let end = current.trim_end_matches(' ').len();
+                    current.truncate(end);
+                    current.push(' ');
+                    while c.get(i).is_some_and(|x| matches!(x, ' ' | '\n' | '\r' | '\t')) {
+                        i += 1;
+                    }
+                }
                 other => {
                     current.push(other);
                     i += 1;
@@ -2986,7 +3023,7 @@ impl Reader<'_> {
             let product = self.si_product(inter)?;
             let mut children = joined_units(&numerator, false, &product);
             if !denominator.is_empty() {
-                let one = || Node::Number { value: "1".into(), group: false, thousands: None };
+                let one = || Node::Number { value: "1".into(), group: false, thousands: None, variant: Variant::Upright };
                 match mode {
                     PerMode::Power => {
                         if !children.is_empty() {
@@ -3175,7 +3212,7 @@ impl Reader<'_> {
                     d.push(c[i]);
                     i += 1;
                 }
-                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None }));
+                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None, variant: Variant::Upright }));
             } else if ch == '^' || ch == '_' {
                 i += 1;
                 let payload = if c.get(i) == Some(&'{') {
@@ -3262,7 +3299,7 @@ impl Reader<'_> {
     /// Subscript in a formula: a number, a state (`_{(aq)}`) as text, anything else as math (`NO_x`).
     fn chemical_subscript(&mut self, payload: &str) -> R<Node> {
         if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
-            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None });
+            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None, variant: Variant::Upright });
         }
         if payload.starts_with('(') {
             return Ok(Node::Text { parts: vec![TextPart::Text(payload.to_string())] });
@@ -3473,16 +3510,16 @@ fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
     } else if c.get(*i) == Some(&'/') && c.get(*i + 1).is_some_and(char::is_ascii_digit) {
         *i += 1;
         let den = digits(i);
-        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
+        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None, variant: Variant::Upright });
         return Node::Fraction { numerator_align: None, num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
     }
-    Node::Number { value, group: false, thousands: None }
+    Node::Number { value, group: false, thousands: None, variant: Variant::Upright }
 }
 
 /// Charge or oxidation state: `2-` → 2−, `.-` → •− (radical), `II` → II.
 fn charge(payload: &str) -> Node {
     if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
-        return Node::Number { value: payload.to_string(), group: false, thousands: None };
+        return Node::Number { value: payload.to_string(), group: false, thousands: None, variant: Variant::Upright };
     }
     let text: String = payload
         .chars()
@@ -4119,6 +4156,9 @@ fn box_length(m: &str) -> Option<BoxLength> {
 
 fn measure_em(m: &str) -> Option<f32> {
     let m = m.trim().replace(',', ".");
+    if let Some((factor, register)) = m.split_once('\\') {
+        return muskip_em(factor.trim(), register.trim());
+    }
     let units = [("em", 1.0), ("ex", 0.45), ("pt", 0.1), ("mu", 1.0 / 18.0), ("cm", 2.845), ("mm", 0.2845), ("in", 7.227), ("px", 0.075)];
     for (u, f) in units {
         if let Some(v) = m.strip_suffix(u) {
@@ -4128,7 +4168,61 @@ fn measure_em(m: &str) -> Option<f32> {
     None
 }
 
+/// #206: plain TeX's math glue (plain.tex: `\thinmuskip=3mu`, `\medmuskip=4mu plus 2mu minus 4mu`,
+/// `\thickmuskip=5mu plus 5mu`; the stretch and shrink are ignored), times a factor (`2\thinmuskip`).
+fn muskip_em(factor: &str, register: &str) -> Option<f32> {
+    let mu = match register {
+        "thinmuskip" => 3.0,
+        "medmuskip" => 4.0,
+        "thickmuskip" => 5.0,
+        _ => return None,
+    };
+    let factor = match factor {
+        "" | "+" => 1.0,
+        "-" => -1.0,
+        f => f.parse::<f32>().ok().filter(|f| f.is_finite())?,
+    };
+    Some(factor * mu / 18.0)
+}
+
 impl Reader<'_> {
+    /// #206: the width of `\mskip`, `\hskip`, `\mspace`, `\kern`…; a measure mathra cannot read is no space
+    /// in tolerant mode (E-REC-9) and an error in strict mode.
+    #[inline(never)]
+    fn space_measure(&mut self, measure: &str, col: usize) -> R<Option<f32>> {
+        match measure_em(measure) {
+            Some(em) => Ok(Some(em)),
+            None => {
+                self.tolerate(rules::E_REC_9, col, format!("unrecognized measure: {}", measure.trim()), "no space")?;
+                Ok(None)
+            }
+        }
+    }
+
+    /// #206: `\thinmuskip`, `\medmuskip` or `\thickmuskip` outside a skip: an assignment (`\thinmuskip=2mu`),
+    /// which mathra does not honor, read and ignored in tolerant mode (E-REC-9); an error in strict mode.
+    #[inline(never)]
+    fn muskip_assignment(&mut self, name: &str, col: usize) -> R<()> {
+        self.skip_spaces();
+        let value = if self.current() == Some('=') {
+            self.pos += 1;
+            let mut value = self.raw_measure();
+            // the stretch and shrink of the glue: `plus 2mu minus 4mu`
+            for word in ["plus", "minus"] {
+                self.skip_spaces();
+                let w: Vec<char> = word.chars().collect();
+                if self.c[self.pos..].starts_with(&w) {
+                    self.pos += w.len();
+                    value = format!("{value} {word} {}", self.raw_measure());
+                }
+            }
+            format!("={value}")
+        } else {
+            String::new()
+        };
+        self.tolerate(rules::E_REC_9, col, format!("\\{name}{value}: math glue is not changed"), "ignored")
+    }
+
     /// `\class{…}{…}` and its kin: the content with the attributes [`html_attributes`] keeps.
     fn html_attributes_command(&mut self, name: &str, col: usize) -> R<Node> {
         let value = self.raw_text()?;
@@ -4194,7 +4288,7 @@ impl Reader<'_> {
                         format!("\\Newextarrow{{\\{target}}}: U+{:04X} has no extensible form in mathra", symbol as u32),
                         "drawn with its labels over and under it, not stretched",
                     )?;
-                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{{:X}}}}}}}}}", symbol as u32)
+                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{x{:X}}}}}}}}}", symbol as u32)
                 } else {
                     format!("\\{known}[#1]{{#2}}")
                 };
@@ -4362,7 +4456,7 @@ fn siunitx_uncertainty(raw: &str) -> Option<(Node, bool)> {
     let at = children.iter().position(|n| matches!(n, Node::Number { .. }))? + 1;
     let compact = [
         Node::Operator { symbol: '(', class: Class::Open },
-        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None },
+        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None, variant: Variant::Upright },
         Node::Operator { symbol: ')', class: Class::Close },
     ];
     children.splice(at..at, compact);
@@ -4388,7 +4482,7 @@ fn siunitx_number(raw: &str, group: bool) -> Option<Node> {
     if let Some(s) = sign {
         children.push(Node::Operator { symbol: if s == '-' { '−' } else { '+' }, class: Class::Ord });
     }
-    children.push(Node::Number { value, group, thousands: None });
+    children.push(Node::Number { value, group, thousands: None, variant: Variant::Upright });
     if let Some(e) = exponent {
         let (sign_e, digits) = match e.strip_prefix(['-', '+']) {
             Some(d) => (e.starts_with('-'), d.to_string()),
@@ -4401,10 +4495,10 @@ fn siunitx_number(raw: &str, group: bool) -> Option<Node> {
         if sign_e {
             exp.push(Node::Operator { symbol: '−', class: Class::Ord });
         }
-        exp.push(Node::Number { value: digits, group: false, thousands: None });
+        exp.push(Node::Number { value: digits, group: false, thousands: None, variant: Variant::Upright });
         children.push(Node::Operator { symbol: '×', class: Class::Bin });
         children.push(Node::Scripts {
-            base: Box::new(Node::Number { value: "10".into(), group: false, thousands: None }),
+            base: Box::new(Node::Number { value: "10".into(), group: false, thousands: None, variant: Variant::Upright }),
             sup: Some(Box::new(Node::row(exp).simplify())),
             sub: None,
         });
@@ -4912,7 +5006,7 @@ impl Reader<'_> {
                     }
                     let c = self.current().ok_or(Error::Syntax { column: col, message: "\\char` without a character".into() })?;
                     self.pos += 1;
-                    return Ok(Some(format!("\\unicode{{{:X}}}", c as u32)));
+                    return Ok(Some(format!("\\unicode{{x{:X}}}", c as u32)));
                 }
                 let (radix, digits): (u32, fn(char) -> bool) = match self.current() {
                     Some('"') => (16, |c| c.is_ascii_hexdigit()),
@@ -4925,7 +5019,7 @@ impl Reader<'_> {
                 let code: String = self.c[self.pos..].iter().take_while(|c| digits(**c)).collect();
                 self.pos += code.chars().count();
                 match u32::from_str_radix(&code, radix).ok().and_then(char::from_u32).filter(|c| !c.is_control()) {
-                    Some(c) => format!("\\unicode{{{:X}}}", c as u32),
+                    Some(c) => format!("\\unicode{{x{:X}}}", c as u32),
                     None => return self.error(col, format!("\\char needs a character code, not \"{code}\"")),
                 }
             }
@@ -4987,9 +5081,9 @@ impl Reader<'_> {
                 }
             }
             // physics' vector calculus: the nabla in bold (U+1D6C1), like the package
-            "grad" | "gradient" => "\\unicode{1D6C1} ".into(),
-            "divergence" => "\\unicode{1D6C1} \\cdot ".into(),
-            "curl" | "rot" => "\\unicode{1D6C1} \\times ".into(),
+            "grad" | "gradient" => "\\unicode{x1D6C1} ".into(),
+            "divergence" => "\\unicode{x1D6C1} \\cdot ".into(),
+            "curl" | "rot" => "\\unicode{x1D6C1} \\times ".into(),
             "laplacian" => "\\nabla^{2} ".into(),
             "cross" | "crossproduct" | "cp" => "\\times ".into(),
             "vdot" | "dotproduct" => "\\cdot ".into(),
@@ -5255,7 +5349,7 @@ impl Reader<'_> {
             "asin" | "acos" | "atan" | "acsc" | "asec" | "acot" => format!("\\operatorname{{{name}}}"),
             "asine" | "acosine" | "atangent" | "acosecant" | "asecant" | "acotangent" => format!("\\operatorname{{a{}}}", physics_long_name(&name[1..]).unwrap_or_default()),
             // physics' bold nabla (its default, bolddel), as \grad draws it
-            "vnabla" | "gradientnabla" => "\\unicode{1D6C1} ".into(),
+            "vnabla" | "gradientnabla" => "\\unicode{x1D6C1} ".into(),
             // the upright d of the package's default (uprightdiff)
             "diffd" => "\\mathrm{d}".into(),
             // physics' \real and \imaginary are LaTeX's \Re and \Im (ℜ, ℑ), kept by the package when it
@@ -5290,13 +5384,6 @@ impl Reader<'_> {
         if self.strict {
             return self.error(col, format!("unsupported command: \\{name}"));
         }
-        // \nfoo where \foo is a relation: an amssymb-style negation mathra lacks, not a JSON \n. Reading it as a
-        // line break would draw \foo itself, the opposite of what was written
-        if let Some(remainder) = name.strip_prefix('n').filter(|r| symbols::command(r).is_some_and(|s| s.class == Class::Rel)) {
-            self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\not\\{remainder}"))?;
-            self.inject(start, &format!("\\not\\{remainder} "), col)?;
-            return Ok(None);
-        }
         if let Some((escape, remainder)) = self.json_escape(name) {
             let read = if escape == 't' { "a space" } else { "a line break" };
             self.tolerate(rules::E_REC_2, col, format!("\\{name}"), &format!("JSON '\\{escape}' read as {read}"))?;
@@ -5312,16 +5399,10 @@ impl Reader<'_> {
                 return Ok(None);
             }
         }
-        // \vertA, \alphax: a space forgotten after a known command
-        // ASCII names only: a character like '∠' after the backslash has no prefix to cut
-        for cut in (2..if name.is_ascii() { name.len() } else { 0 }).rev() {
-            let (prefix, remainder) = name.split_at(cut);
-            // #174: \text… names are textcomp's symbols (\textcelsius, \textbaht), not \text and a word
-            if known(prefix) && prefix != "text" {
-                self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\{prefix} {remainder}"))?;
-                self.inject(start, &format!("\\{prefix} {remainder}"), col)?;
-                return Ok(None);
-            }
+        if let Some(accent) = self.text_accent_in_math(name) {
+            self.tolerate(rules::E_REC_1, col, format!("text accent '\\{name}' in math"), &format!("read as \\{accent}"))?;
+            self.inject(start, &format!("\\{accent} "), col)?;
+            return Ok(None);
         }
         if name.chars().count() == 1 && !name.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
             self.tolerate(rules::E_REC_1, col, format!("'\\{name}'"), "backslash before a symbol ignored")?;
@@ -5360,6 +5441,26 @@ fn physics_fraction(flat: bool, numerator: String, denominator: String) -> Strin
     }
 }
 
+impl Reader<'_> {
+    /// #213: a text accent (`\'`, `` \` ``, `\^`, `\"`, `\~`, `\=`, `\.`) before a letter in math, an error
+    /// in TeX: the math accent KaTeX reads it as (`\'e` is `\acute e`).
+    #[inline(never)]
+    fn text_accent_in_math(&self, name: &str) -> Option<&'static str> {
+        let accent = match name {
+            "'" => "acute",
+            "`" => "grave",
+            "^" => "hat",
+            "\"" => "ddot",
+            "~" => "tilde",
+            "=" => "bar",
+            "." => "dot",
+            _ => return None,
+        };
+        let next = self.c[self.pos..].iter().find(|c| !matches!(c, ' ' | '{'))?;
+        next.is_alphabetic().then_some(accent)
+    }
+}
+
 /// LaTeX text commands of one or two letters after an n, r or t: never a JSON escape (`\th` is þ).
 const SHORT_TEXT_COMMANDS: [&str; 3] = ["th", "ng", "rq"];
 
@@ -5373,18 +5474,23 @@ impl Reader<'_> {
     fn json_escape<'n>(&self, name: &'n str) -> Option<(char, &'n str)> {
         let escape = name.chars().next().filter(|c| matches!(c, 'n' | 'r' | 't'))?;
         let remainder = &name[1..];
+        let elsewhere = self.macros.json_text?;
         let json = match remainder.chars().count() {
             0 => true,
             1 | 2 => !SHORT_TEXT_COMMANDS.contains(&name),
-            _ => self.macros.json_text,
+            _ => elsewhere,
         };
         json.then_some((escape, remainder))
     }
 }
 
 /// Does the text show a JSON escape that cannot be a command: `\n`, `\r` or `\t` before something that is
-/// not a letter, `\"`, or `\u` and four hexadecimal digits?
-fn json_elsewhere(c: &[char]) -> bool {
+/// not a letter, `\"`, or `\u` and four hexadecimal digits? `None` when it has a real tab or line break: a
+/// JSON string never has one, so the text is not JSON and shows no escape (#208).
+fn json_elsewhere(c: &[char]) -> Option<bool> {
+    if c.iter().any(|x| matches!(x, '\t' | '\r' | '\n')) {
+        return None;
+    }
     let mut i = 0;
     while i + 1 < c.len() {
         if c[i] != '\\' {
@@ -5400,15 +5506,15 @@ fn json_elsewhere(c: &[char]) -> bool {
             _ => false,
         };
         if escape {
-            return true;
+            return Some(true);
         }
         // a doubled backslash is one token (a line break, or an escaped backslash)
         i += if next == '\\' { 2 } else { 1 };
     }
-    false
+    Some(false)
 }
 
-/// Does mathra know this command? Used to recover `\vertA` as `\vert A`.
+/// Does mathra know this command? Used to rebuild a command whose backslash JSON ate (`repair_controls`).
 fn known(name: &str) -> bool {
     symbols::command(name).is_some()
         || symbols::greek(name).is_some()
@@ -5525,8 +5631,10 @@ pub fn undo_doubled_backslashes(s: &str) -> Option<String> {
 }
 
 /// `\frac` stored in JSON without escaping the backslash becomes form feed + "rac"; `\begin` becomes backspace + "egin";
-/// `\times`, `\right`, `\neq` become tab, CR and line feed. Rebuilds the command when the following
-/// letters form a known command; otherwise the control character becomes a space.
+/// `\times`, `\right`, `\neq` become tab, CR and line feed. Rebuilds the command when the letters that follow
+/// it make a known command (KaTeX's texvc aliases aside: a tab before `h` is not `\th`); otherwise the control
+/// character becomes a space. A tab or a line break is whitespace, as in TeX, unless the input looks
+/// JSON-decoded ([`json_decoded`]); the other control characters are never the author's whitespace.
 fn repair_controls(s: &str) -> Option<String> {
     let letter_of = |c: char| match c {
         '\u{0C}' => Some('f'),
@@ -5542,16 +5650,19 @@ fn repair_controls(s: &str) -> Option<String> {
         return None;
     }
     let c: Vec<char> = s.chars().collect();
+    let whitespace_rebuilt = json_decoded(&c);
     let mut output = String::with_capacity(s.len() + 8);
     let mut changed = false;
     for (i, ch) in c.iter().enumerate() {
-        let Some(letter) = letter_of(*ch) else {
+        let letter = letter_of(*ch).filter(|_| whitespace_rebuilt || !matches!(ch, '\t' | '\r' | '\n'));
+        let Some(letter) = letter else {
             output.push(*ch);
             continue;
         };
         let following: String = c[i + 1..].iter().take_while(|x| x.is_ascii_alphabetic()).collect();
         let name = format!("{letter}{following}");
-        let rebuild = (1..=name.len()).rev().any(|n| known(&name[..n]) && n > 1);
+        // the whole run of letters, as TeX reads a command: "and" + line break + "exhaust" is not \ne xhaust
+        let rebuild = name.len() > 1 && known(&name) && !TEXVC_ALIASES.contains(&name.as_str());
         if rebuild {
             output.push('\\');
             output.push(letter);
@@ -5561,6 +5672,54 @@ fn repair_controls(s: &str) -> Option<String> {
         }
     }
     changed.then_some(output)
+}
+
+/// KaTeX's texvc aliases a lost backslash could rebuild (#172): short names that ordinary text after a tab
+/// or a line break also makes (`\th` from a tab and `h`).
+const TEXVC_ALIASES: [&str; 9] = ["alef", "alefsym", "arcctg", "bull", "rang", "rarr", "rArr", "real", "th"];
+
+/// Does the text look JSON-decoded with its backslashes lost (#208)? Only when every tab and line break
+/// stands where a lost backslash would, right before a letter (none ends a line, makes a blank line or
+/// indents the next one; the whitespace that ends the input aside), and no command starting with `n`, `r`
+/// or `t` kept its backslash: JSON would have eaten that one too (`\to` becomes tab + "o").
+fn json_decoded(c: &[char]) -> bool {
+    let end = c.iter().rposition(|x| !x.is_whitespace()).map_or(0, |e| e + 1);
+    let c = &c[..end];
+    let mut i = 0;
+    while i < c.len() {
+        let next = c.get(i + 1).copied();
+        match c[i] {
+            '\t' | '\r' | '\n' if !next.is_some_and(|n| n.is_ascii_alphabetic()) => return false,
+            '\\' if matches!(next, Some('n' | 'r' | 't')) => return false,
+            // a doubled backslash is one token (a line break, or an escaped backslash)
+            '\\' if next == Some('\\') => i += 1,
+            _ => {}
+        }
+        i += 1;
+    }
+    true
+}
+
+/// #211: a backslash before a line break or a tab is a control space, `\ `, as in plain TeX (`\\` before
+/// a line break is a line break and then whitespace).
+#[inline(never)]
+fn control_spaces(s: &mut String) {
+    if !s.contains(['\n', '\r', '\t']) {
+        return;
+    }
+    let mut backslashes = 0;
+    *s = s
+        .chars()
+        .map(|c| {
+            let odd = backslashes % 2 == 1;
+            backslashes = if c == '\\' { backslashes + 1 } else { 0 };
+            if odd && matches!(c, '\n' | '\r' | '\t') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
 }
 
 /// The plain character of a Unicode superscript or subscript: every character whose Unicode
@@ -5711,4 +5870,17 @@ fn comments(s: &str) -> (String, Vec<usize>) {
         }
     }
     (output, starts)
+}
+
+/// #204: the code point of `\unicode{…}`, as MathJax reads it: decimal (`8918`), hexadecimal after `x` or
+/// `0x` (`x22D6`, `0x22D6`); `U+22D6` and `#22D6` stay hexadecimal, as mathra read them before.
+#[inline(never)]
+fn unicode_code_point(raw: &str) -> Option<char> {
+    let code = raw.trim();
+    let hex = ["0x", "0X", "x", "X", "U+", "u+", "#"].iter().find_map(|p| code.strip_prefix(p));
+    match hex {
+        Some(h) => u32::from_str_radix(h, 16).ok(),
+        None => code.parse::<u32>().ok(),
+    }
+    .and_then(char::from_u32)
 }

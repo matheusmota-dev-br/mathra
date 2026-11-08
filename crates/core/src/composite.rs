@@ -2,7 +2,8 @@
 //!
 //! The tree keeps each one as an ordinary symbol node (`Operator`, `LargeOperator`, a delimiter of
 //! `Delimited`) whose character is a marker from the Supplementary Private Use Area-A (U+F0B00 on):
-//! the node stays the size it is, and every output asks this table what the marker stands for.
+//! the node stays the size it is, and every output asks this table what the marker stands for. The
+//! tree's JSON writes the command in its place (`"symbol":"\\llceil"`, #207).
 //! The layout draws it from the math font's own glyphs (overlapped, turned, mirrored or scaled) and,
 //! where the package draws a stroke the font has no glyph for, from lines at the font's rule
 //! thickness, as the package's METAFONT source draws them (`layout/composite.rs`). The MathML is the

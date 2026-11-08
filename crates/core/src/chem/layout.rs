@@ -217,21 +217,26 @@ fn bond(d: &mut Drawing, b: &Bond, a: P, z: P, ring_center: Option<P>) {
     let len = length(sub(z, a));
     match b.kind {
         BondKind::Single => d.line(a, z, STROKE),
-        BondKind::Double => match ring_center {
-            // C-LAY-6: in a ring the second line goes inside, shortened at both ends
-            Some(c) => {
-                d.line(a, z, STROKE);
-                let side = if (c.0 - a.0) * n.0 + (c.1 - a.1) * n.1 >= 0.0 { 1.0 } else { -1.0 };
-                let off = mul(n, DOUBLE * side);
-                let trim = (0.16 * len).min(0.4 * EM);
-                d.line(add(add(a, off), mul(dir, trim)), sub(add(z, off), mul(dir, trim)), STROKE);
-            }
-            None => {
-                let off = mul(n, DOUBLE / 2.0);
-                d.line(add(a, off), add(z, off), STROKE);
-                d.line(sub(a, off), sub(z, off), STROKE);
-            }
-        },
+        BondKind::Double | BondKind::DoubleLeft | BondKind::DoubleRight => {
+            // C-LAY-6: in a ring the second line goes inside, shortened at both ends; chemfig's offset
+            // bonds put it on the side they name, in a ring or not
+            let side = match (b.kind, ring_center) {
+                (BondKind::DoubleLeft, _) => 1.0,
+                (BondKind::DoubleRight, _) => -1.0,
+                (_, Some(c)) if (c.0 - a.0) * n.0 + (c.1 - a.1) * n.1 >= 0.0 => 1.0,
+                (_, Some(_)) => -1.0,
+                (_, None) => {
+                    let off = mul(n, DOUBLE / 2.0);
+                    d.line(add(a, off), add(z, off), STROKE);
+                    d.line(sub(a, off), sub(z, off), STROKE);
+                    return;
+                }
+            };
+            d.line(a, z, STROKE);
+            let off = mul(n, DOUBLE * side);
+            let trim = (0.16 * len).min(0.4 * EM);
+            d.line(add(add(a, off), mul(dir, trim)), sub(add(z, off), mul(dir, trim)), STROKE);
+        }
         BondKind::Triple => {
             let off = mul(n, TRIPLE);
             d.line(a, z, STROKE);

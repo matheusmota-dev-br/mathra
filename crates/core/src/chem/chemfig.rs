@@ -389,6 +389,15 @@ impl Mol<'_, '_> {
         let ch = self.current().unwrap_or('-');
         self.pos += 1;
         let kind = match ch {
+            // chemfig's offset double bonds: =^ to the left, =_ to the right
+            '=' if self.current() == Some('^') => {
+                self.pos += 1;
+                BondKind::DoubleLeft
+            }
+            '=' if self.current() == Some('_') => {
+                self.pos += 1;
+                BondKind::DoubleRight
+            }
             '=' => BondKind::Double,
             '~' => BondKind::Triple,
             '>' | '<' => {
@@ -457,10 +466,11 @@ impl Mol<'_, '_> {
                     s.push('}');
                 }
                 '^' | '_' => {
-                    // a script takes the next character even if it is a bond sign: ^- is a charge
+                    // a script takes the next character even if it is a bond sign (^- is a charge), but
+                    // not the parenthesis that closes a branch or a ring (#210)
                     s.push(ch);
                     self.pos += 1;
-                    match self.current() {
+                    match self.current().filter(|n| !matches!(n, '(' | ')')) {
                         Some('{') => {
                             let inner = self.group('{', '}')?;
                             s.push('{');

@@ -47,7 +47,7 @@ pub fn is_aromatic(m: &Molecule, r: &Ring) -> bool {
     if !matches!(r.atoms.len(), 5 | 6) {
         return false;
     }
-    let doubles = |a: AtomId| m.bonds.iter().filter(|b| (b.from == a || b.to == a) && b.kind == BondKind::Double).count();
+    let doubles = |a: AtomId| m.bonds.iter().filter(|b| (b.from == a || b.to == a) && b.kind.order() == 2).count();
     let without: Vec<&AtomId> = r.atoms.iter().filter(|a| doubles(**a) != 1).collect();
     match (r.atoms.len(), without.as_slice()) {
         (6, []) => true,

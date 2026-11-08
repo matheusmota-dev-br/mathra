@@ -126,6 +126,10 @@ Inside `\text{…}` (and every text argument), `\hspace{…}` and `\hspace*{…}
 
 A text is a box of its natural width, as `\text{…}` is in TeX: `\hfill`, `\hfil` and `\hss` take no room in it (`1 \hfill IA` is `1 IA`), and a line break, `\newline` or `\linebreak` (with its optional `[n]`), is a space, as `\\` is.
 
+A line break or a tab inside text is a space, as in TeX; with the spaces around it (the indentation of the next line, a blank line) it is a single space: `\text{can be`, a line break, `  used}` is `can be used`.
+
+A backslash before a line break or a tab of the source is a control space, `\ `, as in plain TeX, in text and in math (`a\` and a line break, then `b`, is `a\ b`); `\\` before a line break is still a line break.
+
 ### L-TXT-4 · Color inside text
 
 Inside `\text{…}` (and every text argument), `\textcolor{color}{…}` sets its argument in that color, and `\color{color}` the rest of the group it is in (`{\color{red}warm} and cold`), with the color models of math (`\color[rgb]{0.2,0.4,0.6}`). The colored text keeps the bold, small capitals or monospace around it, and the math in it is colored too.
@@ -202,7 +206,7 @@ stmaryrd and mathabx have symbols that Unicode has no character for (neither uni
 
 `\curvearrowbotright` is Unicode's ⤻ (BOTTOM ARC ANTICLOCKWISE ARROW), the arc and head mathabx draws.
 
-The large operators take limits under and over in display style and grow there, as `\bigsqcup` does. In the tree each symbol is an ordinary symbol node whose character is a marker from the Supplementary Private Use Area-A (U+F0B00 on, `crate::composite`). The linear text writes the closest Unicode text (`⌈⌈`, `∨⃝`, `-<`); speech reads a symbol that is another one drawn another way as that one (a short arrow as the arrow) and the others as that text; braille writes the short arrows as the arrows and the rest as the full cell ⠿ (S-BRL-1, naming the command); the MathML is the S-MML-1 fallback.
+The large operators take limits under and over in display style and grow there, as `\bigsqcup` does. In the tree each symbol is an ordinary symbol node whose character is a marker from the Supplementary Private Use Area-A (U+F0B00 on, `crate::composite`); the tree's JSON (`--tree`, `Node::to_json`, the SVG's metadata, S-SVG-3) names it by its command instead of the marker: `"symbol":"\\llceil"`. The linear text writes the closest Unicode text (`⌈⌈`, `∨⃝`, `-<`); speech reads a symbol that is another one drawn another way as that one (a short arrow as the arrow) and the others as that text; braille writes the short arrows as the arrows and the rest as the full cell ⠿ (S-BRL-1, naming the command); the MathML is the S-MML-1 fallback.
 
 Left out: stmaryrd's `\curlyveedownarrow`, whose arms stop at the base of an arrow head the font has no glyph for (drawing them over the head would not be its drawing); and `\sqcupplus`, which mathabx does not define (its square union with a plus is `\squplus`).
 

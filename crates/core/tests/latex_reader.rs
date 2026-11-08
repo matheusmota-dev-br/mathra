@@ -216,9 +216,11 @@ fn measured_spaces() {
     ] {
         has(&tree(tex), &["Space"]);
     }
-    assert!(always_error(r"a\hspace{3qq}b").contains("unrecognized measure"));
+    // a measure it cannot read: no space, with a warning (#206); strict mode refuses
+    assert!(!recovers(r"a\hspace{3qq}b", "E-REC-9").contains("Space"));
     // a space before the unit ends the measure
-    assert!(always_error(r"a\kern 3 pt b").contains("unrecognized measure"));
+    recovers(r"a\kern 3 pt b", "E-REC-9");
+    assert!(strict_error(r"a\kern 3 pt b").contains("unrecognized measure"));
 }
 
 #[test]
@@ -1258,7 +1260,9 @@ fn json_escapes_and_backslashes_before_symbols() {
     has(&recovers(r"x\u00b2", "E-REC-2"), &["'²'"]);
     // \u without four hex digits is not an escape
     has(&recovers(r"\u12", "E-REC-1"), &["\\\\u"]);
-    has(&recovers(r#"\"a"#, "E-REC-1"), &["\"a\""]);
+    // a text accent before a letter is its math accent (#213); before anything else the backslash is dropped
+    has(&recovers(r#"\"a"#, "E-REC-1"), &["Accent", "\"a\""]);
+    has(&recovers(r#"\"5"#, "E-REC-1"), &["\"5\""]);
     has(&recovers(r"\5", "E-REC-1"), &["\"5\""]);
     // JSON \t only when the name is short: \tx is tab + x, \txyz is an unknown command
     has(&recovers(r"a\tx", "E-REC-2"), &["\"x\""]);
@@ -1344,12 +1348,12 @@ fn amssymb_negations_are_not_json_line_breaks() {
 }
 
 #[test]
-fn unknown_negation_of_a_known_relation_reads_as_not() {
-    // \nlesssim does not exist, but \lesssim does: the author meant its negation, not a line break
+fn unknown_negation_of_a_known_relation_is_drawn_whole() {
+    // \nlesssim does not exist: drawn whole in red (#209), neither a line break nor \not\lesssim
     let t = recovers(r"a \nlesssim b", "E-REC-1");
-    has(&t, &["Canceled { base: Operator { symbol: '≲'"]);
+    has(&t, &["\\\\nlesssim"]);
     let (_, warnings) = tolerant(r"a \nlesssim b");
-    assert!(warnings.iter().any(|w| w.contains(r"read as \not\lesssim")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("drawn in red")), "{warnings:?}");
     // a \n before something that is not a relation is still a JSON line break
     has(&recovers(r"x\nb) y", "E-REC-2"), &["\"b\""]);
     // … when one or two letters follow it; \nfoo has the shape of a command (\numberwithin), #163
