@@ -1048,6 +1048,9 @@
     },
     {
      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}"
+    },
+    {
+     "tex": "\\begin{multline*} a + b + c + d \\\\ \\shoveleft{{} + e + f} \\\\ {} + g = 0 \\end{multline*}"
     }
    ]
   },
