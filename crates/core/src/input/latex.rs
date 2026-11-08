@@ -8,6 +8,7 @@ use crate::tree::*;
 use crate::Error;
 
 use super::symbols::{self, Symbol};
+use siunitx::{joined_units, unit_node, PerMode, UnitEntry};
 
 #[cfg(feature = "chem")]
 mod chemistry;
@@ -15,6 +16,7 @@ mod color;
 mod diagram;
 mod mathtools;
 mod tex;
+mod siunitx;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
     read_with(tex, locale, registry, true)
@@ -94,6 +96,8 @@ struct Macros {
     environments: std::collections::HashMap<String, (String, String)>,
     /// Colors defined by `\definecolor` and `\colorlet`, for the rest of the input.
     colors: color::Colors,
+    /// Units declared by `\DeclareSIUnit` and options set by `\sisetup`, for the rest of the input.
+    siunitx: siunitx::State,
     expansions: usize,
     /// How much the text may grow through expansions, counting the original size.
     max_size: usize,
@@ -1468,7 +1472,7 @@ impl Reader<'_> {
                 let value = self.raw_text()?;
                 // siunitx leaves out an explicit plus (`retain-explicit-plus` is off) and adds the
                 // zero of a bare point (`add-integer-zero`)
-                let value = value.trim_start().strip_prefix('+').map_or(value.clone(), str::to_string);
+                let value = if self.macros.siunitx.retain_plus { value } else { value.trim_start().strip_prefix('+').map_or(value.clone(), str::to_string) };
                 let value = match value.trim_start().strip_prefix('-') {
                     Some(rest) if rest.starts_with('.') => format!("-0{rest}"),
                     _ if value.trim_start().starts_with('.') => format!("0{}", value.trim_start()),
@@ -1481,6 +1485,18 @@ impl Reader<'_> {
                 self.raw_optional();
                 let unit = self.raw_text()?;
                 self.quantity(None, &unit, col)?
+            }
+            // siunitx v3's complex numbers, in siunitx.rs
+            "complexnum" => {
+                self.raw_optional();
+                let value = self.raw_text()?;
+                self.complex_number(&value, col)?.0
+            }
+            "complexqty" => {
+                self.raw_optional();
+                let value = self.raw_text()?;
+                let unit = self.raw_text()?;
+                self.complex_quantity(&value, &unit, col)?
             }
             // \tablenum: the number as \num (the alignment on the decimal marker of an S column is not done)
             "num" | "tablenum" => {
@@ -2806,16 +2822,20 @@ impl Reader<'_> {
         }
     }
 
-    /// L-UNI-1: `\SI{9,8}{\meter\per\second\squared}` → 9,8 m/s² in pt-BR.
+    /// L-UNI-1: `\SI{9,8}{\meter\per\second\squared}` → 9,8 m/s² in pt-BR. The units declared with
+    /// `\DeclareSIUnit`, the ones based on constants and `\highlight` come from siunitx.rs; so does
+    /// `per-mode`, which only `\sisetup` changes from the slash.
     fn quantity(&mut self, value: Option<String>, unit: &str, col: usize) -> R<Node> {
+        let unit = self.declared_units_written_out(unit);
         let unit_node = if unit.contains('\\') {
-            // (symbol, exponent, prefix names, unit name)
-            let mut numerator: Vec<(String, i32, String, String)> = Vec::new();
-            let mut denominator: Vec<(String, i32, String, String)> = Vec::new();
+            // (symbol, exponent, prefix names, unit name, highlight color)
+            let mut numerator: Vec<UnitEntry> = Vec::new();
+            let mut denominator: Vec<UnitEntry> = Vec::new();
             let mut prefix = String::new();
             let mut prefix_names = String::new();
             let mut per = false;
             let mut last_in_den = false;
+            let mut highlight = None;
             for token in unit.split('\\').map(str::trim).filter(|t| !t.is_empty()) {
                 let (name, remainder) = token.split_at(token.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(token.len()));
                 match name {
@@ -2834,18 +2854,23 @@ impl Reader<'_> {
                             u.1 *= n;
                         }
                     }
+                    // \highlight{color}: the next unit's symbol in that color
+                    "highlight" => highlight = self.named_color(remainder.trim().trim_matches(['{', '}']).trim(), col)?,
                     _ => {
-                        if let Some(p) = symbols::prefix(name) {
+                        if let Some(p) = symbols::prefix(name).filter(|_| !self.macros.siunitx.units.contains_key(name)) {
                             // \square\kilo\meter: the pending exponent still applies (km²)
                             prefix.insert_str(0, p);
                             prefix_names.insert_str(0, symbols::canonical_prefix(name));
                             continue;
                         }
-                        let symbol = match symbols::unit(name) {
-                            Some(symbol) => symbol.to_string(),
-                            None => {
+                        // a declared unit comes first, even over one of siunitx's own names
+                        let other = if self.macros.siunitx.units.contains_key(name) || symbols::unit(name).is_none() { self.other_unit_symbol(name)? } else { None };
+                        let symbol = match (other, symbols::unit(name)) {
+                            (Some(node), _) => node,
+                            (None, Some(symbol)) => Node::Text { parts: vec![TextPart::Text(symbol.to_string())] },
+                            (None, None) => {
                                 self.tolerate(rules::E_REC_1, col, format!("unsupported unit: \\{name}"), "written by its name")?;
-                                name.to_string()
+                                Node::Text { parts: vec![TextPart::Text(name.to_string())] }
                             }
                         };
                         let exponent = if prefix.contains('²') {
@@ -2855,61 +2880,89 @@ impl Reader<'_> {
                         } else {
                             1
                         };
-                        let text = format!("{}{symbol}", prefix.trim_end_matches(['²', '³']));
+                        let written = prefix.trim_end_matches(['²', '³']).to_string();
+                        let base = match symbol {
+                            Node::Text { parts: p } => match p.as_slice() {
+                                [TextPart::Text(t)] => Node::Text { parts: vec![TextPart::Text(format!("{written}{t}"))] },
+                                _ => Node::Text { parts: p },
+                            },
+                            other if !written.is_empty() => Node::row(vec![Node::Text { parts: vec![TextPart::Text(written)] }, other]),
+                            other => other,
+                        };
                         prefix.clear();
                         let names = (std::mem::take(&mut prefix_names), symbols::canonical_unit(name).to_string());
+                        let entry = (base, exponent, names.0, names.1, highlight.take());
                         if per {
-                            denominator.push((text, exponent, names.0, names.1));
+                            denominator.push(entry);
                             last_in_den = true;
                             per = false;
                         } else {
-                            numerator.push((text, exponent, names.0, names.1));
+                            numerator.push(entry);
                             last_in_den = false;
                         }
                     }
                 }
             }
-            let mut children = Vec::new();
-            let unit_node = |u: &(String, i32, String, String)| -> Node {
-                let text = Node::Text { parts: vec![TextPart::Text(u.0.clone())] };
-                let base = Node::Unit { prefix: Some(u.2.clone()).filter(|p| !p.is_empty()), name: u.3.clone(), base: Box::new(text) };
-                if u.1 == 1 {
-                    base
-                } else {
-                    Node::Scripts { base: Box::new(base), sup: Some(Box::new(Node::Number { value: u.1.to_string(), group: false, thousands: None })), sub: None }
-                }
-            };
-            for (i, u) in numerator.iter().enumerate() {
-                if i > 0 {
-                    children.push(Node::Space { em: 3.0 / 18.0 });
-                }
-                children.push(unit_node(u));
-            }
+            let mode = self.macros.siunitx.per_mode;
+            let inter = self.macros.siunitx.inter_unit_product.clone();
+            let product = self.si_product(inter)?;
+            let mut children = joined_units(&numerator, false, &product);
             if !denominator.is_empty() {
-                if numerator.is_empty() {
-                    children.push(Node::Number { value: "1".into(), group: false, thousands: None });
-                }
-                children.push(Node::Operator { symbol: '/', class: Class::Ord });
-                let several = denominator.len() > 1;
-                if several {
-                    children.push(Node::Operator { symbol: '(', class: Class::Open });
-                }
-                for (i, u) in denominator.iter().enumerate() {
-                    if i > 0 {
-                        children.push(Node::Operator { symbol: '·', class: Class::Ord });
+                let one = || Node::Number { value: "1".into(), group: false, thousands: None };
+                match mode {
+                    PerMode::Power => {
+                        if !children.is_empty() {
+                            children.push(product.clone());
+                        }
+                        children.extend(joined_units(&denominator, true, &product));
                     }
-                    children.push(unit_node(u));
-                }
-                if several {
-                    children.push(Node::Operator { symbol: ')', class: Class::Close });
+                    PerMode::Fraction => {
+                        let num = if children.is_empty() { one() } else { Node::row(std::mem::take(&mut children)) };
+                        let den = Node::row(joined_units(&denominator, false, &product));
+                        children.push(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true, thickness: None });
+                    }
+                    PerMode::Repeated => {
+                        if children.is_empty() {
+                            children.push(one());
+                        }
+                        for u in &denominator {
+                            children.push(Node::Operator { symbol: '/', class: Class::Ord });
+                            children.push(unit_node(u, false));
+                        }
+                    }
+                    PerMode::Symbol => {
+                        if children.is_empty() {
+                            children.push(one());
+                        }
+                        children.push(Node::Operator { symbol: '/', class: Class::Ord });
+                        let several = denominator.len() > 1;
+                        if several {
+                            children.push(Node::Operator { symbol: '(', class: Class::Open });
+                        }
+                        for (i, u) in denominator.iter().enumerate() {
+                            if i > 0 {
+                                children.push(Node::Operator { symbol: '·', class: Class::Ord });
+                            }
+                            children.push(unit_node(u, false));
+                        }
+                        if several {
+                            children.push(Node::Operator { symbol: ')', class: Class::Close });
+                        }
+                    }
                 }
             }
-            self.registry.note(rules::L_UNI_1, format!("unit {unit} written with a slash for negative exponents"));
+            let how = match mode {
+                PerMode::Symbol => "with a slash for negative exponents",
+                PerMode::Repeated => "with a slash before each unit of the denominator (per-mode=repeated-symbol)",
+                PerMode::Power => "with negative exponents (per-mode=power)",
+                PerMode::Fraction => "as a fraction (per-mode=fraction)",
+            };
+            self.registry.note(rules::L_UNI_1, format!("unit {unit} written {how}"));
             let names: Vec<String> = numerator.iter().chain(&denominator).map(|u| format!("{}{}", u.2, u.3)).collect();
             self.registry.note(rules::L_UNI_3, format!("units kept by name for the speech: {}", names.join(", ")));
             Node::row(children)
         } else {
-            self.sub_reader(unit, Variant::Upright)?
+            self.sub_reader(&unit, Variant::Upright)?
         };
         self.quantity_node(value, unit_node, col)
     }
@@ -2927,7 +2980,8 @@ impl Reader<'_> {
         let mut children = Vec::new();
         if let Some(v) = value {
             children.push(v);
-            children.push(Node::Space { em: 3.0 / 18.0 });
+            let product = self.macros.siunitx.quantity_product.clone();
+            children.push(self.si_product(product)?);
         }
         children.push(unit_node);
         Ok(Node::Quantity { value: text_value.filter(|v| !v.is_empty()), unit: Box::new(Node::row(children)) })
@@ -3779,6 +3833,8 @@ fn siunitx_in_text(name: &str) -> Option<&'static str> {
         "SI" | "qty" | "SIlist" | "qtylist" | "SIproduct" | "qtyproduct" => "[{{",
         "si" | "unit" | "ang" | "numlist" | "anglist" | "numproduct" => "[{",
         "num" => "[{[",
+        "complexnum" => "[{",
+        "complexqty" => "[{{",
         "tablenum" => "[{",
         "SIrange" | "qtyrange" => "[{{{",
         "numrange" | "angrange" => "[{{",
@@ -4445,7 +4501,7 @@ impl Reader<'_> {
                 }
                 Ok(true)
             }
-            _ => Ok(false),
+            _ => self.siunitx_definition(name, col),
         }
     }
 
