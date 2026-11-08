@@ -37,9 +37,10 @@ pub type Labels = std::collections::BTreeMap<String, String>;
 /// itself, a `\label` with a `\tag` on the same line, for the equations that come after it.
 pub fn read_in_document(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont, labels: &Labels, citations: &Labels) -> Result<(Node, Labels), Error> {
     let clean = prepare(tex, registry, strict);
-    let mut macros = Macros { max_size: clean.chars().count() + MAX_GROWTH, ..Macros::default() };
+    let c: Vec<char> = clean.chars().collect();
+    let mut macros = Macros { max_size: c.len() + MAX_GROWTH, json_text: json_elsewhere(&c), ..Macros::default() };
     let mut refs = References { given: labels.clone(), citations: citations.clone(), ..References::default() };
-    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, refs: &mut refs, variant: Variant::Italic, strict, font };
+    let mut reader = Reader { c, pos: 0, locale, registry, macros: &mut macros, refs: &mut refs, variant: Variant::Italic, strict, font };
     let body = reader.top()?;
     refs.end_line();
     Ok((body, refs.defined))
@@ -101,6 +102,8 @@ struct Macros {
     depth: usize,
     /// mathtools' `\shortvdotswithin` wrote the `\vdotswithin` that comes next: that one is short.
     short_row: bool,
+    /// The input, as it came, shows a JSON escape that cannot be a command (E-REC-2, `json_elsewhere`).
+    json_text: bool,
 }
 
 #[derive(Clone)]
@@ -4705,8 +4708,9 @@ impl Reader<'_> {
             self.inject(start, &format!("\\not\\{remainder} "), col)?;
             return Ok(None);
         }
-        if let Some(remainder) = name.strip_prefix('n').or_else(|| name.strip_prefix('r')).or_else(|| name.strip_prefix('t').filter(|_| name.len() <= 2)) {
-            self.tolerate(rules::E_REC_2, col, format!("\\{name}"), "JSON '\\n' read as a line break")?;
+        if let Some((escape, remainder)) = self.json_escape(name) {
+            let read = if escape == 't' { "a space" } else { "a line break" };
+            self.tolerate(rules::E_REC_2, col, format!("\\{name}"), &format!("JSON '\\{escape}' read as {read}"))?;
             self.inject(start, &format!(" {remainder}"), col)?;
             return Ok(None);
         }
@@ -4764,6 +4768,54 @@ fn physics_fraction(flat: bool, numerator: String, denominator: String) -> Strin
     } else {
         format!("\\frac{{{numerator}}}{{{denominator}}}")
     }
+}
+
+/// LaTeX text commands of one or two letters after an n, r or t: never a JSON escape (`\th` is þ).
+const SHORT_TEXT_COMMANDS: [&str; 3] = ["th", "ng", "rq"];
+
+impl Reader<'_> {
+    /// E-REC-2: an unknown command `\n…`, `\r…` or `\t…` that is really a JSON escape left in the text (the
+    /// escape and the letters after it), as `spec/tolerance.md` defines it: the letter alone (`x\n2`), one or
+    /// two letters after it (`x\nb`, `a\tx`) unless the name is a LaTeX text command (`\th`), or a longer
+    /// run when the input shows another JSON escape (`a\n b\nwhere`). Otherwise the name is a command
+    /// mathra does not know (`\real`, `\rowcolor`, `\newcolumntype`): E-REC-1.
+    #[inline(never)]
+    fn json_escape<'n>(&self, name: &'n str) -> Option<(char, &'n str)> {
+        let escape = name.chars().next().filter(|c| matches!(c, 'n' | 'r' | 't'))?;
+        let remainder = &name[1..];
+        let json = match remainder.chars().count() {
+            0 => true,
+            1 | 2 => !SHORT_TEXT_COMMANDS.contains(&name),
+            _ => self.macros.json_text,
+        };
+        json.then_some((escape, remainder))
+    }
+}
+
+/// Does the text show a JSON escape that cannot be a command: `\n`, `\r` or `\t` before something that is
+/// not a letter, `\"`, or `\u` and four hexadecimal digits?
+fn json_elsewhere(c: &[char]) -> bool {
+    let mut i = 0;
+    while i + 1 < c.len() {
+        if c[i] != '\\' {
+            i += 1;
+            continue;
+        }
+        let next = c[i + 1];
+        let after = c.get(i + 2).copied();
+        let escape = match next {
+            'n' | 'r' | 't' => !after.is_some_and(|a| a.is_ascii_alphabetic()),
+            '"' => true,
+            'u' => c.len() >= i + 6 && c[i + 2..i + 6].iter().all(char::is_ascii_hexdigit),
+            _ => false,
+        };
+        if escape {
+            return true;
+        }
+        // a doubled backslash is one token (a line break, or an escaped backslash)
+        i += if next == '\\' { 2 } else { 1 };
+    }
+    false
 }
 
 /// Does mathra know this command? Used to recover `\vertA` as `\vert A`.

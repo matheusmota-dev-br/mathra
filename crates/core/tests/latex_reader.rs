@@ -1317,7 +1317,39 @@ fn unknown_negation_of_a_known_relation_reads_as_not() {
     assert!(warnings.iter().any(|w| w.contains(r"read as \not\lesssim")), "{warnings:?}");
     // a \n before something that is not a relation is still a JSON line break
     has(&recovers(r"x\nb) y", "E-REC-2"), &["\"b\""]);
-    has(&recovers(r"\nfoo", "E-REC-2"), &["\"f\""]);
+    // … when one or two letters follow it; \nfoo has the shape of a command (\numberwithin), #163
+    has(&recovers(r"\nfoo", "E-REC-1"), &["\\\\nfoo"]);
+}
+
+/// The JSON reading of E-REC-2 fired on unknown commands starting with n, r or t and dropped their first
+/// letter (#163). The rule (spec/tolerance.md): the letter alone, one or two letters after it unless the
+/// name is a LaTeX text command, or a longer run when the input shows another JSON escape.
+#[test]
+fn unknown_commands_starting_with_n_r_t_are_not_json() {
+    for name in ["real", "rrceil", "rArr", "rowcolor", "refeq", "newcolumntype", "numberwithin", "th", "raise", "noexpand", "reals"] {
+        let tex = format!(r"x \{name}");
+        let (_, warnings) = tolerant(&tex);
+        assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");
+        assert!(warnings.iter().any(|w| w.starts_with("E-REC-1")), "{tex}: {warnings:?}");
+        assert!(strict_error(&tex).contains("unsupported command"), "{tex}");
+    }
+    // \real{z} keeps its first letter: drawn in red, not "ealz"
+    has(&recovers(r"\real{z}", "E-REC-1"), &["\\\\real", "\"z\""]);
+    // the message names the escape that was read
+    let (_, warnings) = tolerant(r"x\rb");
+    assert!(warnings.iter().any(|w| w.contains(r"JSON '\r' read as a line break")), "{warnings:?}");
+    let (_, warnings) = tolerant(r"a\tx");
+    assert!(warnings.iter().any(|w| w.contains(r"JSON '\t' read as a space")), "{warnings:?}");
+    let (_, warnings) = tolerant(r"x\nb");
+    assert!(warnings.iter().any(|w| w.contains(r"JSON '\n' read as a line break")), "{warnings:?}");
+    // the letter alone is always an escape
+    has(&recovers(r"x\n2", "E-REC-2"), &["\"x\"", "\"2\""]);
+    // a longer run is an escape when the input shows another one that cannot be a command
+    let (t, warnings) = tolerant(r"a = 1\n b = 2\nwhere");
+    assert_eq!(warnings.iter().filter(|w| w.starts_with("E-REC-2")).count(), 2, "{warnings:?}");
+    has(&t, &["\"w\"", "\"h\""]);
+    let (_, warnings) = tolerant(r"x\u00b2 \nwhere");
+    assert!(warnings.iter().all(|w| w.starts_with("E-REC-2")), "{warnings:?}");
 }
 
 #[test]
