@@ -4,6 +4,16 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## 1.10.1 - 2026-11-07
+
+The fonts of the mathfonts catalog, by name.
+
+- [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a catalog of 30 OpenType math fonts that are free to share, each one checked with mathra. JavaScript gets `catalogFonts()` and `loadFontFromCatalog(slug)`, and Python gets `catalog_fonts()` and `load_font_from_catalog(slug)`, which keeps the file in `~/.cache/mathra`. A font is downloaded only when asked for, once, and refused if it does not match the catalog's sha256, so the same name always gives the same SVG ([#109](https://github.com/matheusmota-dev-br/mathra/pull/109)).
+- The playground lists the catalog's fonts in its font picker and downloads one only when it is picked.
+- The Rust crate and the terminal download nothing; `--font` in the help points to the catalog. Loading a font from a file is unchanged, and so is what mathra draws.
+
+Equations: `e^{i\pi} + 1 = 0`
+
 ## 1.10.0 - 2026-11-07
 
 A pen that writes the equation, and any OpenType math font.
