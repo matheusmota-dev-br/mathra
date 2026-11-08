@@ -3416,6 +3416,175 @@ fn staggered_indices(raw: &str, pre: bool) -> String {
 }
 
 /// mhchem's `\pu` unit to math: `J mol^-1` → `J\,mol^{-1}`, `.` and `*` between units → `\cdot`.
+/// The commands of `physics_expansion`, besides the long names of `physics_long_name`.
+const PHYSICS: &[&str] = &[
+    "mqty",
+    "matrixquantity",
+    "smqty",
+    "smallmatrixquantity",
+    "pmqty",
+    "Pmqty",
+    "bmqty",
+    "vmqty",
+    "mdet",
+    "matrixdeterminant",
+    "spmqty",
+    "sPmqty",
+    "sbmqty",
+    "svmqty",
+    "smdet",
+    "smallmatrixdeterminant",
+    "imat",
+    "identitymatrix",
+    "xmat",
+    "xmatrix",
+    "zmat",
+    "zeromatrix",
+    "paulimatrix",
+    "pmat",
+    "paulixmatrix",
+    "pauliymatrix",
+    "paulizmatrix",
+    "dmat",
+    "diagonalmatrix",
+    "admat",
+    "antidiagonalmatrix",
+    "qq",
+    "qqtext",
+    "qc",
+    "qcomma",
+    "qcc",
+    "qif",
+    "qthen",
+    "qelse",
+    "qotherwise",
+    "qunless",
+    "qgiven",
+    "qusing",
+    "qassume",
+    "qsince",
+    "qlet",
+    "qfor",
+    "qall",
+    "qeven",
+    "qodd",
+    "qinteger",
+    "qand",
+    "qor",
+    "qas",
+    "qin",
+    "var",
+    "variation",
+    "pv",
+    "principalvalue",
+    "PV",
+    "op",
+    "vev",
+    "flatfrac",
+    "Trace",
+    "Residue",
+    "asin",
+    "acos",
+    "atan",
+    "acsc",
+    "asec",
+    "acot",
+    "asine",
+    "acosine",
+    "atangent",
+    "acosecant",
+    "asecant",
+    "acotangent",
+    "vnabla",
+    "gradientnabla",
+    "diffd",
+    "real",
+    "imaginary",
+];
+
+/// physics' Pauli matrices σx, σy, σz, as the package writes their contents.
+const PAULI: [&str; 3] = ["0&1\\\\1&0", "0&-i\\\\i&0", "1&0\\\\0&-1"];
+
+/// A physics matrix: `shape` is `(`, `[`, `|`, `P` (\lgroup…\rgroup) or `{` (none); `small` for
+/// `\smqty` and its family, a `smallmatrix` between `\left…\right` delimiters, as the package's
+/// `\spmqty` is `\pqty{\begin{smallmatrix}…}`.
+fn physics_matrix(small: bool, shape: char, body: &str) -> String {
+    let (env, open, close) = match (small, shape) {
+        (false, '(') => ("pmatrix", "", ""),
+        (false, '[') => ("bmatrix", "", ""),
+        (false, '|') => ("vmatrix", "", ""),
+        (false, 'P') => ("matrix", "\\lgroup", "\\rgroup"),
+        (false, _) => ("matrix", "", ""),
+        (true, '(') => ("smallmatrix", "(", ")"),
+        (true, '[') => ("smallmatrix", "[", "]"),
+        (true, '|') => ("smallmatrix", "|", "|"),
+        (true, 'P') => ("smallmatrix", "\\lgroup", "\\rgroup"),
+        (true, _) => ("smallmatrix", "", ""),
+    };
+    let table = format!("\\begin{{{env}}}{body}\\end{{{env}}}");
+    if open.is_empty() {
+        table
+    } else {
+        format!("\\left{open} {table} \\right{close}")
+    }
+}
+
+/// The contents of a generated matrix (`\imat`, `\xmat`, `\dmat`…): `rows` × `columns` entries, by
+/// row and column from 0, in `&` and `\\`.
+fn generated_matrix(rows: usize, columns: usize, entry: impl Fn(usize, usize) -> String) -> String {
+    (0..rows).map(|i| (0..columns).map(|j| entry(i, j)).collect::<Vec<_>>().join("&")).collect::<Vec<_>>().join("\\\\")
+}
+
+/// `raw` split at each `separator` outside braces, each part trimmed.
+fn split_top_level(raw: &str, separator: char) -> Vec<String> {
+    let mut parts = vec![String::new()];
+    let mut level = 0usize;
+    for c in raw.chars() {
+        match c {
+            '{' => level += 1,
+            '}' => level = level.saturating_sub(1),
+            c if c == separator && level == 0 => {
+                parts.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        parts.last_mut().unwrap().push(c);
+    }
+    parts.into_iter().map(|p| p.trim().to_string()).collect()
+}
+
+/// physics' long names of the elementary functions (`\sine` is `\sin`), which the package keeps when
+/// it redefines the short ones.
+fn physics_long_name(long: &str) -> Option<&'static str> {
+    Some(match long {
+        "sine" => "sin",
+        "cosine" => "cos",
+        "tangent" => "tan",
+        "cosecant" => "csc",
+        "secant" => "sec",
+        "cotangent" => "cot",
+        "hypsine" => "sinh",
+        "hypcosine" => "cosh",
+        "hyptangent" => "tanh",
+        "hypcosecant" => "csch",
+        "hypsecant" => "sech",
+        "hypcotangent" => "coth",
+        "arcsine" => "arcsin",
+        "arccosine" => "arccos",
+        "arctangent" => "arctan",
+        "arccosecant" => "arccsc",
+        "arcsecant" => "arcsec",
+        "arccotangent" => "arccot",
+        "exponential" => "exp",
+        "logarithm" => "log",
+        "naturallogarithm" => "ln",
+        "determinant" => "det",
+        "Probability" => "Pr",
+        _ => return None,
+    })
+}
+
 fn mhchem_unit(unit: &str) -> String {
     let c: Vec<char> = unit.chars().collect();
     let mut s = String::new();
@@ -4255,14 +4424,14 @@ impl Reader<'_> {
             s
         };
         Ok(Some(match name {
-            "fdv" | "functionalderivative" => {
+            "fdv" | "functionalderivative" | "fderivative" => {
                 let f = self.raw_text()?;
                 match self.optional_braced()? {
                     Some(x) => format!("\\frac{{\\delta {f}}}{{\\delta {x}}}"),
                     None => format!("\\frac{{\\delta}}{{\\delta {f}}}"),
                 }
             }
-            "dv" | "odv" | "pdv" | "derivative" | "partialderivative" | "pd" => {
+            "dv" | "odv" | "pdv" | "derivative" | "partialderivative" | "pderivative" | "pd" => {
                 let partial = name.starts_with('p');
                 let order = self.raw_optional();
                 let f = self.raw_text()?;
@@ -4394,7 +4563,7 @@ impl Reader<'_> {
             "divergence" => "\\unicode{1D6C1} \\cdot ".into(),
             "curl" | "rot" => "\\unicode{1D6C1} \\times ".into(),
             "laplacian" => "\\nabla^{2} ".into(),
-            "cross" | "crossproduct" => "\\times ".into(),
+            "cross" | "crossproduct" | "cp" => "\\times ".into(),
             "vdot" | "dotproduct" => "\\cdot ".into(),
             "vb" | "vectorbold" => {
                 let bold = if star(self) { "\\boldsymbol" } else { "\\mathbf" };
@@ -4472,7 +4641,7 @@ impl Reader<'_> {
                     None => format!("\\left\\{{ {x} \\right\\}}"),
                 }
             }
-            "abs" => format!("\\left| {} \\right|", self.raw_text()?),
+            "abs" | "absolutevalue" => format!("\\left| {} \\right|", self.raw_text()?),
             "norm" => format!("\\left\\| {} \\right\\|", self.raw_text()?),
             "sfrac" | "nicefrac" => {
                 let a = self.raw_text()?;
@@ -4491,11 +4660,166 @@ impl Reader<'_> {
                 let u = self.raw_text()?;
                 format!("{v}\\,\\mathrm{{{u}}}")
             }
+            // (asked by name: its frame stays off the stack of the commands that nest, \frac or \sqrt)
+            _ if PHYSICS.contains(&name) || physics_long_name(name).is_some() => return self.physics_expansion(name, col),
             _ => {
                 let _ = col;
                 return Ok(None);
             }
         }))
+    }
+
+    /// physics' matrices, spaced text and the long names of its operators (physics.sty 1.3; MathJax's
+    /// physics extension draws the same), the names in `PHYSICS`. Out of line, so `package_expansion`,
+    /// which runs for every command, keeps its size.
+    #[inline(never)]
+    fn physics_expansion(&mut self, name: &str, col: usize) -> R<Option<String>> {
+        let starred = |this: &mut Self| {
+            let s = this.current() == Some('*');
+            if s {
+                this.pos += 1;
+            }
+            s
+        };
+        Ok(Some(match name {
+            // \mqty(…), \mqty*(…) (\lgroup…\rgroup), \mqty[…], \mqty|…|, \mqty{…} (no delimiters); \mqty
+            // alone is "()", as in the package. What follows the first form is read as written
+            "mqty" | "matrixquantity" | "smqty" | "smallmatrixquantity" => {
+                let small = name.starts_with('s');
+                let star = starred(self);
+                self.skip_spaces();
+                let (shape, body) = match self.current() {
+                    Some('(') => (if star { 'P' } else { '(' }, self.raw_delimited('(', ')')),
+                    Some('[') => ('[', self.raw_delimited('[', ']')),
+                    Some('|') => ('|', self.raw_delimited('|', '|')),
+                    Some('{') => ('{', self.raw_text()?),
+                    _ => return Ok(Some("()".into())),
+                };
+                physics_matrix(small, shape, &body)
+            }
+            "pmqty" | "Pmqty" | "bmqty" | "vmqty" | "mdet" | "matrixdeterminant" | "spmqty" | "sPmqty" | "sbmqty" | "svmqty" | "smdet" | "smallmatrixdeterminant" => {
+                let small = name.starts_with("sm") || (name.len() == 6 && name.starts_with('s'));
+                let shape = match name.trim_start_matches('s').chars().next() {
+                    Some('p') => '(',
+                    Some('P') => 'P',
+                    Some('b') => '[',
+                    _ => '|',
+                };
+                physics_matrix(small, shape, &self.raw_text()?)
+            }
+            // the generated contents, to be put in a matrix: \pmqty{\imat{2}}
+            "imat" | "identitymatrix" => {
+                let n = self.matrix_size(name, col)?;
+                generated_matrix(n, n, |i, j| if i == j { "1".into() } else { "0".into() })
+            }
+            "xmat" | "xmatrix" | "zmat" | "zeromatrix" => {
+                let indexed = name.starts_with('x') && starred(self);
+                let x = if name.starts_with('x') { self.raw_text()? } else { "0".into() };
+                let rows = self.matrix_size(name, col)?;
+                // \zeromatrix{m}: square
+                let columns = match name.starts_with('z') {
+                    true => match self.optional_braced()? {
+                        Some(raw) => self.size_of(name, &raw, col)?,
+                        None => rows,
+                    },
+                    false => self.matrix_size(name, col)?,
+                };
+                generated_matrix(rows, columns, |i, j| match indexed {
+                    true => format!("{x}_{{{}{}}}", if rows > 1 { (i + 1).to_string() } else { String::new() }, if columns > 1 { (j + 1).to_string() } else { String::new() }),
+                    false => x.clone(),
+                })
+            }
+            "paulimatrix" | "pmat" => {
+                let which = self.raw_text()?;
+                match which.trim() {
+                    "0" => generated_matrix(2, 2, |i, j| if i == j { "1".into() } else { "0".into() }),
+                    "1" | "x" => PAULI[0].into(),
+                    "2" | "y" => PAULI[1].into(),
+                    "3" | "z" => PAULI[2].into(),
+                    other => {
+                        self.tolerate(rules::E_REC_9, col, format!("\\{name}{{{other}}}: no Pauli matrix by that name (0 to 3, x, y or z)"), "left empty")?;
+                        String::new()
+                    }
+                }
+            }
+            "paulixmatrix" => PAULI[0].into(),
+            "pauliymatrix" => PAULI[1].into(),
+            "paulizmatrix" => PAULI[2].into(),
+            // \dmat[filler]{a,b,c}: the entries on the diagonal (\admat: the antidiagonal), the filler
+            // elsewhere; an entry with its own rows is a matrix, as the package's \mqty{…} makes it
+            "dmat" | "diagonalmatrix" | "admat" | "antidiagonalmatrix" => {
+                let filler = self.raw_optional().unwrap_or_default();
+                let entries = split_top_level(&self.raw_text()?, ',');
+                let n = entries.len();
+                let anti = name.starts_with('a');
+                generated_matrix(n, n, |i, j| match (anti && j == n - 1 - i) || (!anti && i == j) {
+                    true if entries[i].contains('&') || entries[i].contains("\\\\") => format!("\\begin{{matrix}}{}\\end{{matrix}}", entries[i]),
+                    true => entries[i].clone(),
+                    false => filler.clone(),
+                })
+            }
+            // spaced text: \qq{text} is \quad\text{text}\quad, without the first \quad when starred
+            "qq" | "qqtext" => {
+                let lead = if starred(self) { "" } else { "\\quad" };
+                format!("{lead}\\text{{{}}}\\quad ", self.raw_text()?)
+            }
+            "qc" | "qcomma" => ",\\quad ".into(),
+            "qcc" | "qif" | "qthen" | "qelse" | "qotherwise" | "qunless" | "qgiven" | "qusing" | "qassume" | "qsince" | "qlet" | "qfor" | "qall" | "qeven" | "qodd"
+            | "qinteger" | "qand" | "qor" | "qas" | "qin" => {
+                let lead = if starred(self) { "" } else { "\\quad" };
+                let word = if name == "qcc" { "c.c." } else { &name[1..] };
+                format!("{lead}\\text{{{word}}}\\quad ")
+            }
+            // the variation δ, written like the differential \dd
+            "var" | "variation" => {
+                let order = self.raw_optional();
+                let power = order.map(|n| format!("^{{{n}}}")).unwrap_or_default();
+                let x = self.optional_braced()?.unwrap_or_default();
+                format!("\\mathop{{}}\\!\\delta{power} {x} ")
+            }
+            "pv" | "principalvalue" | "PV" => {
+                let symbol = if name == "PV" { "\\mathrm{P.V.}" } else { "\\mathcal{P}" };
+                let x = self.optional_braced()?.map(|x| format!("{{{x}}}")).unwrap_or_default();
+                format!("{symbol}{x}")
+            }
+            "op" => "\\dyad".into(),
+            // the vacuum expectation value ⟨0|x|0⟩
+            "vev" => format!("\\expval{{{}}}{{0}}", self.raw_text()?),
+            "flatfrac" => {
+                let a = self.raw_text()?;
+                let b = self.raw_text()?;
+                format!("\\left. {a} \\middle/ {b} \\right.")
+            }
+            "Trace" => "\\operatorname{Tr}".into(),
+            "Residue" => "\\operatorname{Res}".into(),
+            "asin" | "acos" | "atan" | "acsc" | "asec" | "acot" => format!("\\operatorname{{{name}}}"),
+            "asine" | "acosine" | "atangent" | "acosecant" | "asecant" | "acotangent" => format!("\\operatorname{{a{}}}", physics_long_name(&name[1..]).unwrap_or_default()),
+            // physics' bold nabla (its default, bolddel), as \grad draws it
+            "vnabla" | "gradientnabla" => "\\unicode{1D6C1} ".into(),
+            // the upright d of the package's default (uprightdiff)
+            "diffd" => "\\mathrm{d}".into(),
+            // physics' \real and \imaginary are LaTeX's \Re and \Im (ℜ, ℑ), kept by the package when it
+            // redefines those two as the operators Re and Im, which mathra does not do
+            "real" => "\\Re ".into(),
+            "imaginary" => "\\Im ".into(),
+            long => match physics_long_name(long) {
+                Some(short) => format!("\\{short} "),
+                None => return Ok(None),
+            },
+        }))
+    }
+
+    /// The number of rows or columns of a generated physics matrix.
+    fn matrix_size(&mut self, name: &str, col: usize) -> R<usize> {
+        let raw = self.raw_text()?;
+        self.size_of(name, &raw, col)
+    }
+
+    fn size_of(&self, name: &str, raw: &str, col: usize) -> R<usize> {
+        match raw.trim().parse::<usize>() {
+            Ok(n) if (1..=64).contains(&n) => Ok(n),
+            _ => self.error(col, format!("\\{name} needs a size from 1 to 64, not {:?}", raw.trim())),
+        }
     }
 }
 

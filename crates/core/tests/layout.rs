@@ -472,6 +472,15 @@ fn tall_delimiter_assembles_parts() {
     svg(&tex);
 }
 
+#[test]
+fn lgroup_grows_from_the_brace_halves() {
+    // the font has ⟮ ⟯ at one size: a tall \lgroup is built as cmex builds it (physics' \Pmqty)
+    let matrix = math_box(r"\begin{matrix} a \\ b \\ c \\ d \end{matrix}");
+    let grouped = math_box(r"\left\lgroup \begin{matrix} a \\ b \\ c \\ d \end{matrix} \right\rgroup");
+    assert!(total(&grouped) >= total(&matrix), "{} < {}", total(&grouped), total(&matrix));
+    assert_eq!(total(&math_box(r"\left\lgroup x \right\rgroup")), total(&math_box(r"\lgroup x \rgroup")), "at the size of a letter, the glyph");
+}
+
 // ---------- accents, bars, braces, arrows ----------
 
 #[test]
