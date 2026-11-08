@@ -98,8 +98,8 @@ Each SVG carries the equation as speech in its `<title>`:
 By default mathra draws what it can and returns **warnings** for what it had to fix (`E-REC-1` to `E-REC-10`, in `spec/tolerance.md`): unknown commands, unbalanced braces, double scripts, leftover JSON escapes such as `\n` or `\u00b2`, unknown MathML elements. Warnings show up in `--explain`, on stderr, in `Output::warnings` and in the SVG's `<metadata>`. With `--strict`, mathra refuses invalid input instead, like TeX.
 
 ```console
-$ mathra '\vertA\vert = C_{16,2}' --text
-mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
+$ mathra '\vert A\vert = C_{16,2' --text
+mathra: warning E-REC-4: column 18: '{' without a matching '}'; closed at the end
 |A| = C_(16, 2)
 ```
 

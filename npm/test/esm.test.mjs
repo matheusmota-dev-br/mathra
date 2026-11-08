@@ -18,10 +18,10 @@ test("options and the old locale string", () => {
 });
 
 test("render returns every output as an object", () => {
-  const r = render(String.raw`\vertA\vert`, { locale: "fr" });
+  const r = render(String.raw`\vert A\vert}`, { locale: "fr" });
   assert.match(r.svg, /^<svg/);
   assert.equal(r.speech, "valeur absolue de A");
-  assert.equal(r.warnings[0].rule, "E-REC-1");
+  assert.equal(r.warnings[0].rule, "E-REC-4");
   assert.equal(typeof r.tree, "object");
 });
 

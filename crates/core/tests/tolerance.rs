@@ -26,7 +26,8 @@ fn t_tol_valid_equation_same_in_both_modes() {
 
 #[test]
 fn e_rec_1_unknown_command() {
-    assert_eq!(tolerant(r"\vertA\vert = 1").text, "|A| = 1");
+    // #209: the name is drawn whole, never cut into a known command and letters
+    assert_eq!(tolerant(r"\vertA\vert = 1").text, r"\vertA| = 1");
     assert!(tolerant(r"\foobar + 1").svg.contains(r##"fill="#c0392b""##));
     assert!(strict(r"\foobar").is_err());
 }
@@ -72,7 +73,7 @@ fn bordermatrix() {
 
 #[test]
 fn backslash_before_unicode_char_does_not_panic() {
-    // regression: the prefix cut of \vertA used to cut '∠' in the middle of its bytes
+    // regression: the prefix cut of \vertA (removed in #209) used to cut '∠' in the middle of its bytes
     for tex in [r"\∠ABC", r"\é", r"\π r^2", r"\—"] {
         tolerant(tex);
     }
@@ -115,11 +116,12 @@ fn units_angles_and_physics_qty_never_stop_the_drawing() {
 }
 
 #[test]
-fn e_rec_1_negation_of_a_known_relation() {
-    // amssymb has no \nlesssim, but \lesssim exists: a crossed ≲, not a line break and "lesssim"
+fn e_rec_1_unknown_negation_is_drawn_whole() {
+    // #209: amssymb has no \nlesssim; it is drawn whole in red, not read as \not\lesssim nor as a line
+    // break and "lesssim"
     let r = tolerant(r"a \nlesssim b");
     assert_eq!(warning_rules(r"a \nlesssim b"), vec!["E-REC-1"]);
-    assert!(r.speech.contains("≲") && !r.speech.contains("l e s s"), "{}", r.speech);
+    assert_eq!(r.text, r"a\nlesssimb");
     assert!(strict(r"a \nlesssim b").is_err());
     // the existing negations are not recovered: they are known, with no warning
     assert!(tolerant(r"a \nleq b \ngeq c \nsim d").warnings.is_empty());
@@ -351,6 +353,33 @@ fn a_muskip_register_alone_is_an_ignored_assignment() {
         assert_eq!(out.text, text, "{tex}");
         assert!(strict(tex).is_err(), "{tex}");
     }
+}
+
+/// #209: an unknown command is drawn whole, in red, with E-REC-1: never cut into a known command (KaTeX's
+/// short aliases `\ch`, `\sub`, `\sect` made nonsense of ordinary names) and letters; strict refuses it.
+#[test]
+fn unknown_commands_are_never_cut_into_a_known_one_and_letters() {
+    for (tex, text) in [
+        (r"\charge{90=\|}{X}", r"\charge90 = ‖X"),
+        (r"\chemleft( x \chemright)", r"\chemleft(x\chemright)"),
+        (r"\chemup", r"\chemup"),
+        (r"\chemskipalign", r"\chemskipalign"),
+        (r"\subsection", r"\subsection"),
+        (r"\section", r"\section"),
+        (r"\nelement", r"\nelement"),
+        (r"\expandafter", r"\expandafter"),
+        (r"\bigbreak", r"\bigbreak"),
+        (r"\vertA", r"\vertA"),
+        (r"\alphax", r"\alphax"),
+    ] {
+        let out = tolerant(tex);
+        assert_eq!(out.text, text, "{tex}");
+        assert!(out.warnings.iter().all(|w| w.rule == "E-REC-1" && w.description.contains("drawn in red")), "{tex}: {:?}", out.warnings);
+        assert!(out.svg.contains(r##"fill="#c0392b""##), "{tex}");
+        assert!(strict(tex).unwrap_err().to_string().contains("unsupported command"), "{tex}");
+    }
+    // the E-REC-1 recoveries that are not a cut stay: a backslash before a symbol
+    assert_eq!(tolerant(r"\5 + 1").text, "5 + 1");
 }
 
 /// #208: a real line break or tab is whitespace, as in TeX. The JSON readings (a control character in

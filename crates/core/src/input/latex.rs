@@ -5362,13 +5362,6 @@ impl Reader<'_> {
         if self.strict {
             return self.error(col, format!("unsupported command: \\{name}"));
         }
-        // \nfoo where \foo is a relation: an amssymb-style negation mathra lacks, not a JSON \n. Reading it as a
-        // line break would draw \foo itself, the opposite of what was written
-        if let Some(remainder) = name.strip_prefix('n').filter(|r| symbols::command(r).is_some_and(|s| s.class == Class::Rel)) {
-            self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\not\\{remainder}"))?;
-            self.inject(start, &format!("\\not\\{remainder} "), col)?;
-            return Ok(None);
-        }
         if let Some((escape, remainder)) = self.json_escape(name) {
             let read = if escape == 't' { "a space" } else { "a line break" };
             self.tolerate(rules::E_REC_2, col, format!("\\{name}"), &format!("JSON '\\{escape}' read as {read}"))?;
@@ -5381,17 +5374,6 @@ impl Reader<'_> {
                 self.tolerate(rules::E_REC_2, col, format!("\\u{hex} is a JSON escape"), &format!("read as '{c}'"))?;
                 self.pos += 4;
                 self.inject(start, &c.to_string(), col)?;
-                return Ok(None);
-            }
-        }
-        // \vertA, \alphax: a space forgotten after a known command
-        // ASCII names only: a character like '∠' after the backslash has no prefix to cut
-        for cut in (2..if name.is_ascii() { name.len() } else { 0 }).rev() {
-            let (prefix, remainder) = name.split_at(cut);
-            // #174: \text… names are textcomp's symbols (\textcelsius, \textbaht), not \text and a word
-            if known(prefix) && prefix != "text" {
-                self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\{prefix} {remainder}"))?;
-                self.inject(start, &format!("\\{prefix} {remainder}"), col)?;
                 return Ok(None);
             }
         }
@@ -5485,7 +5467,7 @@ fn json_elsewhere(c: &[char]) -> Option<bool> {
     Some(false)
 }
 
-/// Does mathra know this command? Used to recover `\vertA` as `\vert A`.
+/// Does mathra know this command? Used to rebuild a command whose backslash JSON ate (`repair_controls`).
 fn known(name: &str) -> bool {
     symbols::command(name).is_some()
         || symbols::greek(name).is_some()

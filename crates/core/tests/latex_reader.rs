@@ -1346,12 +1346,12 @@ fn amssymb_negations_are_not_json_line_breaks() {
 }
 
 #[test]
-fn unknown_negation_of_a_known_relation_reads_as_not() {
-    // \nlesssim does not exist, but \lesssim does: the author meant its negation, not a line break
+fn unknown_negation_of_a_known_relation_is_drawn_whole() {
+    // \nlesssim does not exist: drawn whole in red (#209), neither a line break nor \not\lesssim
     let t = recovers(r"a \nlesssim b", "E-REC-1");
-    has(&t, &["Canceled { base: Operator { symbol: '≲'"]);
+    has(&t, &["\\\\nlesssim"]);
     let (_, warnings) = tolerant(r"a \nlesssim b");
-    assert!(warnings.iter().any(|w| w.contains(r"read as \not\lesssim")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("drawn in red")), "{warnings:?}");
     // a \n before something that is not a relation is still a JSON line break
     has(&recovers(r"x\nb) y", "E-REC-2"), &["\"b\""]);
     // … when one or two letters follow it; \nfoo has the shape of a command (\numberwithin), #163
