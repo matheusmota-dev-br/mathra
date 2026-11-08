@@ -1275,6 +1275,9 @@
      "tex": "\\overbracket{a+b} \\underbracket{c+d}"
     },
     {
+     "tex": "a \\stackrel{\\text{def}}{=} b \\quad a \\stackbin{*}{+} b"
+    },
+    {
      "tex": "\\cancel{x} \\bcancel{y} \\xcancel{z}"
     },
     {

@@ -661,3 +661,21 @@ fn url_is_the_address_as_written_in_typewriter() {
     assert!(has(r"\textbf{a}", font.glyph('𝐚').unwrap()));
     assert!(!has(r"\text{a}", mono));
 }
+
+// ---------- MathJax's \stackbin (#121) ----------
+
+#[test]
+fn stackbin_is_stackrel_with_the_spacing_of_a_binary_operator() {
+    let tree = |tex: &str| format!("{:?}", read(tex).tree);
+    assert!(tree(r"a \stackbin{*}{+} b").contains("ForcedClass { class: Bin"), "{}", tree(r"a \stackbin{*}{+} b"));
+    // the same drawing as \stackrel; medium spaces around it (4mu), as around +, not thick ones (5mu)
+    let width = |tex: &str| math_box(tex).width;
+    assert_eq!(math_box(r"\stackbin{*}{+}").width, math_box(r"\stackrel{*}{+}").width);
+    let around = |tex: &str, alone: &str| width(&format!("a {tex} b")) - width(alone);
+    assert!((around(r"\stackbin{*}{+}", r"\stackbin{*}{+}") - around("+", "+")).abs() < 0.01);
+    assert!(width(r"a \stackbin{*}{+} b") < width(r"a \stackrel{*}{+} b"));
+    assert_eq!(width(r"x \stackbin{\text{def}}{\times} y"), width(r"x \overset{\text{def}}{\times} y"));
+    // with nothing before it, a binary operator is ordinary (TeX's rule 5)
+    assert_eq!(width(r"\stackbin{*}{+} b"), width(r"\overset{*}{\mathord{+}} b"));
+    assert_eq!(read(r"a \stackbin{*}{+} b").speech, read(r"a \overset{*}{+} b").speech);
+}
