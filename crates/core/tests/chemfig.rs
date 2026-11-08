@@ -212,3 +212,54 @@ fn recoveries() {
         assert!(out.svg.starts_with("<svg"), "{tex}");
     }
 }
+
+/// #210: chemfig's offset double bonds (`=^` to the left, `=_` to the right) are double bonds, not a
+/// script on the next atom: the manual's `*6(-=_-=_-=_)` panicked counting a `)` the subscript took.
+#[test]
+fn offset_double_bonds() {
+    let m = molecule("*6(-=_-=_-=_)");
+    assert_eq!(m.bonds.iter().filter(|b| b.kind == BondKind::DoubleRight).count(), 3);
+    assert_eq!(m.atoms.len(), 6);
+    assert_eq!(strict(r"\chemfig{*6(-=_-=_-=_)}").text, "C₆H₆");
+    let m = molecule("A-=^-B");
+    assert_eq!(m.bonds.iter().map(|b| b.kind).collect::<Vec<_>>(), [BondKind::Single, BondKind::DoubleLeft, BondKind::Single]);
+    // drawn: the offset line goes outside the ring, so the drawing differs from the plain ring's
+    assert_ne!(strict(r"\chemfig{*6(-=_-=_-=_)}").svg, strict(r"\chemfig{*6(-=-=-=)}").svg);
+    // still a Kekulé benzene for the speech
+    assert_eq!(strict(r"\chemfig{*6(-=_-=_-=_)}").speech, strict(r"\chemfig{*6(-=-=-=)}").speech);
+}
+
+/// #210: no structure panics, however malformed its rings, branches and scripts: tolerant mode draws it
+/// with warnings and strict mode draws it or refuses it with an error. Every string of up to four
+/// characters from the structure's alphabet, inside a ring and alone, plus a fixed pseudo-random set of
+/// longer ones.
+#[test]
+fn malformed_structures_never_panic() {
+    const ALPHABET: [char; 12] = ['(', ')', '*', '6', '-', '=', '_', '^', 'A', '[', '{', '?'];
+    let mut bodies: Vec<String> = vec![String::new()];
+    let mut layer: Vec<String> = vec![String::new()];
+    for _ in 0..4 {
+        layer = layer.iter().flat_map(|s| ALPHABET.iter().map(move |c| format!("{s}{c}"))).collect();
+        bodies.extend(layer.iter().cloned());
+    }
+    // a linear congruential generator: the same longer strings on every run
+    let mut seed: u64 = 0x2010;
+    for _ in 0..3000 {
+        let len = 5 + (seed >> 33) as usize % 12;
+        let mut s = String::new();
+        for _ in 0..len {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s.push(ALPHABET[(seed >> 33) as usize % ALPHABET.len()]);
+        }
+        bodies.push(s);
+    }
+    for body in &bodies {
+        for tex in [format!(r"\chemfig{{{body}}}"), format!(r"\chemfig{{*6({body})}}")] {
+            for strict in [false, true] {
+                let options = Options { strict, ..Default::default() };
+                let result = std::panic::catch_unwind(|| convert(&tex, &options));
+                assert!(result.is_ok(), "{tex} (strict: {strict}) panicked");
+            }
+        }
+    }
+}

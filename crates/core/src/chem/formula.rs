@@ -168,8 +168,12 @@ fn label(atom: &Atom, f: &mut Formula) {
         if ch == ')' {
             i += 1;
             let n = number(&c, &mut i).unwrap_or(1);
+            // a ')' with no '(' before it (the reader warned about it) counts nothing (#210)
+            if stack.len() < 2 {
+                continue;
+            }
             let inner = stack.pop().unwrap_or_default();
-            let top = stack.last_mut().expect("the outer level is never popped");
+            let Some(top) = stack.last_mut() else { continue };
             for (e, k) in inner.counts {
                 top.add(&e, k * n);
             }

@@ -120,6 +120,10 @@ fn is_one(v: &f32) -> bool {
 pub enum BondKind {
     Single,
     Double,
+    /// A double bond with one line on the bond's axis and the other on its left (`=^`) or right (`=_`),
+    /// going the way the bond is drawn (chemfig's offset double bonds).
+    DoubleLeft,
+    DoubleRight,
     Triple,
     /// Cram wedge, narrow at the start, wide at the end (`>`); `WedgeBack` is the reverse (`<`).
     Wedge,
@@ -140,7 +144,7 @@ impl BondKind {
     /// How many electron pairs the bond shares, for the hydrogens a carbon carries.
     pub fn order(self) -> u32 {
         match self {
-            BondKind::Double => 2,
+            BondKind::Double | BondKind::DoubleLeft | BondKind::DoubleRight => 2,
             BondKind::Triple => 3,
             BondKind::Dashed | BondKind::Invisible => 0,
             _ => 1,
