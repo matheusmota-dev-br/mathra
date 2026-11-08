@@ -142,3 +142,164 @@ fn e_rec_10_unknown_mathml() {
     // the XML itself must be well formed in both modes: there is no tree to recover from
     assert!(mathml("<math><mi>x</math>", false).is_err());
 }
+
+#[test]
+fn e_rec_9_stray_dollar_in_the_middle() {
+    assert_eq!(tolerant(r"a + b $ = c").text, "a + b = c");
+    assert_eq!(warning_rules(r"a + b $ = c"), vec!["E-REC-9"]);
+    assert!(strict(r"a + b $ = c").is_err());
+    // the outer delimiters are L-ENT-2, not a stray dollar
+    for tex in [r"$a + b = c$", r"$$a + b = c$$"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert_eq!(strict(tex).unwrap().text, "a + b = c");
+    }
+}
+
+#[test]
+fn e_rec_3_script_mark_as_the_argument_of_a_script() {
+    // TeX: "Missing { inserted"
+    for tex in [r"y__k", r"x^^2", r"x_^2", r"x^ _2"] {
+        assert_eq!(warning_rules(tex), vec!["E-REC-3"], "{tex}");
+        assert!(strict(tex).is_err(), "{tex}");
+    }
+    // the drawing is the one from before: the mark is the script
+    assert_eq!(tolerant(r"y__k").text, "y__k");
+    // what was valid stays valid
+    for tex in [r"y_{_k}", r"x_1^2", r"x^2_1", r"{}_a^b"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert!(strict(tex).is_ok(), "{tex}");
+    }
+}
+
+#[test]
+fn e_rec_2_unicode_script_after_a_script_mark() {
+    // the glyph is read as its plain character: the same tree as the LaTeX the author meant
+    for (pasted, meant) in [
+        (r"A = 9\,\text{cm}^²", r"A = 9\,\text{cm}^2"),
+        (r"a_₂ + a_₃", r"a_2 + a_3"),
+        (r"x^ⁿ", r"x^n"),
+        (r"x_ᵢ", r"x_i"),
+        (r"A^⁻¹", r"A^{-1}"),
+        (r"10^⁻³", r"10^{-3}"),
+        (r"x^⁽²⁾", r"x^{(2)}"),
+        (r"e^ˣ", r"e^x"),
+        (r"x_₁^²", r"x_1^2"),
+    ] {
+        let r = tolerant(pasted);
+        assert_eq!(r.tree.to_json(), tolerant(meant).tree.to_json(), "{pasted}");
+        assert_eq!(warning_rules(pasted).iter().filter(|w| **w == "E-REC-2").count(), pasted.matches(['^', '_']).count(), "{pasted}");
+        assert!(strict(pasted).is_err(), "{pasted}");
+    }
+    // a run stops where the kind changes: ^²₁ is ^2 and a subscript glyph after it
+    assert_eq!(tolerant(r"x^²₁").tree.to_json(), tolerant(r"x^2₁").tree.to_json());
+    // without ^ or _ the glyph stays as it was, in both modes
+    for tex in [r"x²", r"a₂ + b"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert_eq!(strict(tex).unwrap().tree.to_json(), tolerant(tex).tree.to_json(), "{tex}");
+    }
+    // the ordinal indicators are not script characters
+    assert!(!warning_rules(r"30^º").contains(&"E-REC-2"));
+}
+
+#[test]
+fn e_rec_9_misplaced_and_extra_alignment_tabs() {
+    // TeX: "Misplaced alignment tab character &"
+    assert_eq!(tolerant(r"u & v").text, "u v");
+    assert_eq!(warning_rules(r"u & v"), vec!["E-REC-9"]);
+    assert!(strict(r"u & v").is_err());
+    // TeX: "Extra alignment tab has been changed to \cr"; the extra cell keeps the default alignment
+    let extra = r"\begin{array}{cc} 1 & 2 & 3 \end{array}";
+    assert_eq!(tolerant(extra).text, "1, 2, 3");
+    assert_eq!(warning_rules(extra), vec!["E-REC-9"]);
+    assert!(strict(extra).is_err());
+    assert!(strict(r"\begin{tabular}{l} a & b \end{tabular}").is_err());
+    // what fits the declared columns stays valid, \multicolumn counting the columns it spans
+    for tex in [
+        r"\begin{array}{cc} 1 & 2 \\ 3 & 4 \end{array}",
+        r"\begin{array}{cc} 1 \\ 3 & 4 \\ \end{array}",
+        r"\begin{array}{cc} \multicolumn{2}{c}{x} \\ 1 & 2 \end{array}",
+        r"\begin{array}{*{3}{c}} 1 & 2 & 3 \end{array}",
+        r"\begin{pmatrix} 1 & 2 & 3 \end{pmatrix}",
+        r"\begin{aligned} a &= b \\ c &= d \end{aligned}",
+    ] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}: {:?}", tolerant(tex).warnings);
+        assert!(strict(tex).is_ok(), "{tex}");
+    }
+    assert!(strict(r"\begin{array}{cc} \multicolumn{2}{c}{x} & 3 \end{array}").is_err());
+}
+
+fn with_numbers(strict: bool) -> Options {
+    let labels = [("eq:a", "3"), ("eq:b", "4a")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+    let citations = [("knuth", "1"), ("einstein1905", "2")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+    Options { strict, labels, citations, ..Default::default() }
+}
+
+#[test]
+fn l_ent_5_references_take_the_numbers_of_the_document() {
+    for strict in [false, true] {
+        let r = convert(r"\text{by } \eqref{eq:a}, \quad c = \ref{eq:b}", &with_numbers(strict)).unwrap();
+        assert_eq!(r.text, "by (3), c = 4a");
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+        // speech and braille say the number, never the key
+        assert!(r.speech.contains("(3)") && !r.speech.contains("eq:a"), "{}", r.speech);
+        assert!(!r.braille.contains('⠿'), "{}", r.braille);
+        let r = convert(r"E = mc^2 \quad \text{\cite{einstein1905}} \cite{knuth,einstein1905} \cite[p.~5]{knuth}", &with_numbers(strict)).unwrap();
+        assert_eq!(r.text, "E = mc^2 [2][1, 2][1, p. 5]");
+    }
+}
+
+#[test]
+fn e_rec_9_unknown_label_or_citation() {
+    // as on LaTeX's first run: ?? for a label, ? for a citation
+    for (tex, text) in [(r"\eqref{eq:z}", "(??)"), (r"\ref{eq:z}", "??"), (r"\cite{nobody}", "[?]"), (r"\cite{knuth,nobody}", "[1, ?]"), (r"\text{see \ref{eq:z}}", "see ??")] {
+        let r = convert(tex, &with_numbers(false)).unwrap();
+        assert_eq!(r.text, text, "{tex}");
+        assert_eq!(r.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), vec!["E-REC-9"], "{tex}");
+        assert!(!r.speech.contains("eq:z") && !r.speech.contains("nobody"), "{tex}: {}", r.speech);
+        assert!(convert(tex, &with_numbers(true)).is_err(), "{tex}");
+    }
+}
+
+#[test]
+fn l_ent_5_a_tag_numbers_the_labels_of_its_line() {
+    let r = strict(r"a = b \label{eq:a} \tag{3}").unwrap();
+    assert_eq!(r.labels.get("eq:a").map(String::as_str), Some("3"));
+    assert_eq!(strict(r"x \label{k} \tag*{A} \quad \ref{k}").unwrap().labels.get("k").map(String::as_str), Some("A"));
+    // per line in a numbered environment; a \label with no \tag has no number
+    let r = strict(r"\begin{align} x &= 1 \label{one} \tag{4} \\ y &= 2 \label{two} \end{align} \eqref{one}").unwrap();
+    assert_eq!(r.labels.len(), 1, "{:?}", r.labels);
+    assert!(r.text.ends_with("(4)"), "{}", r.text);
+    let r = strict(r"\begin{equation} x = 1 \label{e1} \tag{5} \end{equation} \eqref{e1}").unwrap();
+    assert!(r.text.ends_with("(5)"), "{}", r.text);
+    // the \\ inside cases does not end the numbered line
+    let r = strict(r"\label{c} f = \begin{cases} a \\ b \end{cases} \tag{6}").unwrap();
+    assert_eq!(r.labels.get("c").map(String::as_str), Some("6"));
+    assert!(strict(r"x \label{no-tag}").unwrap().labels.is_empty());
+}
+
+#[test]
+fn e_rec_9_percent_starts_a_comment() {
+    // TeX: '%' drops the rest of the line, the line break and the next line's leading spaces
+    assert_eq!(strict(r"p = 15% \cdot q").unwrap().text, "p = 15");
+    assert_eq!(strict("a + b % the sum\n    + c").unwrap().text, "a + b + c");
+    assert!(strict("a + b % the sum\n    + c").unwrap().warnings.is_empty());
+    // tolerant mode keeps the percent sign the author most likely meant, with a warning
+    assert_eq!(tolerant(r"p = 15% \cdot q").text, "p = 15% · q");
+    assert_eq!(warning_rules(r"p = 15% \cdot q"), vec!["E-REC-9"]);
+    // one warning per comment TeX would see: the second '%' of a line is already inside the first's
+    assert_eq!(warning_rules(r"10% + 20%"), vec!["E-REC-9"]);
+    assert_eq!(warning_rules("10% +\n20%"), vec!["E-REC-9", "E-REC-9"]);
+    // escaped, it is a percent sign in both modes, with no warning
+    for tex in [r"15\% \cdot q", r"\text{15\%}", r"a \\ b"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert!(strict(tex).is_ok(), "{tex}");
+    }
+    assert_eq!(strict(r"15\% \cdot q").unwrap().text, "15% · q");
+    // after an escaped backslash (a line break), '%' is a comment again
+    assert_eq!(strict(r"a \\% b").unwrap().text, strict(r"a \\").unwrap().text);
+    // verbatim arguments keep their '%', as in TeX
+    for tex in [r"\url{https://example.org/a%20b}", r"\verb|5%|"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert_eq!(strict(tex).unwrap().text, tolerant(tex).text, "{tex}");
+    }
+}

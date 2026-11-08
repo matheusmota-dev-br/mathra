@@ -26,11 +26,62 @@ pub fn read_with(tex: &str, locale: Locale, registry: &mut Registry, strict: boo
 /// [`read_with`], for an equation set in `font`: the words it writes in the language (a range's
 /// "to", a list's "and") are kept only if that font has their letters.
 pub fn read_in_font(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont) -> Result<Node, Error> {
+    read_in_document(tex, locale, registry, strict, font, &Labels::new(), &Labels::new()).map(|(body, _)| body)
+}
+
+/// Keys and what they stand for: the number of a label (`"eq:a"` → `"3"`) or of a citation.
+pub type Labels = std::collections::BTreeMap<String, String>;
+
+/// [`read_in_font`], for an equation of a document: `\ref` and `\eqref` show the number `labels` gives
+/// their key, `\cite` the number `citations` gives it. Also returns the labels the equation numbers
+/// itself, a `\label` with a `\tag` on the same line, for the equations that come after it.
+pub fn read_in_document(tex: &str, locale: Locale, registry: &mut Registry, strict: bool, font: MathFont, labels: &Labels, citations: &Labels) -> Result<(Node, Labels), Error> {
     let clean = prepare(tex, registry, strict);
     let mut macros = Macros { max_size: clean.chars().count() + MAX_GROWTH, ..Macros::default() };
-    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, variant: Variant::Italic, strict, font };
+    let mut refs = References { given: labels.clone(), citations: citations.clone(), ..References::default() };
+    let mut reader = Reader { c: clean.chars().collect(), pos: 0, locale, registry, macros: &mut macros, refs: &mut refs, variant: Variant::Italic, strict, font };
     let body = reader.top()?;
-    Ok(body)
+    refs.end_line();
+    Ok((body, refs.defined))
+}
+
+/// The cross-references of the equation (`\label`, `\tag`, `\ref`, `\eqref`, `\cite`).
+#[derive(Default)]
+struct References {
+    /// The numbers of labels the caller knows (the document around the equation).
+    given: Labels,
+    citations: Labels,
+    /// Labels this equation numbers with `\tag`.
+    defined: Labels,
+    /// The `\label`s and the `\tag` of the line being read: they pair when the line ends.
+    line_labels: Vec<String>,
+    line_tag: Option<String>,
+}
+
+impl References {
+    /// The end of a numbered line (`\\` in `align`, the end of `equation` or of the input): a `\tag`
+    /// numbers the `\label`s of its line. A `\label` without a `\tag` would take the automatic number,
+    /// which mathra does not give: it stays unknown.
+    fn end_line(&mut self) {
+        let labels = std::mem::take(&mut self.line_labels);
+        if let Some(tag) = self.line_tag.take() {
+            for label in labels {
+                self.defined.insert(label, tag.clone());
+            }
+        }
+    }
+
+    /// The number of a label: numbered by this equation (on a line already read, or on this line, when
+    /// its `\label` and `\tag` came before), or given by the caller.
+    fn number(&self, key: &str) -> Option<&String> {
+        let this_line = self.line_tag.as_ref().filter(|_| self.line_labels.iter().any(|l| l == key));
+        this_line.or_else(|| self.defined.get(key)).or_else(|| self.given.get(key))
+    }
+}
+
+/// The environments that number their lines (and so take `\tag` and `\label` per line).
+fn numbered_environment(name: &str) -> bool {
+    matches!(name.trim_end_matches('*'), "equation" | "align" | "gather" | "multline" | "flalign" | "alignat" | "eqnarray")
 }
 
 /// Substitution macros defined in the equation itself (`\newcommand`, `\def`, `\let`…).
@@ -91,6 +142,15 @@ pub const MARKERS: [char; 9] = [BOLD_START, BOLD_END, SMALL_CAPS_START, SMALL_CA
 fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
     // the repair comes before the trim: a \frac eaten by JSON starts with a form feed, which trim would delete
     let mut s = tex.to_string();
+    // an unescaped % starts a comment in TeX; pasted equations usually mean a percent sign (15%)
+    let (uncommented, percents) = comments(&s);
+    if strict {
+        s = uncommented;
+    } else {
+        for column in percents {
+            registry.warn(rules::E_REC_9, format!("column {column}: '%' starts a comment in TeX (write \\% for a percent sign); drawn as a percent sign"));
+        }
+    }
     if !strict {
         if let Some(repaired) = repair_controls(&s) {
             registry.warn(rules::E_REC_2, "JSON control character in place of the backslash (\\frac stored unescaped): command rebuilt");
@@ -151,6 +211,7 @@ struct Reader<'a> {
     locale: Locale,
     registry: &'a mut Registry,
     macros: &'a mut Macros,
+    refs: &'a mut References,
     /// Current variant, changed by `\bf`, `\rm`, `\mathrm{…}`.
     variant: Variant,
     strict: bool,
@@ -203,6 +264,45 @@ impl Reader<'_> {
 
     fn column(&self) -> usize {
         self.pos + 1
+    }
+
+    /// What `\ref{key}` (`name` "ref") or `\eqref{key}` shows: the label's number, `(3)` for `\eqref`.
+    /// A label with no number is `??`, as on LaTeX's first run: a warning, or an error in strict mode.
+    fn label_number(&mut self, name: &str, key: &str, col: usize) -> R<String> {
+        let key = key.trim();
+        let number = match self.refs.number(key).cloned() {
+            Some(n) => n,
+            None => {
+                let shown = if name == "eqref" { "(??)" } else { "??" };
+                self.tolerate(
+                    rules::E_REC_9,
+                    col,
+                    format!("\\{name}{{{key}}}: no number for this label (a \\tag on its line, or the labels option)"),
+                    &format!("drawn as {shown}"),
+                )?;
+                "??".to_string()
+            }
+        };
+        Ok(if name == "eqref" { format!("({number})") } else { number })
+    }
+
+    /// What `\cite[note]{a,b}` shows: `[1, 2, note]`, each key by its number in the citations; a key with
+    /// no number is `?`, as on LaTeX's first run: a warning, or an error in strict mode.
+    fn citation(&mut self, keys: &str, note: Option<&str>, col: usize) -> R<String> {
+        let mut shown = Vec::new();
+        for key in keys.split(',').map(str::trim).filter(|k| !k.is_empty()) {
+            match self.refs.citations.get(key).cloned() {
+                Some(n) => shown.push(n),
+                None => {
+                    self.tolerate(rules::E_REC_9, col, format!("\\cite{{{key}}}: no number for this citation (the citations option)"), "drawn as ?")?;
+                    shown.push("?".to_string());
+                }
+            }
+        }
+        if let Some(note) = note.map(|n| n.replace('~', " ")).filter(|n| !n.trim().is_empty()) {
+            shown.push(note.trim().to_string());
+        }
+        Ok(format!("[{}]", shown.join(", ")))
     }
 
     /// Runs `f` one level deeper. Going past the limit is an error in both modes: there is nothing to recover.
@@ -316,7 +416,17 @@ impl Reader<'_> {
 
     /// Reads a raw snippet as math, with the current variant.
     fn sub_reader(&mut self, tex: &str, variant: Variant) -> R<Node> {
-        let mut sub = Reader { c: tex.chars().collect(), pos: 0, locale: self.locale, registry: self.registry, macros: self.macros, variant, strict: self.strict, font: self.font };
+        let mut sub = Reader {
+            c: tex.chars().collect(),
+            pos: 0,
+            locale: self.locale,
+            registry: self.registry,
+            macros: self.macros,
+            refs: self.refs,
+            variant,
+            strict: self.strict,
+            font: self.font,
+        };
         let (items, stop) = sub.list()?;
         match stop {
             Stop::Eof => Ok(Node::row(items).simplify()),
@@ -330,7 +440,7 @@ impl Reader<'_> {
 
     // ---------- structure ----------
 
-    /// Whole body. Loose `\\` and `&` become rows and columns of an alignment.
+    /// Whole body. Loose `\\` and `&` become rows and columns of an alignment (a loose `&` is misplaced in TeX: E-REC-9).
     fn top(&mut self) -> R<Node> {
         let mut rows: Vec<Vec<Node>> = Vec::new();
         let mut cells: Vec<Node> = Vec::new();
@@ -340,8 +450,15 @@ impl Reader<'_> {
             cells.push(Node::row(items).simplify());
             match stop {
                 Stop::Eof => break,
-                Stop::E => had_e = true,
-                Stop::NewRow => rows.push(std::mem::take(&mut cells)),
+                Stop::E => {
+                    // TeX: "Misplaced alignment tab character &"
+                    self.tolerate(rules::E_REC_9, self.pos, "'&' outside an alignment", "read as a column of an alignment")?;
+                    had_e = true;
+                }
+                Stop::NewRow => {
+                    rows.push(std::mem::take(&mut cells));
+                    self.refs.end_line();
+                }
                 Stop::CloseBrace => self.tolerate(rules::E_REC_4, self.pos, "'}' without a matching '{'", "ignored")?,
                 Stop::End(n) => self.tolerate(rules::E_REC_5, self.pos, format!("\\end{{{n}}} without a matching \\begin"), "ignored")?,
                 Stop::Right(d) => {
@@ -429,7 +546,8 @@ impl Reader<'_> {
                 vec![Node::Space { em: 0.333 }]
             }
             '$' => {
-                // a stray dollar sign in the middle of the equation: a leftover delimiter
+                // a stray dollar sign in the middle of the equation: a leftover delimiter (TeX would leave math mode)
+                self.tolerate(rules::E_REC_9, col, "'$' in the middle of the equation", "ignored")?;
                 self.pos += 1;
                 vec![]
             }
@@ -606,6 +724,45 @@ impl Reader<'_> {
         self.nested(|this| this.scripts_unguarded(items))
     }
 
+    /// The argument of the script `mark` (`^` or `_`) TeX refuses, before it is read:
+    /// - `y__k`, `x^_2`: the argument is itself `^` or `_`. TeX stops ("Missing { inserted"); tolerant
+    ///   mode draws the mark as the script, as before, with a warning (E-REC-3).
+    /// - `^²`, `_₂`: a Unicode superscript or subscript, pasted from an editor, would be shrunk and
+    ///   raised twice; tolerant mode reads it as its plain character (`^2`, `_2`; a run of them as a
+    ///   group, `^⁻¹` as `^{-1}`), with a warning (E-REC-2).
+    fn check_script_argument(&mut self, mark: char) -> R<()> {
+        let saved = self.pos;
+        self.skip_spaces();
+        let col = self.column();
+        let found = self.current();
+        let at = self.pos;
+        self.pos = saved;
+        let which = if mark == '^' { "superscript" } else { "subscript" };
+        match found {
+            Some(second @ ('^' | '_')) => {
+                self.tolerate(rules::E_REC_3, col, format!("'{second}' right after '{mark}': the {which} has no argument"), &format!("'{second}' drawn as the {which}"))?;
+            }
+            Some(glyph) if plain_script_char(glyph).is_some() => {
+                // the whole run of the same kind is the script: ^⁻¹ is ^{-1}
+                let sub = is_subscript_char(glyph);
+                let run = self.c[at..].iter().take_while(|&&g| plain_script_char(g).is_some() && is_subscript_char(g) == sub).count();
+                let glyphs: String = self.c[at..at + run].iter().collect();
+                let plain: String = glyphs.chars().filter_map(plain_script_char).collect();
+                let argument = if run == 1 { plain } else { format!("{{{plain}}}") };
+                self.tolerate(
+                    rules::E_REC_2,
+                    col,
+                    format!("'{glyphs}' after '{mark}' is already a {}", if sub { "subscript" } else { "superscript" }),
+                    &format!("read as '{mark}{argument}'"),
+                )?;
+                self.c.splice(at..at + run, argument.chars());
+            }
+            Some(_) => {}
+            None => {}
+        }
+        Ok(())
+    }
+
     fn scripts_unguarded(&mut self, items: &mut Vec<Node>) -> R<()> {
         // x_1_2_3…: each double script starts over on an empty base, in a loop (not by recursion)
         'index: loop {
@@ -644,6 +801,7 @@ impl Reader<'_> {
                     }
                     Some('^') if sup.is_none() || only_primes(&sup) => {
                         self.pos += 1;
+                        self.check_script_argument('^')?;
                         let arg = self.argument()?;
                         sup = Some(match sup {
                             None => arg,
@@ -652,6 +810,7 @@ impl Reader<'_> {
                     }
                     Some('_') if sub.is_none() => {
                         self.pos += 1;
+                        self.check_script_argument('_')?;
                         sub = Some(self.argument()?);
                     }
                     Some(c @ ('^' | '_')) => {
@@ -942,17 +1101,26 @@ impl Reader<'_> {
                 }
                 return Ok(Some(None));
             }
-            "label" | "ref" | "eqref" => {
-                let label = self.raw_text()?;
-                if name == "label" {
-                    return Ok(Some(None));
-                }
-                Node::Text { parts: vec![TextPart::Text(if name == "eqref" { format!("({label})") } else { label })] }
+            "label" => {
+                let key = self.raw_text()?.trim().to_string();
+                self.refs.line_labels.push(key);
+                return Ok(Some(None));
+            }
+            "ref" | "eqref" => {
+                let key = self.raw_text()?;
+                Node::Text { parts: vec![TextPart::Text(self.label_number(name, &key, col)?)] }
+            }
+            "cite" => {
+                let note = self.raw_optional();
+                let keys = self.raw_text()?;
+                Node::Text { parts: vec![TextPart::Text(self.citation(&keys, note.as_deref(), col)?)] }
             }
             "nonumber" | "notag" | "nolinebreak" | "allowbreak" | "displaybreak" | "protect" | "relax" | "noindent" | "centering" | "ensuremath" => return Ok(Some(None)),
             "strut" | "mathstrut" => Node::Phantom { base: Box::new(Node::Operator { symbol: '(', class: Class::Open }), width: false, height: true },
             "tag" => {
                 let label = self.raw_text()?;
+                // \ref of a \label on this line gives the tag as written, \eqref the tag in parentheses
+                self.refs.line_tag = Some(label.trim().to_string());
                 let text = if star { label } else { format!("({label})") };
                 items.push(Node::Space { em: 2.0 });
                 Node::Text { parts: vec![TextPart::Text(text)] }
@@ -1921,6 +2089,9 @@ impl Reader<'_> {
             }
             "equation" | "displaymath" | "math" => {
                 let (items, stop) = self.list()?;
+                if numbered_environment(&name) {
+                    self.refs.end_line();
+                }
                 return match stop {
                     Stop::End(end) if end == name => Ok(Node::row(items)),
                     _ => self.error(col, format!("\\begin{{{name}}} without \\end{{{name}}}")),
@@ -1948,6 +2119,17 @@ impl Reader<'_> {
         let (mut rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
         if base == "multline" {
             multline_alignments(&mut rows);
+        }
+        if kind == TableKind::Array {
+            // TeX: "Extra alignment tab has been changed to \cr"
+            let span = |cell: &Node| if let Node::Multicolumn { columns, .. } = cell { *columns } else { 1 };
+            for (r, row) in rows.iter().enumerate() {
+                let cells: usize = row.iter().map(span).sum();
+                if cells > columns.len() && !intertexts.contains(&r) {
+                    let declared = columns.len();
+                    self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
+                }
+            }
         }
         if !columns.is_empty() && kind != TableKind::Array {
             // pmatrix*[r]: the same alignment in every column
@@ -1980,10 +2162,14 @@ impl Reader<'_> {
                 (Stop::Eof, None) => true,
                 _ => false,
             };
+            let numbered = name.is_some_and(numbered_environment);
             if body_end {
                 if !cell.is_empty() || !row.is_empty() {
                     row.push(Node::row(std::mem::take(&mut cell)).simplify());
                     rows.push(row);
+                }
+                if numbered {
+                    self.refs.end_line();
                 }
                 break;
             }
@@ -1992,6 +2178,9 @@ impl Reader<'_> {
                 Stop::NewRow => {
                     row.push(Node::row(std::mem::take(&mut cell)).simplify());
                     rows.push(std::mem::take(&mut row));
+                    if numbered {
+                        self.refs.end_line();
+                    }
                 }
                 Stop::Hline(dashed) => horizontals.push(TableRule { row: rows.len(), from: 0, to: usize::MAX, dashed }),
                 Stop::Cline(from, to, dashed) => horizontals.push(TableRule { row: rows.len(), from, to, dashed }),
@@ -2035,6 +2224,7 @@ impl Reader<'_> {
             locale: self.locale,
             registry: self.registry,
             macros: self.macros,
+            refs: self.refs,
             variant: self.variant,
             strict: self.strict,
             font: self.font,
@@ -2460,6 +2650,14 @@ impl Reader<'_> {
                             let tex = format!("\\{other}{}", text_arguments(&c, &mut i, math_in_text(other).unwrap_or_default()));
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
+                        }
+                        // cross-references read as in math: a number, as text
+                        "label" | "ref" | "eqref" | "cite" => {
+                            let tex = format!("\\{name}{}", text_arguments(&c, &mut i, if name == "cite" { "[{" } else { "{" }));
+                            let node = self.sub_reader(&tex, math_variant)?;
+                            if let Node::Text { parts: inner } = node {
+                                current.extend(inner.into_iter().filter_map(|p| if let TextPart::Text(t) = p { Some(t) } else { None }));
+                            }
                         }
                         // L-TXT-3: space inside text, set by the math reader, which knows lengths and phantoms
                         "hspace" => {
@@ -4499,4 +4697,154 @@ fn repair_controls(s: &str) -> Option<String> {
         }
     }
     changed.then_some(output)
+}
+
+/// The plain character of a Unicode superscript or subscript: every character whose Unicode
+/// decomposition is `<super>` or `<sub>` of a Latin or Greek letter, a digit, `+ − = ( )`. The
+/// ordinal indicators `ª` and `º` are left out: they stand for other things (`º` for a degree).
+fn plain_script_char(c: char) -> Option<char> {
+    Some(match c {
+        '⁰' | '₀' => '0',
+        '¹' | '₁' => '1',
+        '²' | '₂' => '2',
+        '³' | '₃' => '3',
+        '⁴' | '₄' => '4',
+        '⁵' | '₅' => '5',
+        '⁶' | '₆' => '6',
+        '⁷' | '₇' => '7',
+        '⁸' | '₈' => '8',
+        '⁹' | '₉' => '9',
+        '⁺' | '₊' => '+',
+        '⁻' | '₋' => '-',
+        '⁼' | '₌' => '=',
+        '⁽' | '₍' => '(',
+        '⁾' | '₎' => ')',
+        'ᵃ' | 'ₐ' => 'a',
+        'ᵇ' => 'b',
+        'ᶜ' => 'c',
+        'ᵈ' => 'd',
+        'ᵉ' | 'ₑ' => 'e',
+        'ᶠ' => 'f',
+        'ᵍ' => 'g',
+        'ʰ' | 'ₕ' => 'h',
+        'ⁱ' | 'ᵢ' => 'i',
+        'ʲ' | 'ⱼ' => 'j',
+        'ᵏ' | 'ₖ' => 'k',
+        'ˡ' | 'ₗ' => 'l',
+        'ᵐ' | 'ₘ' => 'm',
+        'ⁿ' | 'ₙ' => 'n',
+        'ᵒ' | 'ₒ' => 'o',
+        'ᵖ' | 'ₚ' => 'p',
+        '𐞥' => 'q',
+        'ʳ' | 'ᵣ' => 'r',
+        'ˢ' | 'ₛ' => 's',
+        'ᵗ' | 'ₜ' => 't',
+        'ᵘ' | 'ᵤ' => 'u',
+        'ᵛ' | 'ᵥ' => 'v',
+        'ʷ' => 'w',
+        'ˣ' | 'ₓ' => 'x',
+        'ʸ' => 'y',
+        'ᶻ' => 'z',
+        'ᴬ' => 'A',
+        'ᴮ' => 'B',
+        'ꟲ' => 'C',
+        'ᴰ' => 'D',
+        'ᴱ' => 'E',
+        'ꟳ' => 'F',
+        'ᴳ' => 'G',
+        'ᴴ' => 'H',
+        'ᴵ' => 'I',
+        'ᴶ' => 'J',
+        'ᴷ' => 'K',
+        'ᴸ' => 'L',
+        'ᴹ' => 'M',
+        'ᴺ' => 'N',
+        'ᴼ' => 'O',
+        'ᴾ' => 'P',
+        'ꟴ' => 'Q',
+        'ᴿ' => 'R',
+        'ᵀ' => 'T',
+        'ᵁ' => 'U',
+        'ⱽ' => 'V',
+        'ᵂ' => 'W',
+        'ᵝ' | 'ᵦ' => 'β',
+        'ᵞ' | 'ᵧ' => 'γ',
+        'ᵟ' => 'δ',
+        'ᶿ' => 'θ',
+        'ᵨ' => 'ρ',
+        'ᵠ' | 'ᵩ' => 'φ',
+        'ᵡ' | 'ᵪ' => 'χ',
+        _ => return None,
+    })
+}
+
+/// The characters of [`plain_script_char`] that are subscripts (the rest are superscripts).
+fn is_subscript_char(c: char) -> bool {
+    matches!(c, '\u{2080}'..='\u{209C}' | '\u{1D62}'..='\u{1D6A}' | '\u{2C7C}')
+}
+
+/// TeX's comments: an unescaped `%` drops the rest of its line, the line break and the spaces that
+/// start the next line. Returns the text without them and the column (1-based, in `s`) of each `%`.
+/// The verbatim arguments of `\verb`, `\url` and `\href` keep their `%`, as in TeX.
+fn comments(s: &str) -> (String, Vec<usize>) {
+    let c: Vec<char> = s.chars().collect();
+    let mut output = String::with_capacity(s.len());
+    let mut starts = Vec::new();
+    let mut i = 0;
+    while i < c.len() {
+        match c[i] {
+            '\\' => {
+                let start = i;
+                i += 1;
+                while c.get(i).is_some_and(char::is_ascii_alphabetic) {
+                    i += 1;
+                }
+                if i == start + 1 && i < c.len() {
+                    i += 1;
+                }
+                let name: String = c[start + 1..i].iter().collect();
+                output.extend(&c[start..i]);
+                match name.as_str() {
+                    "verb" => {
+                        if c.get(i) == Some(&'*') {
+                            output.push('*');
+                            i += 1;
+                        }
+                        if let Some(&delim) = c.get(i) {
+                            let end = c[i + 1..].iter().position(|&x| x == delim).map_or(c.len(), |p| p + i + 2);
+                            output.extend(&c[i..end]);
+                            i = end;
+                        }
+                    }
+                    "url" | "href" => {
+                        while c.get(i).is_some_and(|x| x.is_whitespace()) {
+                            output.push(c[i]);
+                            i += 1;
+                        }
+                        if c.get(i) == Some(&'{') {
+                            let end = (group_end(&c, i + 1) + 1).min(c.len());
+                            output.extend(&c[i..end]);
+                            i = end;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            '%' => {
+                starts.push(i + 1);
+                while i < c.len() && c[i] != '\n' {
+                    i += 1;
+                }
+                i += 1;
+                while c.get(i).is_some_and(|x| *x == ' ' || *x == '\t') {
+                    i += 1;
+                }
+            }
+            other => {
+                output.push(other);
+                i += 1;
+            }
+        }
+    }
+    (output, starts)
 }

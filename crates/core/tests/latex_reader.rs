@@ -110,7 +110,8 @@ fn sub_reader_stopping_before_the_end() {
 
 #[test]
 fn top_level_ampersand_and_break_become_alignment() {
-    has(&tree("a &= b"), &["Table", "Aligned"]);
+    // a loose & is misplaced in TeX: read as a column with a warning (E-REC-9), refused in strict mode
+    has(&recovers("a &= b", "E-REC-9"), &["Table", "Aligned"]);
     has(&tree(r"a \\ b"), &["Table", "Centered"]);
     // a break at the end does not create an empty row
     let t = tree(r"a \\ b \\");
@@ -134,8 +135,8 @@ fn closings_without_opening_at_top() {
 #[test]
 fn special_atoms() {
     has(&tree("a~b"), &["Space"]);
-    // a dollar sign in the middle: a leftover delimiter
-    has(&tree("a$b"), &["\"a\"", "\"b\""]);
+    // a dollar sign in the middle: a leftover delimiter, ignored with a warning (TeX would leave math mode)
+    has(&recovers("a$b", "E-REC-9"), &["\"a\"", "\"b\""]);
     has(&recovers("a # b", "E-REC-9"), &["'#'"]);
     has(&tree("a*b"), &["'∗'"]);
 }
@@ -274,8 +275,11 @@ fn explicit_limits() {
 #[test]
 fn labels_and_references() {
     has(&tree(r"x \label{eq:1}"), &["\"x\""]);
-    has(&tree(r"\ref{eq:1}"), &["\"eq:1\""]);
-    has(&tree(r"\eqref{eq:1}"), &["\"(eq:1)\""]);
+    // without the labels of the document, a reference has no number: ??, as on LaTeX's first run
+    has(&recovers(r"\ref{eq:1}", "E-REC-9"), &["\"??\""]);
+    has(&recovers(r"\eqref{eq:1}", "E-REC-9"), &["\"(??)\""]);
+    // a \tag numbers the \label on its line
+    has(&tree(r"x \label{eq:1} \tag{2} \quad \eqref{eq:1}"), &["\"(2)\""]);
     has(&tree(r"\strut x \mathstrut"), &["Phantom"]);
 }
 
@@ -1456,10 +1460,16 @@ fn p_left_without_right_and_vice_versa() {
 
 #[test]
 fn p_alignment_outside_environment() {
-    // & and \\ at the top level are an implicit alignment: valid in both modes
-    for tex in ["a & b", r"a \\ b", r"& \\ &", r"\\\\\\", "&&&&"] {
+    // \\ at the top level is a row of an implicit alignment: valid in both modes
+    for tex in [r"a \\ b", r"\\\\\\"] {
         let (e, t) = finishes(tex);
-        assert!(e.is_none() && t.is_ok(), "{tex}: {e:?} {t:?}");
+        assert!(e.is_none() && t.as_ref().is_ok_and(Vec::is_empty), "{tex}: {e:?} {t:?}");
+    }
+    // & outside an alignment is "Misplaced alignment tab character &" in TeX: strict mode refuses it,
+    // tolerant mode still reads it as a column, with a warning
+    for tex in ["a & b", r"& \\ &", "&&&&"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_some() && t.as_ref().is_ok_and(|a| !a.is_empty() && a.iter().all(|r| r == "E-REC-9")), "{tex}: {e:?} {t:?}");
     }
 }
 

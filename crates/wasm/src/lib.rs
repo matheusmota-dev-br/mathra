@@ -36,11 +36,31 @@ pub fn convert_in(
     font: Option<u32>,
     max_width: Option<f32>,
 ) -> Result<mathra::Output, String> {
-    convert_full(tex, locale, display, strict, input, braille, animate, steps, font, max_width, &[])
+    convert_full(tex, locale, display, strict, input, braille, animate, steps, font, max_width, &[], None, None)
+}
+
+/// `convert_in` (in one line), for an equation of a document: `labels` and `citations` are JSON objects
+/// from a key to its number (a string or a number), as `{"eq:a": 3}`, for `\ref`, `\eqref` and `\cite`.
+#[allow(clippy::too_many_arguments)]
+pub fn convert_document(
+    tex: &str,
+    locale: Option<&str>,
+    display: bool,
+    strict: bool,
+    input: Option<&str>,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<u32>,
+    labels: Option<&str>,
+    citations: Option<&str>,
+) -> Result<mathra::Output, String> {
+    convert_full(tex, locale, display, strict, input, braille, animate, steps, font, None, &[], labels, citations)
 }
 
 /// `convert_in`, with fallback fonts for the characters the math font lacks, tried in order (see
-/// `fallbacks_by_ids`).
+/// `fallbacks_by_ids`), and the numbers of the document's labels and citations (see
+/// `convert_document`).
 #[allow(clippy::too_many_arguments)]
 pub fn convert_full(
     tex: &str,
@@ -54,14 +74,32 @@ pub fn convert_full(
     font: Option<u32>,
     max_width: Option<f32>,
     fallbacks: &[i32],
+    labels: Option<&str>,
+    citations: Option<&str>,
 ) -> Result<mathra::Output, String> {
     let locale = locale.map_or(Ok(mathra::Locale::default()), str::parse)?;
     let input = input.map_or(Ok(mathra::Input::default()), str::parse)?;
     let braille = braille.map(str::parse).transpose()?;
     let font = font_by_id(font)?;
     let fallback_fonts = fallbacks_by_ids(fallbacks)?;
-    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, ..Default::default() })
+    let labels = numbers(labels, "labels")?;
+    let citations = numbers(citations, "citations")?;
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, labels, citations, ..Default::default() })
         .map_err(|e| e.to_string())
+}
+
+/// A JSON object from keys to numbers (strings or numbers) as `mathra::Labels`; none, empty.
+pub fn numbers(json: Option<&str>, what: &str) -> Result<mathra::Labels, String> {
+    let Some(json) = json else { return Ok(mathra::Labels::new()) };
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|e| format!("{what}: {e}"))?;
+    let serde_json::Value::Object(map) = value else { return Err(format!("{what}: an object from keys to numbers, as {{\"eq:a\": 3}}")) };
+    map.into_iter()
+        .map(|(key, n)| match n {
+            serde_json::Value::String(s) => Ok((key, s)),
+            serde_json::Value::Number(n) => Ok((key, n.to_string())),
+            other => Err(format!("{what}: {key} is {other}, not a string or a number")),
+        })
+        .collect()
 }
 
 /// The fallback fonts by id, in order, then the build's own (none in the npm package, which leaves
@@ -142,7 +180,8 @@ pub fn render_json_in(
 /// `display` defaults to true, `strict` to false; `input` is "latex" (default), "mathml" or "asciimath";
 /// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math);
 /// `max_width`, in em, breaks lines wider than that (none: one line); `fallback_fonts` the fonts for
-/// characters the math font lacks (see `fallbacks_by_ids`).
+/// characters the math font lacks (see `fallbacks_by_ids`); `labels` and `citations` JSON objects from
+/// keys to numbers (see `convert_document`).
 #[wasm_bindgen(js_name = texToSvg)]
 #[allow(clippy::too_many_arguments)]
 pub fn tex_to_svg(
@@ -157,6 +196,8 @@ pub fn tex_to_svg(
     font: Option<u32>,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i32>>,
+    labels: Option<String>,
+    citations: Option<String>,
 ) -> Result<String, JsError> {
     convert_full(
         tex,
@@ -170,6 +211,8 @@ pub fn tex_to_svg(
         font,
         max_width,
         fallback_fonts.as_deref().unwrap_or_default(),
+        labels.as_deref(),
+        citations.as_deref(),
     )
     .map(|r| r.svg)
     .map_err(|e| JsError::new(&e))
@@ -194,7 +237,7 @@ pub fn locales() -> String {
 
 /// Every output in one JSON string (see `render_json`). `display` defaults to true, `strict` to false,
 /// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave; `max_width`,
-/// in em, breaks lines wider than that; `fallback_fonts` as in `texToSvg`.
+/// in em, breaks lines wider than that; `fallback_fonts`, `labels` and `citations` as in `texToSvg`.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render(
@@ -209,6 +252,8 @@ pub fn render(
     font: Option<u32>,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i32>>,
+    labels: Option<String>,
+    citations: Option<String>,
 ) -> Result<String, JsError> {
     convert_full(
         tex,
@@ -222,6 +267,8 @@ pub fn render(
         font,
         max_width,
         fallback_fonts.as_deref().unwrap_or_default(),
+        labels.as_deref(),
+        citations.as_deref(),
     )
     .map(|r| r.to_json())
     .map_err(|e| JsError::new(&e))

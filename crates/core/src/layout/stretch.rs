@@ -150,6 +150,23 @@ fn crossings(f: &Font, id: ttf_parser::GlyphId, x: f32) -> Option<(f32, f32)> {
     (found.0 < found.1).then_some(found)
 }
 
+/// The narrowest a horizontal brace or bracket (⏞ ⏟ ⎴ ⎵) is drawn: the font's smallest variant
+/// wider than its base glyph, the first one built to stretch. The base glyph is as wide as a
+/// letter, so over one or two characters its tips and middle point crowd together; TeX gives the
+/// brace a minimum width too (its pieces at their natural size). Zero when the font has no variants.
+pub fn minimum_width(c: char, e: Style) -> f32 {
+    let f = e.font();
+    let Some(id) = f.glyph(c) else { return 0.0 };
+    let width = |g| {
+        let (x0, _, x1, _) = f.limits(g);
+        x1 - x0
+    };
+    let base = width(id);
+    let variants = f.variants(id, false);
+    let wider = variants.iter().map(|(v, _)| width(*v)).find(|w| *w > base);
+    wider.unwrap_or(0.0) * e.scale()
+}
+
 /// Arrows the font draws at one size only (STIX Two Math has no assembly for ⇌, ⇄ or ⟶): built
 /// from arrows it can stretch, as `\xrightleftharpoons` and mhchem's `<=>` need. A pair is stacked
 /// where the glyph has its two arrows (the upper one's top on the glyph's top, the lower one's

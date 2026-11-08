@@ -122,7 +122,18 @@ pub struct Options {
     /// a character none has is drawn as a box (E-REC-8) or, strict, refused. Noto Emoji with the
     /// `emoji` feature ([`font::FallbackFont::defaults`]), else none.
     pub fallback_fonts: Vec<font::FallbackFont>,
+    /// The numbers of the document's labels, which an equation converted alone cannot know:
+    /// `{"eq:a": "3"}` makes `\eqref{eq:a}` show `(3)` and `\ref{eq:a}` show `3`. A label missing here
+    /// (and not numbered by a `\tag` in the equation) is `??`, with a warning (E-REC-9; an error in
+    /// strict mode), as on LaTeX's first run.
+    pub labels: Labels,
+    /// The numbers of the document's citations: `{"knuth": "1"}` makes `\cite{knuth}` show `[1]`. A
+    /// key missing here is `?`, with a warning (E-REC-9; an error in strict mode).
+    pub citations: Labels,
 }
+
+/// Keys and the numbers they stand for, for [`Options::labels`] and [`Options::citations`].
+pub use input::latex::Labels;
 
 impl Default for Options {
     fn default() -> Self {
@@ -138,13 +149,15 @@ impl Default for Options {
             font: font::MathFont::StixTwo,
             max_width: None,
             fallback_fonts: font::FallbackFont::defaults(),
+            labels: Labels::new(),
+            citations: Labels::new(),
         }
     }
 }
 
-/// The tree of meaning of an equation, in the notation `options.input` says.
+/// The tree of meaning of an equation, in the notation `options.input` says, and the labels it numbers.
 /// `font` in place of `options.font` (the `_in_font` functions).
-fn read(source: &str, options: &Options, font: font::MathFont, registry: &mut rules::Registry) -> Result<(Node, Input), Error> {
+fn read(source: &str, options: &Options, font: font::MathFont, registry: &mut rules::Registry) -> Result<(Node, Input, Labels), Error> {
     let input = match options.input {
         Input::Latex if input::mathml::looks_like_mathml(source) => {
             registry.note(rules::L_ENT_4, "MathML pasted as LaTeX: read as MathML");
@@ -152,12 +165,12 @@ fn read(source: &str, options: &Options, font: font::MathFont, registry: &mut ru
         }
         other => other,
     };
-    let tree = match input {
-        Input::Latex => input::latex::read_in_font(source, options.locale, registry, options.strict, font)?,
-        Input::MathMl => input::mathml::read_with(source, options.locale, registry, options.strict)?,
-        Input::AsciiMath => input::asciimath::read_with(source, options.locale, registry, options.strict)?,
+    let (tree, labels) = match input {
+        Input::Latex => input::latex::read_in_document(source, options.locale, registry, options.strict, font, &options.labels, &options.citations)?,
+        Input::MathMl => (input::mathml::read_with(source, options.locale, registry, options.strict)?, Labels::new()),
+        Input::AsciiMath => (input::asciimath::read_with(source, options.locale, registry, options.strict)?, Labels::new()),
     };
-    Ok((tree, input))
+    Ok((tree, input, labels))
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +189,10 @@ pub struct Output {
     pub applied: Vec<Applied>,
     /// Input problems the tolerant mode worked around (empty in strict mode).
     pub warnings: Vec<Applied>,
+    /// The labels this equation numbers itself, a `\label` with a `\tag` on the same line
+    /// (`\label{eq:a} \tag{3}` gives `{"eq:a": "3"}`): add them to [`Options::labels`] to convert the
+    /// equations that come after it, as the CLI's `--batch` does.
+    pub labels: Labels,
 }
 
 impl Output {
@@ -239,20 +256,30 @@ pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
 /// [`convert`], with the equation set in `font` (in place of [`Options::font`]).
 pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<Output, Error> {
     let mut registry = rules::Registry::default();
-    let (tree, input) = read(tex, options, font, &mut registry)?;
+    let (tree, input, labels) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let math_box = {
         let mut ctx =
             layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
         layout::compose_list(&tree, style, &mut ctx)?
     };
-    finish(tex, options, tree, input, style, math_box, registry)
+    finish(tex, options, tree, input, style, math_box, registry, labels)
 }
 
 /// What follows the layout: the lines (L-BRK-1), the speech, text and braille, and the SVG. A frame
 /// of its own, not on the stack while the deep recursions of reading and layout run.
 #[inline(never)]
-fn finish(tex: &str, options: &Options, tree: Node, input: Input, style: layout::Style, math_box: layout::MathBox, mut registry: rules::Registry) -> Result<Output, Error> {
+#[allow(clippy::too_many_arguments)]
+fn finish(
+    tex: &str,
+    options: &Options,
+    tree: Node,
+    input: Input,
+    style: layout::Style,
+    math_box: layout::MathBox,
+    mut registry: rules::Registry,
+    labels: Labels,
+) -> Result<Output, Error> {
     let formula = {
         let mut ctx =
             layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
@@ -285,7 +312,7 @@ fn finish(tex: &str, options: &Options, tree: Node, input: Input, style: layout:
         steps: options.steps,
         animate: options.animate,
     });
-    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, mathml, applied: registry.applied, warnings: registry.warnings })
+    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, mathml, applied: registry.applied, warnings: registry.warnings, labels })
 }
 
 /// The MathML of [`Output::mathml`], and the note S-MML-1 when it is a fallback. A function of its
@@ -309,7 +336,7 @@ pub fn typeset(tex: &str, options: &Options) -> Result<(layout::MathBox, Vec<App
 /// that font's).
 pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<(layout::MathBox, Vec<Applied>), Error> {
     let mut registry = rules::Registry::default();
-    let (tree, _) = read(tex, options, font, &mut registry)?;
+    let (tree, _, _) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
@@ -322,7 +349,7 @@ pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
 pub fn pen(tex: &str, options: &Options, pen: &output::pen::Pen) -> Result<String, Error> {
     let font = options.font;
     let mut registry = rules::Registry::default();
-    let (tree, _) = read(tex, options, font, &mut registry)?;
+    let (tree, _, _) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;

@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use std::{env, fs, io};
 
 use mathra::font::{FallbackFont, MathFont};
-use mathra::{convert, BrailleCode, Input, Locale, Options};
+use mathra::{convert, BrailleCode, Input, Labels, Locale, Options};
 
 const HELP: &str = "\
 mathra — equations to SVG, no TeX install
@@ -45,9 +45,14 @@ OPTIONS
       --mathml            print only the MathML (MathML Core, with intent where it adds meaning)
       --braille-code <c>  cmu or nemeth; the default follows the locale
                           (CMU in pt-BR and es, Nemeth elsewhere)
+      --label <key=n>     the number of a label, for \\ref and \\eqref (repeat for more);
+                          an unknown label is ?? with a warning (an error with --strict)
+      --cite <key=n>      the number of a citation, for \\cite (repeat for more);
+                          an unknown key is ? with a warning (an error with --strict)
       --batch             read one equation per input line; with --output <folder>,
                           write 1.svg, 2.svg… (1.png, 2.png… with --png);
-                          print ok, warning<TAB>… or error<TAB>… per line
+                          print ok, warning<TAB>… or error<TAB>… per line;
+                          a \\label with a \\tag numbers the label for the lines after it
   -V, --version           show the version
   -h, --help              show this help
 
@@ -63,6 +68,7 @@ EXAMPLES
   mathra 'f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3' --max-width 12em -o long.svg
   mathra '\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}' --mathml
   mathra 'e^{i\\pi} + 1 = 0' --font LibertinusMath-Regular.otf -o euler.svg
+  mathra '\\text{by } \\eqref{eq:a} \\cite{knuth}' --label eq:a=3 --cite knuth=1 --text
 ";
 
 enum Mode {
@@ -90,6 +96,8 @@ struct Args {
     max_width: Option<f32>,
     /// `--fallback-font`, in order; Noto Emoji comes after them.
     fallbacks: Vec<FallbackFont>,
+    labels: Labels,
+    citations: Labels,
     mode: Mode,
     /// `--png`: PNG in place of the SVG, also in a batch's folder.
     png: bool,
@@ -111,6 +119,8 @@ impl Args {
             font: self.font,
             max_width: self.max_width,
             fallback_fonts: self.fallbacks.iter().copied().chain(FallbackFont::defaults()).collect(),
+            labels: self.labels.clone(),
+            citations: self.citations.clone(),
             ..Default::default()
         }
     }
@@ -155,6 +165,18 @@ fn png(svg: &str, args: &Args) -> Result<Vec<u8>, String> {
     }
 }
 
+/// `key=number`, as `--label` and `--cite` take it.
+fn key_number(option: &str, value: Option<String>, into: &mut Labels) -> Result<(), String> {
+    let value = value.ok_or(format!("missing key=number after {option}"))?;
+    match value.split_once('=') {
+        Some((key, number)) if !key.trim().is_empty() => {
+            into.insert(key.trim().to_string(), number.trim().to_string());
+            Ok(())
+        }
+        _ => Err(format!("{option} takes key=number, as in {option} eq:a=3 (got {value})")),
+    }
+}
+
 fn read_args() -> Result<Option<Args>, String> {
     let mut args = Args {
         tex: None,
@@ -169,6 +191,8 @@ fn read_args() -> Result<Option<Args>, String> {
         font: MathFont::default(),
         max_width: None,
         fallbacks: Vec::new(),
+        labels: Labels::new(),
+        citations: Labels::new(),
         mode: Mode::Svg,
         png: false,
         dpi: 300.0,
@@ -211,6 +235,8 @@ fn read_args() -> Result<Option<Args>, String> {
             "--braille" => args.mode = Mode::Braille,
             "--mathml" => args.mode = Mode::MathMl,
             "--braille-code" => args.braille = Some(it.next().ok_or("missing code after --braille-code")?.parse()?),
+            "--label" => key_number("--label", it.next(), &mut args.labels)?,
+            "--cite" => key_number("--cite", it.next(), &mut args.citations)?,
             "--batch" => args.mode = Mode::Batch,
             "--png" => args.png = true,
             "--dpi" => {
@@ -357,27 +383,29 @@ fn main() -> ExitCode {
 }
 
 fn batch(args: &Args) -> ExitCode {
-    use std::io::BufRead;
-    let options = args.options();
+    use std::io::{BufRead, Write};
+    let mut options = args.options();
     let mut output = io::BufWriter::new(io::stdout().lock());
     for (i, line) in io::stdin().lock().split(b'\n').enumerate() {
         let Ok(bytes) = line else { break };
         let status = match String::from_utf8(bytes) {
             Err(_) => "error\tthe line is not UTF-8".to_string(),
-            Ok(tex) => batch_status(&tex, i, args, &options),
+            Ok(tex) => batch_status(&tex, i, args, &mut options),
         };
         let _ = writeln!(output, "{status}");
     }
     ExitCode::SUCCESS
 }
 
-/// Status of one batch line: `ok`, `warning<TAB>…` or `error<TAB>…`.
-fn batch_status(tex: &str, i: usize, args: &Args, options: &Options) -> String {
+/// Status of one batch line: `ok`, `warning<TAB>…` or `error<TAB>…`. The labels the line numbers
+/// (`\label` with `\tag`) go into `options` for the lines after it, as in a document.
+fn batch_status(tex: &str, i: usize, args: &Args, options: &mut Options) -> String {
     let tex = tex.strip_suffix('\r').unwrap_or(tex);
     let r = match convert(tex, options) {
         Ok(r) => r,
         Err(e) => return format!("error\t{e}"),
     };
+    options.labels.extend(r.labels.clone());
     if let Some(folder) = &args.output {
         let (path, written) = if args.png {
             let path = format!("{folder}/{}.png", i + 1);

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -14,6 +16,8 @@ fn convert(
     font: Option<usize>,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i64>>,
+    labels: Option<BTreeMap<String, String>>,
+    citations: Option<BTreeMap<String, String>>,
 ) -> PyResult<mathra::Output> {
     let locale = locale.parse().map_err(PyValueError::new_err)?;
     let input = input.parse().map_err(PyValueError::new_err)?;
@@ -23,7 +27,9 @@ fn convert(
         Some(id) => *mathra::font::MathFont::loaded().get(id).ok_or_else(|| PyValueError::new_err(format!("no font loaded with id {id}")))?,
     };
     let fallback_fonts = fallbacks(&fallback_fonts.unwrap_or_default())?;
-    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, ..Default::default() })
+    let labels = labels.unwrap_or_default();
+    let citations = citations.unwrap_or_default();
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, labels, citations, ..Default::default() })
         .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
@@ -60,7 +66,7 @@ fn load_font(data: Vec<u8>) -> PyResult<(usize, String)> {
 
 /// Converts an equation (LaTeX, MathML or AsciiMath, by `input`) to SVG.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, max_width = None, fallback_fonts = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, max_width = None, fallback_fonts = None, labels = None, citations = None))]
 #[allow(clippy::too_many_arguments)]
 fn tex_to_svg(
     tex: &str,
@@ -74,14 +80,16 @@ fn tex_to_svg(
     font: Option<usize>,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i64>>,
+    labels: Option<BTreeMap<String, String>>,
+    citations: Option<BTreeMap<String, String>>,
 ) -> PyResult<String> {
-    convert(tex, locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts).map(|r| r.svg)
+    convert(tex, locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, labels, citations).map(|r| r.svg)
 }
 
 /// The equation as PNG bytes: `dpi` over a 12pt body (an em is dpi × 12 / 72 pixels), `background`
 /// and `color` as CSS colors (transparent and `#111` by default).
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111", max_width = None, fallback_fonts = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111", max_width = None, fallback_fonts = None, labels = None, citations = None))]
 #[allow(clippy::too_many_arguments)]
 fn tex_to_png(
     py: Python<'_>,
@@ -97,17 +105,20 @@ fn tex_to_png(
     color: &str,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i64>>,
+    labels: Option<BTreeMap<String, String>>,
+    citations: Option<BTreeMap<String, String>>,
 ) -> PyResult<Py<pyo3::types::PyBytes>> {
     let options = mathra::PngOptions { dpi, background, color: color.to_string() };
     options.check().map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let png =
-        convert(tex, locale, display, strict, input, braille, false, false, font, max_width, fallback_fonts)?.png(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let png = convert(tex, locale, display, strict, input, braille, false, false, font, max_width, fallback_fonts, labels, citations)?
+        .png(&options)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(pyo3::types::PyBytes::new(py, &png).unbind())
 }
 
 /// Tree of meaning as JSON.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, max_width = None, fallback_fonts = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, max_width = None, fallback_fonts = None, labels = None, citations = None))]
 #[allow(clippy::too_many_arguments)]
 fn tex_to_tree(
     tex: &str,
@@ -121,13 +132,15 @@ fn tex_to_tree(
     font: Option<usize>,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i64>>,
+    labels: Option<BTreeMap<String, String>>,
+    citations: Option<BTreeMap<String, String>>,
 ) -> PyResult<String> {
-    convert(tex, locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts).map(|r| r.tree.to_json())
+    convert(tex, locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, labels, citations).map(|r| r.tree.to_json())
 }
 
 /// Every output as JSON; `mathra.render` turns it into a dict.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, max_width = None, fallback_fonts = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, max_width = None, fallback_fonts = None, labels = None, citations = None))]
 #[allow(clippy::too_many_arguments)]
 fn render(
     tex: &str,
@@ -141,8 +154,10 @@ fn render(
     font: Option<usize>,
     max_width: Option<f32>,
     fallback_fonts: Option<Vec<i64>>,
+    labels: Option<BTreeMap<String, String>>,
+    citations: Option<BTreeMap<String, String>>,
 ) -> PyResult<String> {
-    convert(tex, locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts).map(|r| r.to_json())
+    convert(tex, locale, display, strict, input, braille, animate, steps, font, max_width, fallback_fonts, labels, citations).map(|r| r.to_json())
 }
 
 /// The supported languages as (code, name) pairs, English first.

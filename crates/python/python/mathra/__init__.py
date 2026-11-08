@@ -14,7 +14,7 @@ import pathlib
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, TypedDict, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, TypedDict, Union
 
 from . import _mathra
 
@@ -201,12 +201,20 @@ def _fallback_ids(fonts: FallbackFonts) -> Optional[List[int]]:
     return [f.id if isinstance(f, FallbackFont) else -f.id - 1 for f in fonts]
 
 
+#: Keys and their numbers, for ``labels`` and ``citations``: ``{"eq:a": 3}``.
+Numbers = Mapping[str, Union[str, int]]
+
+
+def _numbers(numbers: Optional[Numbers]) -> Optional[Dict[str, str]]:
+    return None if numbers is None else {str(key): str(n) for key, n in numbers.items()}
+
+
 class Language(TypedDict):
     code: str
     name: str
 
 
-def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None) -> str:
+def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None, labels: Optional[Numbers] = None, citations: Optional[Numbers] = None) -> str:
     """Converts an equation to SVG.
 
     ``locale`` is a language code such as "en", "pt-BR", "fr" or "ja" (see :func:`locales`); ``display``
@@ -220,12 +228,16 @@ def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bo
     enough, only at its top level, each line a ``<g data-line>`` of the SVG (default: one line).
     ``fallback_fonts`` are tried in order for a character the math font lacks (fonts from
     :func:`load_fallback_font`, or math fonts), then the embedded Noto Emoji; a character none has is
-    drawn as a box (E-REC-8) or, with ``strict``, refused. Raises ValueError on input it cannot read.
+    drawn as a box (E-REC-8) or, with ``strict``, refused. ``labels`` and ``citations`` give the
+    numbers of the document's cross-references, which an equation converted alone cannot know: with
+    ``labels={"eq:a": 3}`` ``\\eqref{eq:a}`` shows ``(3)`` and ``\\ref{eq:a}`` shows ``3``, with
+    ``citations={"knuth": 1}`` ``\\cite{knuth}`` shows ``[1]``; an unknown key is ``(??)``, ``??`` or
+    ``[?]``, with a warning (an error with ``strict``). Raises ValueError on input it cannot read.
     """
-    return _mathra.tex_to_svg(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts))
+    return _mathra.tex_to_svg(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts), labels=_numbers(labels), citations=_numbers(citations))
 
 
-def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, font: Optional[Font] = None, dpi: float = 300, background: Optional[str] = None, color: str = "#111", max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None) -> bytes:
+def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, font: Optional[Font] = None, dpi: float = 300, background: Optional[str] = None, color: str = "#111", max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None, labels: Optional[Numbers] = None, citations: Optional[Numbers] = None) -> bytes:
     """Converts an equation to PNG, as bytes.
 
     ``dpi`` is the resolution over a 12pt body: an em is ``dpi * 12 / 72`` pixels (50 at 300 dpi), and
@@ -234,17 +246,17 @@ def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bo
     color; colors set in the equation (``\\color``) keep their own. The other arguments are those of
     :func:`tex_to_svg`. Raises ValueError on input it cannot read or a color it does not know.
     """
-    return _mathra.tex_to_png(tex, locale, display=display, strict=strict, input=input, braille=braille, font=_font_id(font), dpi=dpi, background=background, color=color, max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts))
+    return _mathra.tex_to_png(tex, locale, display=display, strict=strict, input=input, braille=braille, font=_font_id(font), dpi=dpi, background=background, color=color, max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts), labels=_numbers(labels), citations=_numbers(citations))
 
 
-def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None) -> str:
+def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None, labels: Optional[Numbers] = None, citations: Optional[Numbers] = None) -> str:
     """The tree of meaning, as a JSON string."""
-    return _mathra.tex_to_tree(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts))
+    return _mathra.tex_to_tree(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts), labels=_numbers(labels), citations=_numbers(citations))
 
 
-def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None) -> Result:
+def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None, labels: Optional[Numbers] = None, citations: Optional[Numbers] = None) -> Result:
     """Every output at once: svg, speech, text, braille, braille_code, mathml, tree, applied and warnings."""
-    return json.loads(_mathra.render(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts)))
+    return json.loads(_mathra.render(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts), labels=_numbers(labels), citations=_numbers(citations)))
 
 
 def locales() -> List[Language]:
@@ -252,4 +264,4 @@ def locales() -> List[Language]:
     return [{"code": code, "name": name} for code, name in _mathra.locales()]
 
 
-__all__ = ["CATALOG", "CatalogFont", "FallbackFont", "FallbackFonts", "Font", "Language", "Result", "Rule", "__version__", "catalog_fonts", "core_version", "load_fallback_font", "load_font", "load_font_from_catalog", "locales", "render", "tex_to_png", "tex_to_svg", "tex_to_tree"]
+__all__ = ["CATALOG", "CatalogFont", "FallbackFont", "FallbackFonts", "Font", "Language", "Numbers", "Result", "Rule", "__version__", "catalog_fonts", "core_version", "load_fallback_font", "load_font", "load_font_from_catalog", "locales", "render", "tex_to_png", "tex_to_svg", "tex_to_tree"]

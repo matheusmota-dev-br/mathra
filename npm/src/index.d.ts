@@ -22,6 +22,10 @@ export interface Options {
   maxWidth?: number;
   /** Fonts for the characters the math font lacks (emoji, CJK in `\text{…}`), tried in order: what `loadFallbackFont` returned, or a math font from `loadFont` or `loadFontFromCatalog`. Their outlines go in the SVG as the other glyphs'. Default none: the npm package embeds no emoji font, so a character no font has is drawn as a box (E-REC-8) or, with `strict`, refused. */
   fallbackFonts?: (FallbackFont | Font)[];
+  /** The numbers of the document's labels, which an equation converted alone cannot know: `{ "eq:a": 3 }` makes `\eqref{eq:a}` show `(3)` and `\ref{eq:a}` show `3`. An unknown label is `??`, with a warning (E-REC-9), or an error with `strict`. */
+  labels?: Record<string, string | number>;
+  /** The numbers of the document's citations: `{ knuth: 1 }` makes `\cite{knuth}` show `[1]`. An unknown key is `?`, with a warning (E-REC-9), or an error with `strict`. */
+  citations?: Record<string, string | number>;
 }
 
 /** A font loaded with `loadFallbackFont`, for `options.fallbackFonts`. */

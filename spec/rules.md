@@ -93,6 +93,14 @@ Commands that belong to the document, not to the equation, are ignored and noted
 - `\tiny`, `\scriptsize`, `\small`, `\large` and the rest of the size commands: the size comes from whoever uses the SVG. In text, `\fontsize{size}{skip}\selectfont` too.
 - `\usepackage{…}`, `\RequirePackage{…}` and MathJax's `\require{…}`, with their optional argument: the supported packages are already loaded.
 
+### L-ENT-5 · Cross-references: labels, tags and citations
+
+An equation is converted alone, so the numbers of the document around it come from the caller: `Options::labels` and `Options::citations` (`labels` and `citations` in JavaScript and Python, `--label key=n` and `--cite key=n` in the CLI) map a key to its number.
+
+- `\ref{key}` shows the label's number and `\eqref{key}` the number in parentheses: `(3)`. `\cite{a,b}` shows `[1, 2]`, and `\cite[p.~5]{a}` adds the note, `[1, p. 5]`. They work inside `\text{…}` too. Speech, text and braille say the number, never the key.
+- `\tag{3}` numbers the line it is on (in `equation`, `align`, `gather`, `multline`, `flalign`, `alignat`, `eqnarray` or a loose `\\` line), and a `\label` on the same line takes that number: `\ref` shows the tag as written, `\eqref` in parentheses. The labels an equation numbers this way come back in `Output::labels`, and in `--batch` they count for the lines after it. A `\label` with no `\tag` would take the automatic number of `equation` or `align`, which mathra does not give: equations are not numbered on their own.
+- A key with no number is `??` (`(??)` for `\eqref`) or `?` inside the citation's brackets, as on LaTeX's first run, with an E-REC-9 warning; strict mode refuses it.
+
 ### L-TXT-1 · Quotes in text
 
 Inside `\text{…}` (and every text argument), TeX's quote ligatures become typographic quotes: ``` `` ``` → “, `''` → ”, `` ` `` → ‘, `'` → ’. In math mode `'` is still a prime.
@@ -214,6 +222,7 @@ The rules for fractions, roots, scripts, limits, accents, bars, braces and arrow
 | Large operator | variant with height ≥ `DisplayOperatorMinHeight` in display style, centered on the axis |
 | Delimiters (`\left`, matrices) | size variants and assembly from parts; height ≥ max(0.901 × 2δ, 2δ − 0.5 em), like `\delimiterfactor` and `\delimitershortfall` |
 | Accents | `AccentBaseHeight`, the glyph's accent attachment; `\widehat` and extended arrows through horizontal assembly |
+| Braces and brackets (`\underbrace`, `\overbrace`, `\underbracket`, `\overbracket`) | `OverbarVerticalGap`/`UnderbarVerticalGap` from the content, `UpperLimitGapMin`/`LowerLimitGapMin` to the label, measured on the ink; the horizontal variant or assembly as wide as the content, but never narrower than the font's first variant wider than the base glyph (1 em in STIX Two Math), as TeX gives a brace a minimum width: over a short base the brace is centered and sticks out, and the box widens to hold it |
 | Matrices and `array` | strut of 0.84 em / 0.36 em per row, columns 1 em apart, `\jot` of 0.3 em in alignments |
 | Arrow diagrams (`tikz-cd`, `xymatrix`) | `AxisHeight` (arrows leave and reach each cell at the axis, and the diagram is centered on it), `FractionRuleThickness` (the strokes); tikz-cd's separations: 2.4 em between columns and 2.1 em between rows, widened to fit a label; labels in script style; a bend as tikz's `bend left`, a cubic Bézier with its control points 0.39 of the way along the leaving and arriving directions |
 

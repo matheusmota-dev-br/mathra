@@ -112,6 +112,14 @@ $ mathra 'sum_(i=1)^n i^2 = (n(n+1)(2n+1))/6' --from asciimath -o sum.svg
 $ mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech      # square root of x
 ```
 
+## Labels and citations
+
+An equation converted alone cannot know the numbers of the document around it. Give them as `labels` and `citations` (`Options::labels` in Rust, `{ labels, citations }` in JavaScript, keyword arguments in Python, `--label` and `--cite` in the terminal), and `\eqref`, `\ref` and `\cite` show them. An unknown key is `(??)`, `??` or `[?]`, as on LaTeX's first run, with a warning (an error with `--strict`). In `--batch`, a `\label` with a `\tag` on its line numbers the label for the lines after it. Equations are not numbered on their own: `\tag` gives the number.
+
+```console
+$ mathra '\text{by } \eqref{eq:a} \cite{knuth}' --label eq:a=3 --cite knuth=1 --text   # by (3)[1]
+```
+
 ## Braille
 
 Every equation also comes out in braille, as Unicode braille cells: in the **CMU** (Código Matemático Unificado) for Portuguese and Spanish, and in **Nemeth** for the other languages, or in either one by choice. Both follow their official documents, and the tests check them against the documents' own examples; what is covered and what is still open is in [`spec/braille.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/braille.md). The braille also goes into the SVG's `<metadata>`. It was compared with MathCAT row by row, with the official documents deciding every disagreement ([`docs/braille-review.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/docs/braille-review.md), and the Braille tab of the [reference page](https://matheusmota-dev-br.github.io/mathra/reference.html#braille)); it still needs a braille transcriber's review before it reaches students.

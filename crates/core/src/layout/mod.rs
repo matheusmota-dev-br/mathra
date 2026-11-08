@@ -1191,7 +1191,9 @@ fn compose_brace(base: &Node, above: bool, label: Option<&Node>, bracket: bool, 
         (true, true) => '⎴',
         (false, true) => '⎵',
     };
-    let brace = stretch::horizontal(symbol, b.width, e)?;
+    // never narrower than the font's first stretched variant: centered on a short base, it sticks
+    // out past it and the box widens, as in TeX
+    let brace = stretch::horizontal(symbol, b.width.max(stretch::minimum_width(symbol, e)), e)?;
     let r = label.map(|n| compose(n, e.sup(), ctx)).transpose()?;
     let width = b.width.max(brace.width).max(r.as_ref().map_or(0.0, |r| r.width));
     // the brace keeps the bar's gap from its content and the label keeps a limit's gap from the

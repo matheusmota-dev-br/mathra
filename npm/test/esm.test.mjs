@@ -61,6 +61,17 @@ test("mathml", () => {
   assert.deepEqual(render(r.mathml, { input: "mathml" }).tree, r.tree);
 });
 
+test("labels and citations", () => {
+  const options = { labels: { "eq:a": 3, "eq:b": "4a" }, citations: { knuth: 1 } };
+  assert.equal(render(String.raw`\eqref{eq:a} \ref{eq:b} \cite{knuth}`, options).text, "(3)4a[1]");
+  assert.match(texToSvg(String.raw`\eqref{eq:a}`, options), /\(3\)/);
+  const unknown = render(String.raw`\eqref{eq:z}`);
+  assert.equal(unknown.text, "(??)");
+  assert.equal(unknown.warnings[0].rule, "E-REC-9");
+  assert.throws(() => texToSvg(String.raw`\cite{knuth}`, { strict: true }), /no number/);
+  assert.equal(render(String.raw`\cite{knuth}`, { strict: true, citations: { knuth: 1 } }).text, "[1]");
+});
+
 test("the writing animation and the steps", () => {
   assert.doesNotMatch(texToSvg("x+1"), /data-step/);
   assert.match(texToSvg("x+1", { animate: true }), /@keyframes mr-f/);

@@ -8,7 +8,9 @@ function args(options) {
   // a fallback font is what `loadFallbackFont` returned (its id), or a math font from `loadFont`
   // (its id n, sent as -(n + 1))
   const fallbacks = o.fallbackFonts == null ? null : Int32Array.from(o.fallbackFonts, (f) => (f.fallback ? f.id : -f.id - 1));
-  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null, o.maxWidth ?? null, fallbacks];
+  // labels and citations: objects from a key to its number, passed to the wasm as JSON
+  const numbers = (map) => (map == null ? null : JSON.stringify(map));
+  return [o.locale ?? null, o.display ?? null, o.strict ?? null, o.input ?? null, o.braille ?? null, o.animate ?? null, o.steps ?? null, font ?? null, o.maxWidth ?? null, fallbacks, numbers(o.labels), numbers(o.citations)];
 }
 
 // mathfonts: a catalog of math fonts checked with mathra. Nothing is downloaded unless asked for.
