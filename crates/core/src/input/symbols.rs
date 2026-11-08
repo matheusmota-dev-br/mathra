@@ -888,6 +888,14 @@ pub fn accent(name: &str) -> Option<(char, bool)> {
         // KaTeX's group accents (MnSymbol, yhmath): a wide arc with corners over or under the base
         "overgroup" => ('⏠', true),
         "undergroup" => ('⏡', true),
+        // esvect's vector arrow, which stretches as \overrightarrow does (\vv* is in latex.rs)
+        "vv" => ('→', true),
+        // KaTeX's double arrow and line segment (a line with a tick at each end, drawn by the layout;
+        // U+20E9, the combining wide bridge, stands for it in the tree and the MathML)
+        "Overrightarrow" => ('⇒', true),
+        "overlinesegment" => ('\u{20E9}', true),
+        // mathabx's bar that widens with its base
+        "widebar" => ('\u{0304}', true),
         _ => return None,
     })
 }

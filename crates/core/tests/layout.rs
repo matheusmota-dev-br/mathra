@@ -489,6 +489,35 @@ fn simple_stretchy_and_combining_accents() {
 }
 
 #[test]
+fn drawn_wide_accents_and_marks_under() {
+    let rules = |b: &MathBox| b.items.iter().filter(|i| matches!(i, Item::Rule { .. })).count();
+    let ab = math_box("AB");
+    // KaTeX's line segment: a line and a tick across each end, over or under the base
+    let over = math_box(r"\overlinesegment{AB}");
+    let under = math_box(r"\underlinesegment{AB}");
+    assert_eq!((rules(&over), rules(&under)), (3, 3));
+    assert!(over.height > ab.height && over.depth == ab.depth && over.width == ab.width);
+    assert!(under.depth > ab.depth && under.height == ab.height);
+    consistent(&over, "overlinesegment");
+    // mathabx's \widebar: one rule as wide as the base, where \bar puts its macron (below \overline's bar)
+    for base in ["x", "AB", "ABCDEF"] {
+        let rule = |tex: String| match math_box(&tex).items.iter().find(|i| matches!(i, Item::Rule { .. })) {
+            Some(Item::Rule { width, y, .. }) => (*width, *y),
+            _ => panic!("{tex}: no rule"),
+        };
+        let (wide, overline) = (rule(format!(r"\widebar{{{base}}}")), rule(format!(r"\overline{{{base}}}")));
+        assert!((wide.0 - overline.0).abs() < 1e-3 && wide.1 <= overline.1, "{base}: {wide:?} {overline:?}");
+    }
+    // a mark of its own size under the base (accents' \underaccent), not stretched to the base
+    let x = math_box("x");
+    let under_tilde = math_box(r"\underaccent{\tilde}{x}");
+    assert!(under_tilde.depth > x.depth && under_tilde.height == x.height, "{under_tilde:?}");
+    let glyphs = |b: &MathBox| b.items.iter().filter(|i| matches!(i, Item::Glyph { .. })).count();
+    assert_eq!(glyphs(&math_box(r"\underaccent{\hat}{ABCDEF}")), 7, "the hat's own glyph, not a stretched one");
+    consistent(&under_tilde, "underaccent");
+}
+
+#[test]
 fn bar_above_and_below() {
     let base = math_box("x");
     let above = math_box(r"\overline{x}");

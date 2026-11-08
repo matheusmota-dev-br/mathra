@@ -707,6 +707,29 @@ fn square_brackets_and_arrows_under_and_over() {
 }
 
 #[test]
+fn accents_of_esvect_accents_mathabx_and_katex() {
+    // esvect's \vv is \overrightarrow; \vv*{x}{i} puts the index after the arrow
+    assert_eq!(tree(r"\vv{AB}"), tree(r"\overrightarrow{AB}"));
+    has(&tree(r"\vv*{u}{1}"), &["Scripts { base: Accent { base: Identifier { name: \"u\"", "accent: '→', stretchy: true", "Number { value: \"1\""]);
+    // accents' \underaccent: an accent command's mark under the base, at its own size; any other mark
+    // in scriptscript style
+    has(&tree(r"\underaccent{\tilde}{x}"), &["accent: '\\u{303}', stretchy: false, below: true"]);
+    has(&tree(r"\underaccent{\widehat}{AB}"), &["accent: '\\u{302}', stretchy: true, below: true"]);
+    has(&tree(r"\underaccent{\star}{X}"), &["Stacked { base: Identifier { name: \"X\"", "above: None, below: Some(Style { level: 3"]);
+    // \accentset: the mark over the base in scriptscript style, an ordinary atom (not \overset's class)
+    has(&tree(r"\accentset{\star}{X}"), &["Stacked { base: Identifier { name: \"X\"", "above: Some(Style { level: 3"]);
+    assert!(!tree(r"\accentset{\star}{=}").contains("ForcedClass"));
+    // mathabx
+    has(&tree(r"\widebar{AB}"), &["accent: '\\u{304}', stretchy: true, below: false"]);
+    has(&tree(r"\widering{AB}"), &["Accent { base: Accent { base: Row", "accent: '⏜', stretchy: true", "accent: '\\u{30a}', stretchy: false"]);
+    assert_eq!(tree(r"\undertilde{AB}"), tree(r"\utilde{AB}"));
+    // KaTeX
+    has(&tree(r"\Overrightarrow{AB}"), &["accent: '⇒', stretchy: true, below: false"]);
+    has(&tree(r"\overlinesegment{AB}"), &["accent: '\\u{20e9}', stretchy: true, below: false"]);
+    has(&tree(r"\underlinesegment{AB}"), &["accent: '\\u{20e9}', stretchy: true, below: true"]);
+}
+
+#[test]
 fn color_models() {
     has(&tree(r"\color[HTML]{FF0000} x"), &["#FF0000"]);
     // each model as #rrggbb (CSS's rgb() counts to 255, not to 1)

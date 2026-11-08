@@ -27,7 +27,7 @@ Two codes, chosen by the language unless `braille` (`--braille-code`) says other
 | Levels | Superscript ⠘, subscript ⠰, nested levels spelled from the baseline, return with ⠐ (not before a space or punctuation); a numeric subscript of a letter needs no indicator; primes ⠄ before the scripts; ⠪ as a comma at script level (§14) |
 | Radicals | ⠣ index ⠜ … ⠻, inner radicals with ⠨ per depth (§16) |
 | Functions | The name's letters followed by a space (§18) |
-| Modified expressions | ⠐ expression ⠩ under ⠣ over ⠻ for Σ, Π, lim, accents and stacked labels; contracted bar x̄ = ⠭⠱ (§15); integrals with their bounds as scripts (§23) |
+| Modified expressions | ⠐ expression ⠩ under ⠣ over ⠻ for Σ, Π, lim, accents and stacked labels; contracted bar x̄ = ⠭⠱ (§15), and KaTeX's line segment with a tick at each end (`\overlinesegment`) written as the bar (inferred: no printed example); integrals with their bounds as scripts (§23) |
 | Matrices and systems | A braille line per row, enlarged grouping signs on every line, a blank cell between entries (§19.6, §25.8) |
 
 ## CMU
@@ -43,7 +43,7 @@ Two codes, chosen by the language unless `braille` (`--braille-code`) says other
 | Roots | ⠫ index ⠱ radicand; the square root omits the index (§5.3) |
 | Functions | Brazilian names (sen, tg, cossec, sh…) ended by ⠄; log base: log⠄ base ⠱; lim⠄ condition ⠱ (§7.2, §7.5) |
 | Σ, Π, ∫ | The sign, the lower bound, ⠒, the upper bound, ⠱ (§7.4, §7.5.1) |
-| Marks | Written before the letter: bar ⠈⠉, vector ⠒⠂, left arrow ⠐⠒, tilde ⠐⠢, arc ⠈⠒, dot ⠈ (§2.3.2, §8.1) |
+| Marks | Written before the letter: bar ⠈⠉, vector ⠒⠂, left arrow ⠐⠒, tilde ⠐⠢, arc ⠈⠒, dot ⠈ (§2.3.2, §8.1); KaTeX's line segment as the bar (inferred) |
 | Matrices | A line per row, in the print positions (§7.5.1) |
 
 ## S-BRL-1 · A symbol without a sign

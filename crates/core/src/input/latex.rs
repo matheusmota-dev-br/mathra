@@ -966,15 +966,34 @@ impl Reader<'_> {
         Ok(())
     }
 
-    /// mathtools' `\vdotswithin` and `\shortvdotswithin`, asked by `mod_command`: not in `structure_command`,
-    /// which is on the path of every nested environment, where arms widen its stack frame.
+    /// mathtools' `\vdotswithin` and `\shortvdotswithin`, and the accents package's `\underaccent` and
+    /// `\accentset`, asked by `mod_command`: not in `structure_command`, which is on the path of every
+    /// nested environment, nor in `accent_command`, on the path of every nested `\not`, where arms widen
+    /// the stack frame.
     fn vdots_command(&mut self, name: &str, col: usize, start: usize, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
         match name {
             "vdotswithin" => items.push(self.vdots_within()?),
             "shortvdotswithin" => self.short_vdots_within(start, col)?,
+            "underaccent" | "accentset" => items.push(self.accents_package(name == "underaccent")?),
             _ => return Ok(None),
         }
         Ok(Some(None))
+    }
+
+    /// The accents package: `\underaccent{accent}{base}` puts the mark of an accent command under the
+    /// base (`\underaccent{\tilde}{x}`), and anything else under it in scriptscript style;
+    /// `\accentset{mark}{base}` sets the mark over the base in scriptscript style, as an accent (an
+    /// ordinary atom, whatever the base).
+    #[inline(never)]
+    fn accents_package(&mut self, under: bool) -> R<Node> {
+        let mark = self.raw_text()?;
+        let base = Box::new(self.argument()?);
+        let command = mark.trim().strip_prefix('\\').filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphabetic()));
+        if let Some((accent, stretchy)) = command.filter(|_| under).and_then(symbols::accent) {
+            return Ok(Node::Accent { base, accent, stretchy, below: true });
+        }
+        let mark = Some(Box::new(Node::Style { level: 3, base: Box::new(self.sub_reader(&mark, self.variant)?) }));
+        Ok(if under { Node::Stacked { base, above: None, below: mark } } else { Node::Stacked { base, above: mark, below: None } })
     }
 
     /// mathtools' `\vdotswithin{=}`: ⋮ centered in a box as wide as `{}={}`, so that it sits under
@@ -1287,12 +1306,14 @@ impl Reader<'_> {
                 self.raw_optional();
                 Node::Brace { base: Box::new(self.argument()?), above: name == "overbracket", label: None, bracket: true }
             }
-            "underrightarrow" | "underleftarrow" | "underleftrightarrow" | "utilde" => {
+            "underrightarrow" | "underleftarrow" | "underleftrightarrow" | "utilde" | "undertilde" | "underlinesegment" => {
                 let accent = match name {
                     "underrightarrow" => '→',
                     "underleftarrow" => '←',
-                    // undertilde
-                    "utilde" => '\u{0303}',
+                    // undertilde (\utilde), accents' and mathabx's \undertilde
+                    "utilde" | "undertilde" => '\u{0303}',
+                    // KaTeX's line segment (see \overlinesegment in symbols.rs)
+                    "underlinesegment" => '\u{20E9}',
                     _ => '↔',
                 };
                 Node::Accent { base: Box::new(self.argument()?), accent, stretchy: true, below: true }
@@ -4465,6 +4486,15 @@ impl Reader<'_> {
                 let indices = self.raw_text()?;
                 format!("{}{{{base}}}{}", pre.map(|p| staggered_indices(&p, true)).unwrap_or_default(), staggered_indices(&indices, false))
             }
+            // esvect: \vv*{x}{i} is \vv{x}_{i}, the index pulled 1 mu closer (\vv alone is in the accents)
+            "vv" if self.current() == Some('*') => {
+                self.pos += 1;
+                let x = self.raw_text()?;
+                let index = self.raw_text()?;
+                format!("\\overrightarrow{{{x}}}_{{\\mkern-1mu {index}}}")
+            }
+            // mathabx: \widering, built on \wideparen as the package builds it, a ring at the top of the arc
+            "widering" => format!("\\mathring{{\\wideparen{{{}}}}}", self.raw_text()?),
             "Set" | "set" => {
                 let x = self.raw_text()?;
                 match x.split_once('|') {

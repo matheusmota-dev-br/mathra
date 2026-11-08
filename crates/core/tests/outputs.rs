@@ -116,6 +116,9 @@ const SPEECHES: &[(&str, &str, &str)] = &[
     (r"x \to 0", "tende a", "tends to"),
     (r"\cancel{x}", "x cancelado", "x canceled"),
     (r"\circled{1}", "1 circulado", "circled 1"),
+    (r"\vv{AB}", "vetor A B", "vector A B"),
+    (r"\overlinesegment{AB}", "segmento A B", "segment A B"),
+    (r"\widebar{AB}", "A B barra", "A B bar"),
     (r"\boxed{x}", "x", "x"),
 ];
 
