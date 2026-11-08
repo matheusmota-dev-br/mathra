@@ -1714,3 +1714,13 @@ fn a_quantitys_value_as_siunitx_prints_it() {
     assert_eq!(tree(r"\SI{.25}{V}"), tree(r"\SI{0.25}{V}"));
     assert_eq!(tree(r"\SI{-.5}{V}"), tree(r"\SI{-0.5}{V}"));
 }
+
+#[test]
+fn bbox_and_enclose_take_defined_colors() {
+    let t = tree(r"\definecolor{brand}{HTML}{1F6FEB} \bbox[brand,border:1px solid brand]{x}");
+    assert_eq!(t.matches("#1f6feb").count(), 2, "{t}");
+    let t = tree(r"\definecolor{brand}{HTML}{1F6FEB} \enclose{circle}[mathcolor=brand]{x}");
+    assert!(t.contains("#1f6feb"), "{t}");
+    let t = tree(r"\bbox[red!40]{x}");
+    assert!(t.contains('#'), "an xcolor mix becomes #rrggbb: {t}");
+}

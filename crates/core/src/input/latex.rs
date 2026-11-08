@@ -1737,6 +1737,13 @@ impl Reader<'_> {
         self.checked_color(color, col)
     }
 
+    /// A color named in place (`\bbox[brand]`, `\enclose{…}[mathcolor=brand]`): a color the equation
+    /// defined or an xcolor mix becomes its CSS value, any other name stays as written; then checked.
+    fn named_color(&mut self, name: &str, col: usize) -> R<Option<String>> {
+        let css = color::expression(name, &self.macros.colors).map_or_else(|| name.to_string(), |d| d.css);
+        self.checked_color(css, col)
+    }
+
     /// `color` when it is a color mathra can write into the SVG; None in tolerant mode otherwise.
     fn checked_color(&mut self, color: String, col: usize) -> R<Option<String>> {
         let valid = color.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c)) && !color.is_empty() && color.len() < 40;
@@ -1770,11 +1777,11 @@ impl Reader<'_> {
                             self.tolerate(rules::E_REC_9, col, format!("\\bbox border style not drawn: {word}"), "drawn solid")?;
                         }
                     } else {
-                        border = self.checked_color(word.to_string(), col)?;
+                        border = self.named_color(word, col)?;
                     }
                 }
             } else if background.is_none() {
-                background = self.checked_color(part.to_string(), col)?;
+                background = self.named_color(part, col)?;
             } else {
                 self.tolerate(rules::E_REC_9, col, format!("\\bbox part not understood: {part}"), "ignored")?;
             }
@@ -1801,12 +1808,12 @@ impl Reader<'_> {
             let value = value.trim().trim_matches(['"', '\'']).to_string();
             match name.trim() {
                 "mathcolor" => {
-                    if let Some(color) = self.checked_color(value, col)? {
+                    if let Some(color) = self.named_color(&value, col)? {
                         out = Node::Colored { color, base: Box::new(out) };
                     }
                 }
                 "mathbackground" => {
-                    if let Some(background) = self.checked_color(value, col)? {
+                    if let Some(background) = self.named_color(&value, col)? {
                         out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background), border: None, padding: None, thickness: None };
                     }
                 }
