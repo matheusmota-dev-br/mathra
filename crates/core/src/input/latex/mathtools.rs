@@ -91,11 +91,12 @@ impl Reader<'_> {
             }
             // \Aboxed{a &= b}: a box around both sides of the alignment point. The left cell is as wide
             // as `a` plus the box's padding and line (0.3em and 0.04em, \fboxsep and \fboxrule), and the
-            // box laps out of it to the right, as mathtools kerns it
+            // box laps out of it to the right, as mathtools kerns it. The right cell ends where the box
+            // does (#251): the box is an ordinary atom, so a relation after it gets its thick space
             "Aboxed" => {
                 let raw = self.raw_text()?;
                 let (left, right) = split_at_ampersand(&raw).unwrap_or((&raw, ""));
-                format!("\\mathrlap{{\\boxed{{{left}{right}}}}}\\hphantom{{{left}{{}}}}\\hspace{{0.34em}}&\\hphantom{{{{}}{right}}}")
+                format!("\\mathrlap{{\\boxed{{{left}{right}}}}}\\hphantom{{{left}{{}}}}\\hspace{{0.34em}}&\\hphantom{{{{}}{right}}}\\hspace{{0.34em}}")
             }
             // \ArrowBetweenLines[symbol]: a line of its own with the arrow (⇕ by default) in the first
             // column; the starred form puts it in the fourth, the column mathtools' example leaves

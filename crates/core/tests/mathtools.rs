@@ -93,6 +93,11 @@ fn move_eq_left_aboxed_and_arrow_between_lines() {
     assert_eq!(rows[0].len(), 2);
     assert_eq!(r.text, "a = b + c ; d = e");
     assert!(r.speech.contains("boxed"), "{}", r.speech);
+    // #251: the box is an ordinary atom, as \boxed is: a relation after it gets its thick space, so the
+    // line is as wide as with \boxed (the SVG's width, to the thousandth of an em)
+    let width = |tex: &str| strict(tex).svg.split("width=\"").nth(1).and_then(|w| w.split('"').next()).unwrap().to_string();
+    assert_eq!(width(r"\begin{aligned} \Aboxed{a &= b} \approx c \end{aligned}"), width(r"\begin{aligned} \boxed{a = b} \approx c \end{aligned}"));
+    assert_eq!(width(r"\begin{aligned} \Aboxed{a &= b} \approx c \end{aligned}"), width(r"\boxed{a = b} \approx c"));
     // \ArrowBetweenLines: a line of its own with ⇕ (or the symbol asked for), in the first column or,
     // starred, in the fourth
     let r = strict(r"\begin{alignat}{2} && x &= y \\ \ArrowBetweenLines && y &= x \end{alignat}");
