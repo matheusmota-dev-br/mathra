@@ -1866,6 +1866,9 @@ impl Reader<'_> {
             // the "under" ones (⏝, ⏡) go below the base
             Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: matches!(accent, '⏝' | '⏡') }
         } else if let Some(Symbol { symbol, class }) = symbols::command(other) {
+            // \boldsymbol{\nabla}, \bm{\nabla}: TeX's bold symbol font has an upright bold nabla, the 𝛁 of
+            // physics' \grad (U+1D6C1)
+            let symbol = if symbol == '∇' && self.variant == Variant::BoldItalic { '𝛁' } else { symbol };
             Node::Operator { symbol, class }
         } else {
             return self.unknown_command(other, start, col, items);

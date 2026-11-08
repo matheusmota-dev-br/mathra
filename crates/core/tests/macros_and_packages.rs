@@ -214,6 +214,19 @@ fn physics_vector_calculus() {
     assert_eq!(en(r"6 \div 3").text, "6 ÷ 3");
 }
 
+/// \bm and \boldsymbol make ∇ bold, the upright 𝛁 of TeX's bold symbol font and of physics' \grad (#158).
+#[test]
+fn bold_nabla() {
+    assert_eq!(en(r"\bm{\nabla}\times\bm{\sigma}").text, "𝛁 × 𝝈");
+    assert_eq!(en(r"\boldsymbol{\nabla}\cdot\boldsymbol{E}").text, "𝛁 · 𝑬");
+    assert_eq!(en(r"\vb*{\nabla}").text, "𝛁");
+    assert_eq!(en(r"\boldsymbol\nabla f").tree, en(r"\grad f").tree);
+    assert_eq!(en(r"\bm{\nabla} f").speech, "nabla f");
+    // \mathbf changes letters and digits only, as in TeX
+    assert_eq!(en(r"\mathbf{\nabla}").text, "∇");
+    assert_eq!(en(r"\nabla").text, "∇");
+}
+
 #[test]
 fn physics_derivatives_differentials_and_evaluation() {
     assert_eq!(en(r"\fdv{F}{\phi}").text, "(δF)/(δϕ)");
