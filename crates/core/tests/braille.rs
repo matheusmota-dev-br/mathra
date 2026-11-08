@@ -307,6 +307,13 @@ fn cmu_variants_limits_and_signs_it_lacks() {
         assert!(r.braille.contains('⠿'), "{tex}: {}", r.braille);
         assert!(r.applied.iter().any(|a| a.rule == "S-BRL-1"), "{tex}");
     }
+    // the Feynman slash is not a cancellation, and neither code has an overlay sign for it: the letter,
+    // then the full cell with the note
+    for locale in [Locale::PtBr, Locale::En] {
+        let r = convert(r"\slashed{D}", &Options { locale, ..Options::default() }).unwrap();
+        assert!(r.braille.ends_with('⠿') && !r.braille.contains('⠪'), "{locale}: {}", r.braille);
+        assert!(r.applied.iter().any(|a| a.rule == "S-BRL-1" && a.description.contains("U+0338")), "{locale}: {:?}", r.applied);
+    }
 }
 
 #[test]

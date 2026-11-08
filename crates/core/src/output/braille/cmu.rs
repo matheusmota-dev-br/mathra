@@ -125,9 +125,10 @@ impl Writer {
                 }
             }
             // the 2006 code has no sign for striking out or framing an expression
-            Node::Canceled { base, .. } => {
+            Node::Canceled { base, shape } => {
                 self.node(base);
-                self.missing('╱');
+                // the Feynman slash (\slashed) is the overlay of the slash, not a cancellation
+                self.missing(if *shape == Cancel::Slash { '\u{0338}' } else { '╱' });
             }
             Node::Framed { base, shape: Frame::Rectangle, .. } => {
                 self.node(base);

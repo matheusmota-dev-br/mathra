@@ -220,6 +220,11 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
                 write_node(b, loc, s);
             }
         }
+        // the Feynman slash as Unicode writes an overstruck slash: D̸, with the combining long solidus
+        Node::Canceled { base, shape: Cancel::Slash } => {
+            write_node(base, loc, s);
+            s.push('\u{0338}');
+        }
         Node::Canceled { base, .. }
         | Node::Colored { base, .. }
         | Node::Attributed { base, .. }

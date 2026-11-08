@@ -1269,6 +1269,9 @@ fn compose_vertical_arrow(symbol: char, left: Option<&Node>, right: Option<&Node
 
 fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, e, ctx)?;
+    if kind == Cancel::Slash {
+        return slashed(b, e);
+    }
     let t = k(e, |c| c.fraction_rule_thickness());
     let slack = em(e, 0.05);
     let (x0, x1, y0, y1) = (-slack, b.width + slack, -b.depth - slack, b.height + slack);
@@ -1283,6 +1286,22 @@ fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R
     if matches!(kind, Cancel::Backslash | Cancel::X) {
         rule((x0, y1), (x1, y0));
     }
+    Ok(math_box)
+}
+
+/// slashed.sty's `\slashed`: the font's "/" over the base, both centered across the wider of the two
+/// and the slash's middle on the base's middle, in a box as wide as the wider one. Each is a box of
+/// its own in TeX (`\hbox{$X$}`), with its italic correction in its width.
+#[inline(never)]
+fn slashed(b: MathBox, e: Style) -> R<MathBox> {
+    let slash = glyph('/', e)?;
+    let (base_width, slash_width) = (b.width + b.italic, slash.width + slash.italic);
+    let width = base_width.max(slash_width);
+    let mut math_box = MathBox::empty();
+    math_box.place(&b, (width - base_width) / 2.0, 0.0);
+    let lift = ((b.height - b.depth) - (slash.height - slash.depth)) / 2.0;
+    math_box.place(&slash, (width - slash_width) / 2.0, lift);
+    math_box.width = width;
     Ok(math_box)
 }
 

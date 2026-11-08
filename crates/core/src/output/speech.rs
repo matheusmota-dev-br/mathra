@@ -199,9 +199,10 @@ impl Speaker {
                 }
             }
             Node::Space { .. } | Node::Phantom { .. } => {}
-            Node::Canceled { base, .. } => {
+            Node::Canceled { base, shape } => {
                 let b = self.spoken(base);
-                self.say(self.t("canceled", &[&b]));
+                // the Feynman slash is notation, not a cancellation: "D slash"
+                self.say(self.t(if *shape == Cancel::Slash { "slashed" } else { "canceled" }, &[&b]));
             }
             Node::Framed { base, shape, .. } => {
                 let b = self.spoken(base);

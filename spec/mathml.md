@@ -31,6 +31,7 @@ Only the elements of [MathML Core](https://www.w3.org/TR/mathml-core/), the part
 | `\vdotswithin{=}` | a one-column `<mtable>`: `⋮` over the relation in an `<mphantom>` with no height, so the dots take its width; `\shortvdotswithin` with `rowspacing="0em"` |
 | `\overgroup`, `\undergroup` | `<mover>`/`<munder>` with a stretchy `⏠`/`⏡` as an accent |
 | mhchem's words (`\ce{Hydrogen + Oxygen -> Water}`) | `<mtext>` |
+| `\slashed{D}` (slashed) | one token, the symbol and U+0338, the combining long solidus overlay (as Unicode writes ≠): `<mi>𝐷̸</mi>`, `<mo>∂̸</mo>`. Core does not italicize a token of two characters, so an italic letter is its mathematical italic; a slash over more than one symbol is S-MML-1 |
 | `\displaystyle`… | `<mstyle displaystyle scriptlevel>` |
 | `\phantom`, `\hphantom`, `\smash`, `\mathrlap`, `\raisebox` | `<mphantom>` and `<mpadded>` |
 

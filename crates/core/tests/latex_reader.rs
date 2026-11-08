@@ -397,6 +397,18 @@ fn not_negates_or_strikes() {
 }
 
 #[test]
+fn slashed_is_the_feynman_slash() {
+    has(&tree(r"\slashed{D}"), &["Canceled { base: Identifier { name: \"D\"", "shape: Slash"]);
+    has(&tree(r"i\slashed{\partial}\psi"), &["Canceled { base: Operator { symbol: '∂'", "shape: Slash"]);
+    // \declareslashed is read and not applied: the next \slashed is the plain one
+    assert_eq!(tree(r"\declareslashed{}{/}{.2}{0}{D}\slashed{D}"), tree(r"\slashed{D}"));
+    // the Standard Model Lagrangian of the issue, refused today in strict mode
+    let lagrangian = r"\mathcal{L}_{\text{MP}} = -\frac{1}{4} F_{\mu\nu} F^{\mu\nu} + i \bar{\psi} \slashed{D} \psi + \text{h.c.} + \bar{\psi}_i \, y_{ij} \, \psi_j \, \phi + \text{h.c.} + \left| D_\mu \phi \right|^2 - V(\phi)";
+    let r = convert(lagrangian, &Options { strict: true, ..Options::default() }).unwrap();
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
 fn fixed_size_delimiters() {
     for (tex, class, size) in [(r"\bigl(", "Open", 1), (r"\Bigr)", "Close", 2), (r"\biggm|", "Rel", 3), (r"\Bigg\{", "Ord", 4), (r"\big(", "Open", 1), (r"\big|", "Ord", 1)] {
         has(&tree(tex), &[&format!("class: {class}, size: {size}")]);
