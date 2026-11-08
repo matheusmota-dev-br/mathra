@@ -1288,6 +1288,9 @@
     },
     {
      "tex": "\\cancelto{0}{x} \\quad \\reflectbox{abc}"
+    },
+    {
+     "tex": "\\class{highlight}{x^2} + \\style{color:red}{2x} + \\htmlData{step=3}{1}"
     }
    ]
   }

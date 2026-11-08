@@ -159,6 +159,8 @@ fn pieces(items: &[Item], map: Map, id: &str, f: &Font, out: &mut Vec<Piece>) {
                 out.push(Piece { strokes: vec![ring], element: map.wrap(element) });
             }
             Item::Transformed { matrix, items } => pieces(items, map.then(*matrix), id, f, out),
+            // the pen draws stroke by stroke: the attributes of a group (\class…) are the plain SVG's
+            Item::Group { items, .. } => pieces(items, map, id, f, out),
         }
     }
 }
@@ -170,7 +172,7 @@ fn defs(items: &[Item], id: &str, f: &Font, seen: &mut std::collections::HashSet
             Item::Glyph { id: g, .. } if seen.insert(g.0) => {
                 let _ = write!(s, r#"<path id="{id}-g{}" d="{}"/>"#, g.0, f.outline(*g));
             }
-            Item::Transformed { items, .. } => defs(items, id, f, seen, s),
+            Item::Transformed { items, .. } | Item::Group { items, .. } => defs(items, id, f, seen, s),
             _ => {}
         }
     }

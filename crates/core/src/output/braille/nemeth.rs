@@ -290,6 +290,7 @@ impl Writer {
             }
             Node::Framed { base, .. }
             | Node::Colored { base, .. }
+            | Node::Attributed { base, .. }
             | Node::ForcedClass { base, .. }
             | Node::Style { base, .. }
             | Node::Multicolumn { base, .. }
@@ -1073,7 +1074,12 @@ fn fraction_depth(n: &Node) -> usize {
         Node::Root { radicand, .. } => fraction_depth(radicand),
         // a fraction at script level does not make the outer one complex (§13.5)
         Node::Scripts { base, .. } => fraction_depth(base),
-        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Framed { base, .. } | Node::Unit { base, .. } => fraction_depth(base),
+        Node::Colored { base, .. }
+        | Node::Attributed { base, .. }
+        | Node::ForcedClass { base, .. }
+        | Node::Style { base, .. }
+        | Node::Framed { base, .. }
+        | Node::Unit { base, .. } => fraction_depth(base),
         _ => 0,
     }
 }

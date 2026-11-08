@@ -180,7 +180,7 @@ fn glyph_defs(items: &[Item], id: &str, f: &Font, seen: &mut HashSet<u16>, s: &m
             Item::Glyph { id: g, .. } if seen.insert(g.0) => {
                 let _ = write!(s, r#"<path id="{id}-g{}" d="{}"/>"#, g.0, f.outline(*g));
             }
-            Item::Transformed { items, .. } => glyph_defs(items, id, f, seen, s),
+            Item::Transformed { items, .. } | Item::Group { items, .. } => glyph_defs(items, id, f, seen, s),
             _ => {}
         }
     }
@@ -241,6 +241,16 @@ fn item_svg(items: &[Item], id: &str, steps: &mut Steps, out: &mut String) {
             }
             Item::Transformed { matrix: [a, b, c, d, e, f], items } => {
                 let _ = write!(out, r#"<g transform="matrix({} {} {} {} {} {})">"#, n(*a), n(*b), n(*c), n(*d), n(*e), n(*f));
+                item_svg(items, id, steps, out);
+                out.push_str("</g>");
+            }
+            // S-SVG-11: the attributes of \class, \htmlId… on a group around the content
+            Item::Group { attributes, items } => {
+                out.push_str("<g");
+                for (name, value) in attributes {
+                    let _ = write!(out, r#" {}="{}""#, escape(name), escape(value));
+                }
+                out.push('>');
                 item_svg(items, id, steps, out);
                 out.push_str("</g>");
             }

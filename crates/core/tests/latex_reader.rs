@@ -567,6 +567,52 @@ fn modular_arithmetic_and_misc() {
     has(&tree(r"a \lt b \gt c"), &["'<'", "'>'"]);
 }
 
+// ---------- HTML attributes (\class, \htmlId…) ----------
+
+/// Tree and warnings of an input that strict mode accepts too, with the same tree.
+fn both_modes(tex: &str) -> (String, Vec<String>) {
+    let strict = read_in(tex, Locale::PtBr, true).0.unwrap_or_else(|e| panic!("{tex}: strict mode refused: {e}"));
+    let (t, warnings) = tolerant(tex);
+    assert_eq!(format!("{strict:?}"), t, "{tex}");
+    (t, warnings)
+}
+
+#[test]
+fn html_attributes_wrap_the_content() {
+    has(&tree(r"\class{highlight}{x^2} + 1"), &["Attributed { attributes: [(\"class\", \"highlight\")], base: Scripts"]);
+    has(&tree(r"\htmlClass{term main}{x}"), &["(\"class\", \"term main\")"]);
+    has(&tree(r"\cssId{step-2}{a + b}"), &["(\"id\", \"step-2\")"]);
+    has(&tree(r"\htmlId{s_1}{a}"), &["(\"id\", \"s_1\")"]);
+    has(&tree(r"\htmlData{step=3, Kind=sum}{c}"), &["(\"data-step\", \"3\"), (\"data-kind\", \"sum\")"]);
+    // a style's color colors the content too, as \color does
+    has(&tree(r"\style{color:red}{\frac{a}{b}}"), &["(\"style\", \"color:red\")", "base: Colored { color: \"red\", base: Fraction"]);
+    has(&tree(r"\htmlStyle{color: blue; opacity: 0.5;}{y}"), &["(\"style\", \"color:blue;opacity:0.5\")", "Colored { color: \"blue\""]);
+    let t = tree(r"\style{background-color:yellow}{y}");
+    has(&t, &["(\"style\", \"background-color:yellow\")"]);
+    assert!(!t.contains("Colored"), "{t}");
+}
+
+#[test]
+fn html_attributes_drop_what_is_unsafe_with_a_warning_in_both_modes() {
+    for (tex, kept, gone) in [
+        (r#"\cssId{a" onload="alert(1)}{x}"#, "(\"id\", \"aonloadalert1\")", "onload="),
+        (r"\class{a<b>c}{x}", "(\"class\", \"abc\")", "<"),
+        (r"\style{color:red;position:fixed}{x}", "(\"style\", \"color:red\")", "position"),
+        (r"\style{background:url(http://evil/x.png)}{x}", "Identifier", "url("),
+        (r#"\style{color:red" onclick="x}{x}"#, "Identifier", "onclick"),
+        (r"\htmlStyle{color:expression(alert(1))}{x}", "Identifier", "expression"),
+        (r"\htmlData{on click=1,ok=2}{x}", "(\"data-onclick\", \"1\"), (\"data-ok\", \"2\")", "on click"),
+    ] {
+        let (t, warnings) = both_modes(tex);
+        has(&t, &[kept]);
+        assert!(!t.contains(gone), "{tex}: {t}");
+        assert!(warnings.iter().any(|w| w.starts_with("E-REC-9")), "{tex}: {warnings:?}");
+    }
+    // nothing safe left: the content alone
+    let (t, _) = both_modes(r"\cssId{<>}{x}");
+    assert!(!t.contains("Attributed"), "{t}");
+}
+
 // ---------- colors and delimiters ----------
 
 #[test]

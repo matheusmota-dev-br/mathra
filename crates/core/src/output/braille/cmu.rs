@@ -145,6 +145,7 @@ impl Writer {
             }
             Node::Framed { base, .. }
             | Node::Colored { base, .. }
+            | Node::Attributed { base, .. }
             | Node::ForcedClass { base, .. }
             | Node::Style { base, .. }
             | Node::Multicolumn { base, .. }
@@ -628,7 +629,7 @@ fn simple(n: &Node) -> bool {
         Node::Fraction { .. } => numeric_fraction(n).is_some(),
         Node::Scripts { base, sup, sub } => simple(base) && sup.as_deref().is_none_or(simple) && sub.as_deref().is_none_or(simple),
         Node::Accent { base, .. } | Node::Bar { base, .. } => simple(base),
-        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => simple(base),
+        Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => simple(base),
         // a signed term: x⁻¹ = ⠭⠡⠤⠼⠁ (§5.2)
         Node::Row { children } => match children.as_slice() {
             [one] => simple(one),
