@@ -18,11 +18,11 @@ fn errors_become_text() {
 
 #[test]
 fn render_carries_every_output() {
-    let json: serde_json::Value = serde_json::from_str(&mathra_wasm::render_json(r"\vertA\vert", None, true, false, None, None, false, false).unwrap()).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&mathra_wasm::render_json(r"\vert A\vert}", None, true, false, None, None, false, false).unwrap()).unwrap();
     assert!(json["svg"].as_str().unwrap().starts_with("<svg"));
     assert!(json["speech"].as_str().unwrap().contains("absolute value"));
-    assert_eq!(json["warnings"][0]["rule"], "E-REC-1");
-    assert!(mathra_wasm::render_json(r"\vertA\vert", None, true, true, None, None, false, false).is_err());
+    assert_eq!(json["warnings"][0]["rule"], "E-REC-4");
+    assert!(mathra_wasm::render_json(r"\vert A\vert}", None, true, true, None, None, false, false).is_err());
 }
 
 #[test]

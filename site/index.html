@@ -156,7 +156,7 @@
         <p>From Português to 日本語. The language changes how numbers are read and written (in pt-BR, <code>3,14</code> is one number and <code>\sin</code> is <em>sen</em>) and the language of the speech.</p>
       </div>
       <div class="card feature">
-        <div class="eq" data-tex="\vertA\vert = C_{16,2}"></div>
+        <div class="eq" data-tex="\vert A\vert = C_{16,2"></div>
         <h3>It forgives broken input</h3>
         <p>Typos and editor leftovers are fixed and reported as numbered warnings. <em>Strict</em> refuses them, like TeX.</p>
       </div>
@@ -256,7 +256,7 @@ mathra.render("x^2", locale="pt-BR")["braille"]  # '⠭⠡⠼⠃'</pre>
 <pre data-lang="sh">mathra 'x \le 2.75' -o inequality.svg
 mathra '3,14 + \sin x' --locale pt-BR
 mathra 'x = -1' --speech
-mathra '\vertA\vert' --explain
+mathra '\vert A\vert = C_{16,2' --explain
 mathra 'sum_(i=1)^n i' --from asciimath
 mathra '\frac{3}{4}' -l pt-BR --braille</pre>
       </div>

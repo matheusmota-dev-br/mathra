@@ -26,7 +26,8 @@ fn t_tol_valid_equation_same_in_both_modes() {
 
 #[test]
 fn e_rec_1_unknown_command() {
-    assert_eq!(tolerant(r"\vertA\vert = 1").text, "|A| = 1");
+    // #209: the name is drawn whole, never cut into a known command and letters
+    assert_eq!(tolerant(r"\vertA\vert = 1").text, r"\vertA| = 1");
     assert!(tolerant(r"\foobar + 1").svg.contains(r##"fill="#c0392b""##));
     assert!(strict(r"\foobar").is_err());
 }
@@ -72,7 +73,7 @@ fn bordermatrix() {
 
 #[test]
 fn backslash_before_unicode_char_does_not_panic() {
-    // regression: the prefix cut of \vertA used to cut '∠' in the middle of its bytes
+    // regression: the prefix cut of \vertA (removed in #209) used to cut '∠' in the middle of its bytes
     for tex in [r"\∠ABC", r"\é", r"\π r^2", r"\—"] {
         tolerant(tex);
     }
@@ -115,11 +116,12 @@ fn units_angles_and_physics_qty_never_stop_the_drawing() {
 }
 
 #[test]
-fn e_rec_1_negation_of_a_known_relation() {
-    // amssymb has no \nlesssim, but \lesssim exists: a crossed ≲, not a line break and "lesssim"
+fn e_rec_1_unknown_negation_is_drawn_whole() {
+    // #209: amssymb has no \nlesssim; it is drawn whole in red, not read as \not\lesssim nor as a line
+    // break and "lesssim"
     let r = tolerant(r"a \nlesssim b");
     assert_eq!(warning_rules(r"a \nlesssim b"), vec!["E-REC-1"]);
-    assert!(r.speech.contains("≲") && !r.speech.contains("l e s s"), "{}", r.speech);
+    assert_eq!(r.text, r"a\nlesssimb");
     assert!(strict(r"a \nlesssim b").is_err());
     // the existing negations are not recovered: they are known, with no warning
     assert!(tolerant(r"a \nleq b \ngeq c \nsim d").warnings.is_empty());
@@ -350,5 +352,134 @@ fn a_muskip_register_alone_is_an_ignored_assignment() {
         assert_eq!(out.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), ["E-REC-9"], "{tex}");
         assert_eq!(out.text, text, "{tex}");
         assert!(strict(tex).is_err(), "{tex}");
+    }
+}
+
+/// #209: an unknown command is drawn whole, in red, with E-REC-1: never cut into a known command (KaTeX's
+/// short aliases `\ch`, `\sub`, `\sect` made nonsense of ordinary names) and letters; strict refuses it.
+#[test]
+fn unknown_commands_are_never_cut_into_a_known_one_and_letters() {
+    for (tex, text) in [
+        (r"\charge{90=\|}{X}", r"\charge90 = ‖X"),
+        (r"\chemleft( x \chemright)", r"\chemleft(x\chemright)"),
+        (r"\chemup", r"\chemup"),
+        (r"\chemskipalign", r"\chemskipalign"),
+        (r"\subsection", r"\subsection"),
+        (r"\section", r"\section"),
+        (r"\nelement", r"\nelement"),
+        (r"\expandafter", r"\expandafter"),
+        (r"\bigbreak", r"\bigbreak"),
+        (r"\vertA", r"\vertA"),
+        (r"\alphax", r"\alphax"),
+    ] {
+        let out = tolerant(tex);
+        assert_eq!(out.text, text, "{tex}");
+        assert!(out.warnings.iter().all(|w| w.rule == "E-REC-1" && w.description.contains("drawn in red")), "{tex}: {:?}", out.warnings);
+        assert!(out.svg.contains(r##"fill="#c0392b""##), "{tex}");
+        assert!(strict(tex).unwrap_err().to_string().contains("unsupported command"), "{tex}");
+    }
+    // the E-REC-1 recoveries that are not a cut stay: a backslash before a symbol
+    assert_eq!(tolerant(r"\5 + 1").text, "5 + 1");
+}
+
+/// #208: a real line break or tab is whitespace, as in TeX. The JSON readings (a control character in
+/// place of the backslash, `\n` + letters) apply only when the input looks JSON-decoded, and a lost
+/// backslash never rebuilds one of KaTeX's texvc aliases (`\th`).
+#[test]
+fn real_line_breaks_and_tabs_are_whitespace() {
+    for (tex, meant) in [
+        // a command kept its \t: JSON would have eaten it, so the line break is real (not \nu)
+        ("a \\to\nu b", r"a \to u b"),
+        // indentation (not \th)
+        ("a,\n\t\th(x)=1", "a, h(x)=1"),
+        // a line break that ends a line, before a word (not \ne xhaust)
+        ("a, b, and\nexhaust", "a, b, and exhaust"),
+        ("a\n  \\neq b", r"a \neq b"),
+    ] {
+        let out = tolerant(tex);
+        assert!(out.warnings.is_empty(), "{tex:?}: {:?}", out.warnings);
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+        assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
+    }
+    // the literal escape is read only without real whitespace: a JSON string has none
+    assert_eq!(warning_rules(r"x\nb) y"), ["E-REC-2"]);
+    assert_eq!(warning_rules("x\\nb)\ny"), ["E-REC-1"]);
+    // a tab before "h" never rebuilds KaTeX's \th, even when the rest looks JSON-decoded
+    assert!(!tolerant("x\u{0C}rac{1}{2}\th").text.contains("tanh"));
+}
+
+/// #208: JSON-decoded text still has its commands rebuilt: every line break or tab stands right before
+/// the letters of a known command.
+#[test]
+fn commands_eaten_by_json_are_still_rebuilt() {
+    for (tex, meant) in [("a \neq b", r"a \neq b"), ("\u{0C}rac{1}{2} \times 3", r"\frac{1}{2} \times 3"), ("x \to y\n", r"x \to y"), ("\\left( x \right)", r"\left( x \right)")] {
+        let out = tolerant(tex);
+        assert_eq!(out.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), ["E-REC-2"], "{tex:?}");
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+    }
+}
+
+/// #211: a backslash before a line break or a tab is a control space, `\ `, with no warning, in math and
+/// in text; `\\` before a line break is still a line break.
+#[test]
+fn backslash_before_a_line_break_is_a_control_space() {
+    for (tex, meant) in [("a\\\nb", r"a\ b"), ("a\\\tb", r"a\ b"), ("a\\\r\nb", r"a\ b"), ("\\text{a\\\nb}", r"\text{a\ b}"), ("x =\\\n y", r"x =\ y")] {
+        let out = tolerant(tex);
+        assert!(out.warnings.is_empty(), "{tex:?}: {:?}", out.warnings);
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+        assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
+    }
+    assert_eq!(tolerant("\\begin{matrix}a\\\\\nb\\end{matrix}").tree, tolerant(r"\begin{matrix}a\\b\end{matrix}").tree);
+}
+
+/// #212: a line break or a tab inside text is a space, as in TeX (not a box for a character the font
+/// lacks); with the spaces around it, a blank line or the next line's indentation, one space.
+#[test]
+fn line_breaks_and_tabs_in_text_are_spaces() {
+    for (tex, meant) in [
+        ("\\text{foo\nbar}", r"\text{foo bar}"),
+        ("\\text{foo\tbar}", r"\text{foo bar}"),
+        ("\\text{foo\r\nbar}", r"\text{foo bar}"),
+        ("\\text{can be  \n    used}", r"\text{can be used}"),
+        ("\\text{one\n\ntwo}", r"\text{one two}"),
+        ("\\fbox{A regular map\nof rings}", r"\fbox{A regular map of rings}"),
+    ] {
+        let out = tolerant(tex);
+        assert!(out.warnings.is_empty(), "{tex:?}: {:?}", out.warnings);
+        assert_eq!(out.tree, tolerant(meant).tree, "{tex:?}");
+        assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
+    }
+}
+
+/// #213: a text accent on a letter in math is an error in TeX; tolerant mode draws the accented letter, as
+/// KaTeX does (`\'e` as `\acute e`), with E-REC-1; strict mode refuses it.
+#[test]
+fn text_accents_in_math_draw_the_accented_letter() {
+    let out = tolerant(r"X_{\'etale}");
+    // e and the combining acute accent, not a prime
+    assert_eq!(out.text, "X_(e\u{301}tale)");
+    assert_eq!(out.tree, tolerant(r"X_{\acute{e}tale}").tree);
+    assert_eq!(warning_rules(r"X_{\'etale}"), ["E-REC-1"]);
+    assert!(strict(r"X_{\'etale}").is_err());
+    for (tex, meant) in
+        [(r"\'{e}", r"\acute{e}"), (r"\`e", r"\grave e"), (r"\^o", r"\hat o"), (r#"\"a"#, r"\ddot a"), (r"\~n", r"\tilde n"), (r"\=x", r"\bar x"), (r"\.y", r"\dot y")]
+    {
+        assert_eq!(tolerant(tex).tree, tolerant(meant).tree, "{tex}");
+        assert!(strict(tex).is_err(), "{tex}");
+    }
+    // not before a letter: the backslash is dropped, as before
+    assert_eq!(tolerant(r"f\'(x)").text, "f′(x)");
+}
+
+/// #213: the width, height or depth of a box register (`\wd0`, from the classic `\dashint` macro) cannot
+/// be measured: no space with a warning in tolerant mode (the register is part of the measure, not a digit
+/// drawn after it), refused in strict mode.
+#[test]
+fn a_box_dimension_is_no_space_in_tolerant_mode() {
+    for tex in [r"a\kern-.6\wd0 b", r"a\kern\ht2 b", r"a\mskip\dp12 b", r"a\hskip\wd\mybox b", r"a\hspace{\wd0} b"] {
+        let out = tolerant(tex);
+        assert_eq!(out.text, "ab", "{tex}");
+        assert_eq!(warning_rules(tex), ["E-REC-9"], "{tex}");
+        assert!(strict(tex).unwrap_err().to_string().contains("unrecognized measure"), "{tex}");
     }
 }

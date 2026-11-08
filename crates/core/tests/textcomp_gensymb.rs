@@ -147,9 +147,10 @@ fn text_names_are_not_cut_into_text_and_a_word() {
     assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1" && w.description.contains("drawn in red")), "{:?}", out.warnings);
     assert!(out.svg.contains("#c0392b"));
     assert!(!out.text.starts_with("foo"), "{}", out.text);
-    // a known command and a forgotten space still recover
+    // nor any other name (#209): \alphax is drawn whole, not \alpha and x
     let out = convert(r"\alphax", &Options::default()).unwrap();
-    assert!(out.warnings.iter().any(|w| w.description.contains(r"read as \alpha x")), "{:?}", out.warnings);
+    assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1" && w.description.contains("drawn in red")), "{:?}", out.warnings);
+    assert_eq!(out.text, r"\alphax");
 }
 
 #[test]

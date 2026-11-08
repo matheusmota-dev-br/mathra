@@ -13,8 +13,9 @@ The reader takes, as written: `\chemfig[options]{…}`, `\schemestart … \schem
 
 | Construction | Reading |
 |---|---|
-| `H_3C`, `NH_3^+`, `O\ominus`, `{CH_3}` | an atom label, split into pieces at each capital letter (`H_3C` → `H_3`, `C`); braces keep a piece whole; a script takes the next character even if it is a bond sign (`^-`) |
+| `H_3C`, `NH_3^+`, `O\ominus`, `{CH_3}` | an atom label, split into pieces at each capital letter (`H_3C` → `H_3`, `C`); braces keep a piece whole; a script takes the next character even if it is a bond sign (`^-`), but not a `(` or `)` (a script left empty is E-REC-7; a `)` with no `(` counts nothing) |
 | `-` `=` `~` | single, double, triple bond |
+| `=^` `=_` | offset double bond: one line on the bond, the other on its left (`=^`) or right (`=_`), going the way it is drawn |
 | `>` `<` · `>:` `<:` · `>|` `<|` | wedge, hashed wedge, hollow wedge; `>` is wide at the end, `<` at the start |
 | `-[a,len,dep,arr,tikz]` | `a`: `n` × 45°, `:x` absolute, `::x` relative to the previous bond, empty keeps the previous direction; `len` a length factor; `dep`, `arr` the pieces (from 1) the bond leaves from and arrives at; `tikz`: `draw=none` hides the bond, `dash…`/`dotted` dashes it |
 | `(…)` | a branch from the current atom; on a ring vertex its first bond points outward |
@@ -81,7 +82,7 @@ The circle of an aromatic ring is centered on the ring's atoms, with a radius of
 
 ### C-LAY-6 · Double bonds
 
-In a ring, the second line of a double bond goes inside the ring and is shortened at both ends by 16% of the bond (at most 0.4 em). Elsewhere the two lines are centered on the bond.
+In a ring, the second line of a double bond goes inside the ring and is shortened at both ends by 16% of the bond (at most 0.4 em). Elsewhere the two lines are centered on the bond. An offset double bond (`=^`, `=_`) keeps one line on the bond and puts the shortened second line on the side it names, in a ring or not: `*6(-=_-=_-=_)` has its double bonds outside the ring, as in chemfig.
 
 ### C-LAY-7 · Lewis marks
 
