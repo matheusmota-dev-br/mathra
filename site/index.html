@@ -225,7 +225,7 @@
       <ul>
         <li><strong>KaTeX is faster and lighter to ship.</strong> It writes HTML that depends on its stylesheet and web fonts, so its output is not a standalone image: it cannot go into an email, a README, a slide or a PDF as is. That is why its output looks smallest.</li>
         <li><strong>MathJax's SVG output is the closest equivalent</strong> to mathra's: one standalone SVG per equation. Here mathra is about 4× faster, with output of similar size.</li>
-        <li><strong>Almost half of mathra's download is its font</strong>: 356 of the 782 KB are STIX Two Math, embedded so the output never depends on what is installed, and cut down to the glyphs mathra draws; the 16 languages add 35 KB and structural chemistry about 50 KB. Outside the browser (CLI, Rust, Python) nothing is downloaded at all, and a native conversion takes <strong>17.9 µs</strong> on average.</li>
+        <li><strong>Almost half of mathra's download is its font</strong>: 356 of the 782 KB are STIX Two Math, embedded so the output never depends on what is installed, and cut down to the glyphs mathra draws; the 16 languages add 35 KB and structural chemistry about 50 KB. Noto Emoji, which the terminal and Python embed, is not part of it: the playground downloads it (756 KB) only for an equation with a character the math font lacks, such as an emoji. Outside the browser (CLI, Rust, Python) nothing is downloaded at all, and a native conversion takes <strong>17.9 µs</strong> on average.</li>
         <li><strong>The corpus favors mathra</strong>: its 116 constructions were written while building it, and include pt-BR and mathra-only commands. The playground's 18 examples are standard LaTeX except three that only mathra reads (<code>\SI</code>, <code>\sen</code>, <code>\divchave</code>).</li>
         <li>“Converted cleanly” means no error and no command drawn in red. MathJax runs with all its TeX packages except <code>noundefined</code>; KaTeX with <code>throwOnError</code> and mhchem.</li>
         <li>Snapshot: Node 24, Apple M5, 50 conversions per equation after a warm-up; times, counts and sizes from one run of the current code. The script is in <a href="https://github.com/matheusmota-dev-br/mathra/tree/main/bench"><code>bench/</code></a>: <code>cd bench &amp;&amp; npm install &amp;&amp; npm run compare</code>.</li>
@@ -352,16 +352,44 @@ println!("{}", r.speech);</pre>
 
   const escape = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  function convert(src, loc, display, strictMode, inp = "latex", braille = null, animate = false, steps = false, font = null, width = null) {
-    return JSON.parse(render(src, loc, display, strictMode, inp, braille, animate, steps, font, width));
+  function convert(src, loc, display, strictMode, inp = "latex", braille = null, animate = false, steps = false, font = null, width = null, fallbacks = null) {
+    return JSON.parse(render(src, loc, display, strictMode, inp, braille, animate, steps, font, width, fallbacks));
   }
   // the equation as now on screen, again with its steps numbered or animated
-  const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps, fontId(), maxWidth()).svg;
+  const again = (animate, steps) => convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), animate, steps, fontId(), maxWidth(), fallbacks()).svg;
   const brailleCode = () => $("braille").value || null;
   // the font of the playground: STIX Two Math, or the id of one the visitor loaded
   const fontId = () => { const v = $("font").value; return v === "" || v === "load" ? null : Number(v); };
   // lines wider than this many em are broken (L-BRK-1); none, one line
   const maxWidth = () => Number($("max-width").value) || null;
+
+  // Noto Emoji for the characters the math font lacks: the npm package leaves it out (some 760 KB),
+  // so the playground downloads it from this site, once, the first time an equation needs it
+  const EMOJI_FONT = "pkg/fonts/NotoEmoji-Regular-subset.ttf";
+  let emoji = null, emojiLoading = null;
+  const fallbacks = () => (emoji === null ? null : Int32Array.of(emoji.id));
+  // a box drawn for a missing character (E-REC-8) or, in strict mode, the refusal
+  const lacksGlyph = (result, error) => (result ? result.warnings.some((w) => w.rule === "E-REC-8") : /the math font has no '/.test(String(error?.message ?? error)));
+  function loadEmoji() {
+    emojiLoading ??= emojiBytes()
+      .then((bytes) => {
+        emoji = { ...JSON.parse(wasm_bindgen.loadFallbackFont(bytes)), size: bytes.length };
+        update();
+      })
+      .catch(() => { /* the boxes and E-REC-8 stay, as without the font */ });
+  }
+  function emojiBytes() {
+    if (location.protocol === "file:") {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "pkg/fonts/noto_emoji_bytes.js";
+        s.onload = () => resolve(Uint8Array.from(atob(MATHRA_EMOJI_BASE64), (c) => c.charCodeAt(0)));
+        s.onerror = () => reject(new Error(`${s.src} not found`));
+        document.head.append(s);
+      });
+    }
+    return fetch(EMOJI_FONT).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${EMOJI_FONT}: ${r.status}`)))).then((b) => new Uint8Array(b));
+  }
 
   // the wordmark, drawn by mathra
   function drawLogo() {
@@ -525,7 +553,7 @@ println!("{}", r.speech);</pre>
   }
   async function measure() {
     if (!last) return;
-    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId(), maxWidth()];
+    const args = [tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId(), maxWidth(), fallbacks()];
     let runs = 0;
     const start = performance.now();
     while (runs < 400 && performance.now() - start < 30) { render(...args); runs++; }
@@ -547,7 +575,8 @@ println!("{}", r.speech);</pre>
     messages.replaceChildren();
     stopAnimation();
     try {
-      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId(), maxWidth());
+      last = convert(tex.value, locale, !inline.checked, strict.checked, input, brailleCode(), false, false, fontId(), maxWidth(), fallbacks());
+      if (emoji === null && lacksGlyph(last)) loadEmoji();
       preview.innerHTML = tex.value.trim() ? last.svg : `<span class="status">Type some ${INPUT_NAMES[input]} on the left.</span>`;
       fit();
       scheduleStats();
@@ -565,6 +594,10 @@ println!("{}", r.speech);</pre>
       el.className = "msg err";
       el.textContent = String(e.message ?? e);
       messages.append(el);
+      if (emoji === null && lacksGlyph(null, e)) loadEmoji();
+    }
+    if (emoji !== null && /\p{Extended_Pictographic}/u.test(tex.value)) {
+      note(`Noto Emoji (${kb(emoji.size)}) was downloaded once, from this site, for the characters the math font lacks.`, "emoji", ["pkg/fonts/OFL-NotoEmoji.txt", "SIL Open Font License"]);
     }
     if (location.protocol !== "file:" || location.hash) history.replaceState(null, "", link());
     showTab();
@@ -608,10 +641,16 @@ println!("{}", r.speech);</pre>
   }
 
   // a line under the preview that is neither a warning nor an error
-  function note(text, cls = "") {
+  function note(text, cls = "", [href, label] = []) {
     const el = document.createElement("div");
     el.className = `msg note ${cls}`.trim();
     el.textContent = text;
+    if (href) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.textContent = label;
+      el.append(" ", a);
+    }
     messages.append(el);
   }
 
@@ -898,7 +937,7 @@ println!("{}", r.speech);</pre>
   };
   // the equation written by a pen: mathra's SMIL plays by itself, in a loop
   let penOn = false;
-  const penSvg = () => { notePenLines(); return pen(tex.value, locale, !inline.checked, input, null, fontId()); };
+  const penSvg = () => { notePenLines(); return pen(tex.value, locale, !inline.checked, input, null, fontId(), fallbacks()); };
   // mathra's pen does not break lines yet: say so, once, when the drawing is broken and the pen is not
   function notePenLines() {
     if (!last?.applied.some((r) => r.rule === "L-BRK-1") || messages.querySelector(".pen-lines")) return;
