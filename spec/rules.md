@@ -128,7 +128,7 @@ A text is a box of its natural width, as `\text{…}` is in TeX: `\hfill`, `\hfi
 
 A line break or a tab inside text is a space, as in TeX; with the spaces around it (the indentation of the next line, a blank line) it is a single space: `\text{can be`, a line break, `  used}` is `can be used`.
 
-A backslash before a line break or a tab of the source is a control space, `\ `, as in plain TeX, in text and in math (`a\` and a line break, then `b`, is `a\ b`); `\\` before a line break is still a line break.
+A backslash before a line break or a tab of the source is a control space, `\ `, as in plain TeX, in text and in math (`a\` and a line break, then `b`, is `a\ b`); `\\` before a line break is still a line break. A control space that ends the input (`a\ `) is a space too: trimming the input does not cut it (#254).
 
 ### L-TXT-4 · Color inside text
 

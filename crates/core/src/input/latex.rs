@@ -178,7 +178,7 @@ fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
             s = repaired;
         }
     }
-    s = s.trim().to_string();
+    s = trim_keeping_control_space(&s);
     if !strict {
         if let Some(undone) = undo_doubled_backslashes(&s) {
             registry.warn(rules::E_REC_2, "doubled backslashes (LaTeX escaped twice): one level undone");
@@ -5754,6 +5754,19 @@ fn json_decoded(c: &[char]) -> bool {
         i += 1;
     }
     true
+}
+
+/// The input without the whitespace around it, except the space of a control space that ends it (#254):
+/// `a\ ` keeps its `\ `, which would otherwise be a lone backslash.
+#[inline(never)]
+fn trim_keeping_control_space(s: &str) -> String {
+    let trimmed = s.trim();
+    let backslashes = trimmed.chars().rev().take_while(|c| *c == '\\').count();
+    if backslashes % 2 == 1 && s.trim_start().len() > trimmed.len() {
+        format!("{trimmed} ")
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// #211: a backslash before a line break or a tab is a control space, `\ `, as in plain TeX (`\\` before

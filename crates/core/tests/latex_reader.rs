@@ -73,6 +73,17 @@ fn lone_trailing_backslash_is_ignored() {
 }
 
 #[test]
+fn a_control_space_that_ends_the_input_is_a_space() {
+    // #254: trimming the input does not cut the space of `\ `; with no warning, in both modes
+    has(&tree(r"a\ "), &["Space { em: 0.333 }"]);
+    for tex in [r"\ B - J\ ", r"\,\ \ 2\Bar{W}\,\ ", "a\\ \n", "a\\\t"] {
+        has(&tree(tex), &["Space { em: 0.333 }"]);
+    }
+    // a doubled backslash at the end is a line break, still trimmed with what follows it
+    assert_eq!(tree(r"a\\ "), tree(r"a\\"));
+}
+
+#[test]
 fn json_control_characters_become_commands() {
     // \v, \a, \r and \n stored unescaped become VT, BEL, CR and LF; a CR or an LF is rebuilt only when the
     // input shows another sign of JSON (#253): here the BEL of \alpha
