@@ -59,6 +59,25 @@ const KNOWN: &[(&str, &str)] = &[
     (r##"\begin{array}{c} \tablenum{1.2} \\ \tablenum{-12.345} \end{array}"##, "siunitx group flag"),
     (r##"\SI{1}{\angstrom}"##, "siunitx quantity"),
     (r##"Z = \complexqty{3+4i}{\ohm}"##, "siunitx quantity"),
+    (
+        r##"B_\lambda(\lambda, T) = \frac{2 h c^2}{\lambda^5} \frac{1}{e^{h c / \lambda k_\mathrm{B} T} - 1}, \qquad h = \qty{6.62607015e-34}{\joule\second}, \quad k_\mathrm{B} = \qty{1.380649e-23}{\joule\per\kelvin}"##,
+        "siunitx quantity",
+    ),
+    (
+        r##"\sisetup{per-mode=power} \DeclareSIUnit{\parsec}{pc} G = \qty{6.67430(15)e-11}{\meter\cubed\per\kilo\gram\per\second\squared}, \qquad H_0 = \qty{67.4(5)}{\kilo\meter\per\second\per\mega\parsec}"##,
+        "siunitx quantity",
+    ),
+    (r##"\ce{C3H8(g) + 5 O2(g) -> 3 CO2(g) + 4 H2O(l)}, \qquad \Delta_\mathrm{c} H^\circ = \qty{-2220}{\kilo\joule\per\mole}"##, "siunitx quantity"),
+    (r##"\ce{Zn(s) | Zn^2+(aq) || Cu^2+(aq) | Cu(s)}, \qquad E^\circ_\text{cell} = E^\circ_\ce{Cu^2+/Cu} - E^\circ_\ce{Zn^2+/Zn} = \qty{1.10}{\volt}"##, "siunitx quantity"),
+    (
+        r##"\ce{^{238}_{92}U ->[$\alpha$][\qty{4.47e9}{y}] ^{234}_{90}Th ->[$\beta^-$][\qty{24.1}{d}] ^{234m}_{91}Pa ->[$\beta^-$][\qty{1.17}{min}] ^{234}_{92}U ->[$\alpha$][\qty{2.45e5}{y}] ^{230}_{90}Th ->[$\alpha$][\qty{7.54e4}{y}] ^{226}_{88}Ra ->[$\alpha$][\qty{1600}{y}] ^{222}_{86}Rn}"##,
+        "siunitx quantity",
+    ),
+    (
+        r##"\begin{aligned} &\ce{N2 + 3 H2 <=>[Fe][\qty{450}{\celsius}] 2 NH3} \\ &\ce{4 NH3 + 5 O2 ->[Pt] 4 NO + 6 H2O} \\ &\ce{2 NO + O2 -> 2 NO2} \\ &\ce{3 NO2 + H2O -> 2 HNO3 + NO} \end{aligned}"##,
+        "siunitx quantity",
+    ),
+    (r##"\ce{3 C2H2 ->[\text{red-hot Fe tube}][\qty{873}{\kelvin}] C6H6}"##, "siunitx quantity"),
     // \mathrel, \mathop…: MathML has no atom class for a group, only spacing on one <mo>
     (r##"\DeclarePairedDelimiter{\abs}{\lvert}{\rvert} \abs{x}"##, "forced class"),
     (r##"\underset{n\to\infty}{\lim} \overset{?}{=}"##, "forced class"),
@@ -66,6 +85,14 @@ const KNOWN: &[(&str, &str)] = &[
     (r##"\intop_0^1 f(x)\,dx"##, "forced class"),
     (r##"a \coloneqq b \quad c \eqqcolon d \quad e \Coloneq f \quad g \colonapprox h \quad i \dblcolon j"##, "forced class"),
     (r##"\int f \dd x"##, "forced class"),
+    (
+        r##"\expval{\hat{x}} = \mel{\psi}{\hat{x}}{\psi} = \int_{-\infty}^{\infty} \psi^*(x)\, x\, \psi(x) \dd{x}, \qquad \dv{t} \expval{\hat{p}} = -\expval{\pdv{V}{x}}"##,
+        "forced class: physics \\dd",
+    ),
+    (
+        r##"S[q] = \int_{t_1}^{t_2} L(q, \dot{q}, t) \dd{t}, \qquad \delta S = 0 \quad \Longleftrightarrow \quad \dv{t} \pdv{L}{\dot{q}_i} - \pdv{L}{q_i} = 0"##,
+        "forced class: physics \\dd",
+    ),
     // an operator the author named `sen` reads back as the sine it is
     (r##"\DeclareMathOperator{\sen}{sen} \sen x"##, "author's function named like a known one"),
     (r##"\operatorname{sen} x"##, "author's function named like a known one"),
