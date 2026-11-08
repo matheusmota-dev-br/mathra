@@ -1067,11 +1067,16 @@ impl Reader<'_> {
                 };
                 Node::Accent { base: Box::new(self.argument()?), accent, stretchy: true, below: true }
             }
-            "overset" | "stackrel" => {
+            // MathJax's \stackbin: \stackrel for a binary operator
+            "overset" | "stackrel" | "stackbin" => {
                 let above = self.argument()?;
                 let base = self.base_with_class()?;
                 Node::ForcedClass {
-                    class: if name == "stackrel" { Class::Rel } else { natural_class(&base) },
+                    class: match name {
+                        "stackrel" => Class::Rel,
+                        "stackbin" => Class::Bin,
+                        _ => natural_class(&base),
+                    },
                     base: Box::new(Node::Stacked { base: Box::new(base), above: Some(Box::new(above)), below: None }),
                 }
             }
