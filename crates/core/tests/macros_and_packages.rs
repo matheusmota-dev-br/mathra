@@ -239,6 +239,48 @@ fn physics_operators_and_order() {
     assert_eq!(en(r"\order(n)").text, "𝒪(n)");
 }
 
+/// physics' starred forms (#157): brackets that keep the text size, the derivative as a flat fraction;
+/// and the optional power of the functions, `\sin[2](x)`. Strict and tolerant read them alike.
+#[test]
+fn physics_starred_and_optional_forms() {
+    // the star is not drawn: \abs* is the same bars, at the text size (a \vphantom keeps the height)
+    for (tex, text) in [
+        (r"\abs*{\frac{a}{b}}", "|a/b|"),
+        (r"\norm*{\frac12}", "‖1/2‖"),
+        (r"\pqty*{x}", "(x)"),
+        (r"\comm*{A}{B}", "[A, B]"),
+        (r"\ket*{\psi}", "|ψ⟩"),
+        (r"\braket*{a}{b}", "⟨a | b⟩"),
+        (r"\expval*{A}{\psi}", "⟨ψ | A | ψ⟩"),
+        (r"\expval**{A}{\psi}", "⟨ψ | A | ψ⟩"),
+        (r"\mel*{n}{H}{m}", "⟨n | H | m⟩"),
+    ] {
+        assert_eq!(en(tex).text, text, "{tex}");
+    }
+    let starred = en(r"\abs*{\frac{a}{b}}");
+    assert!(matches!(starred.tree.children(), [Node::Phantom { width: false, height: true, .. }, Node::Delimited { .. }]), "{:?}", starred.tree);
+    assert!(format!("{:?}", starred.tree.children()[1]).contains("Smashed"), "{:?}", starred.tree);
+    // unstarred, the bars grow with the content; doubly starred \expval** resizes too
+    assert!(matches!(en(r"\abs{\frac{a}{b}}").tree.children(), [Node::Delimited { .. }]));
+    assert!(matches!(en(r"\expval**{A}{\psi}").tree.children(), [Node::Delimited { .. }]));
+    // \dv*, \pdv*, \fdv*: physics' \flatfrac, a slash between the two
+    assert_eq!(en(r"\dv*{f}{x}").text, "df/dx");
+    assert_eq!(en(r"\dv*{x}").text, "d/dx");
+    assert_eq!(en(r"\pdv*{f}{x}").text, "∂f/∂x");
+    assert_eq!(en(r"\pdv*[2]{f}{x}").text, "∂^2f/∂x^2");
+    assert_eq!(en(r"\fdv*{F}{g}").text, "δF/δg");
+    assert_eq!(en(r"\dv*{f}{x}").speech, en(r"\mathrm{d} f / \mathrm{d} x").speech);
+    // the fraction stays a fraction without the star
+    assert_eq!(en(r"\dv{f}{x}").text, "(df)/(dx)");
+    // \sin[2](x): the power on the function; physics leaves the brackets as written without parentheses
+    assert_eq!(en(r"\sin[2](\omega t)").text, en(r"\sin^{2}(\omega t)").text);
+    assert_eq!(en(r"\sin[2](x)").speech, en(r"\sin^2(x)").speech);
+    assert_eq!(en(r"\log[2](x)").text, en(r"\log^{2}(x)").text);
+    assert_eq!(en(r"\sin[2] x").text, "sin [2]x");
+    // the parentheses grow with the argument, as physics' \argopen…\argclose
+    assert!(format!("{:?}", en(r"\cos[2](\frac{a}{b})").tree).contains("Delimited"));
+}
+
 /// physics' \qty sizes brackets; siunitx's \qty{value}{unit} is a quantity. Two braced groups decide.
 #[test]
 fn qty_of_physics_and_of_siunitx() {

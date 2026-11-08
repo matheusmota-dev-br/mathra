@@ -4244,7 +4244,25 @@ impl Reader<'_> {
         Ok(Some(format!("\\left{left} {x} \\right{right}")))
     }
 
+    /// physics' `\sin[n](x)`: `\sin^{n}` and `x` in parentheses that resize; `None`, with nothing read, when the brackets are
+    /// not followed by parentheses.
+    #[inline(never)]
+    fn physics_function_power(&mut self, name: &str) -> Option<String> {
+        let saved = self.pos;
+        if let Some(power) = self.raw_optional() {
+            self.skip_spaces();
+            if self.current() == Some('(') {
+                let x = self.raw_delimited('(', ')');
+                // physics' \argopen: an empty \mathopen keeps the space after the function out
+                return Some(format!("\\{name}^{{{power}}}\\mathopen{{}}\\mathclose{{\\left( {x} \\right)}}"));
+            }
+        }
+        self.pos = saved;
+        None
+    }
+
     /// Package commands defined through other commands (physics, braket, xfrac, units, tensor, mathtools).
+    #[inline(never)]
     fn package_expansion(&mut self, name: &str, col: usize) -> R<Option<String>> {
         let d = |p: bool| if p { "\\partial" } else { "\\mathrm{d}" };
         let star = |this: &mut Self| {
@@ -4256,14 +4274,18 @@ impl Reader<'_> {
         };
         Ok(Some(match name {
             "fdv" | "functionalderivative" => {
+                let flat = star(self);
+                let power = self.raw_optional().map(|n| format!("^{{{n}}}")).unwrap_or_default();
                 let f = self.raw_text()?;
                 match self.optional_braced()? {
-                    Some(x) => format!("\\frac{{\\delta {f}}}{{\\delta {x}}}"),
-                    None => format!("\\frac{{\\delta}}{{\\delta {f}}}"),
+                    Some(x) => physics_fraction(flat, format!("\\delta{power} {f}"), format!("\\delta {x}{power}")),
+                    None => physics_fraction(flat, format!("\\delta{power}"), format!("\\delta {f}{power}")),
                 }
             }
             "dv" | "odv" | "pdv" | "derivative" | "partialderivative" | "pd" => {
                 let partial = name.starts_with('p');
+                // physics' \dv* and \pdv*: the derivative as a flat fraction, df/dx
+                let flat = matches!(name, "dv" | "pdv" | "derivative" | "partialderivative") && star(self);
                 let order = self.raw_optional();
                 let f = self.raw_text()?;
                 self.skip_spaces();
@@ -4271,20 +4293,24 @@ impl Reader<'_> {
                 self.skip_spaces();
                 let y = if partial && x.is_some() && self.current() == Some('{') { Some(self.raw_text()?) } else { None };
                 let dd = d(partial);
-                match (x, y, order) {
-                    (None, _, None) => format!("\\frac{{{dd}}}{{{dd} {f}}}"),
-                    (None, _, Some(n)) => format!("\\frac{{{dd}^{{{n}}}}}{{{dd} {f}^{{{n}}}}}"),
-                    (Some(x), None, None) => format!("\\frac{{{dd} {f}}}{{{dd} {x}}}"),
-                    (Some(x), None, Some(n)) => {
-                        format!("\\frac{{{dd}^{{{n}}} {f}}}{{{dd} {x}^{{{n}}}}}")
-                    }
-                    (Some(x), Some(y), _) => {
-                        format!("\\frac{{{dd}^{{2}} {f}}}{{{dd} {x} \\, {dd} {y}}}")
-                    }
-                }
+                let (numerator, denominator) = match (x, y, order) {
+                    (None, _, None) => (dd.to_string(), format!("{dd} {f}")),
+                    (None, _, Some(n)) => (format!("{dd}^{{{n}}}"), format!("{dd} {f}^{{{n}}}")),
+                    (Some(x), None, None) => (format!("{dd} {f}"), format!("{dd} {x}")),
+                    (Some(x), None, Some(n)) => (format!("{dd}^{{{n}}} {f}"), format!("{dd} {x}^{{{n}}}")),
+                    (Some(x), Some(y), _) => (format!("{dd}^{{2}} {f}"), format!("{dd} {x} \\, {dd} {y}")),
+                };
+                physics_fraction(flat, numerator, denominator)
             }
-            "ket" | "Ket" => format!("\\left| {} \\right\\rangle", self.raw_text()?),
-            "bra" | "Bra" => format!("\\left\\langle {} \\right|", self.raw_text()?),
+            // physics' \ket* and \bra*: brackets that do not resize (braket's \Ket and \Bra have no star)
+            "ket" | "Ket" => {
+                let s = name == "ket" && star(self);
+                physics_fence(s, "|", "|", "\\rangle", &[&self.raw_text()?])
+            }
+            "bra" | "Bra" => {
+                let s = name == "bra" && star(self);
+                physics_fence(s, "\\langle", "|", "|", &[&self.raw_text()?])
+            }
             // mathtools (its names since 2022) and colonequals: a colon on the axis beside another
             // relation, set as one; \coloneq, \coloneqq, \eqcolon and \eqqcolon are single symbols
             "Coloneq" | "coloncolonequals" => "\\Coloneqq ".into(),
@@ -4354,39 +4380,46 @@ impl Reader<'_> {
                 }
             }
             "braket" | "Braket" | "innerproduct" | "ip" => {
+                let s = name != "Braket" && star(self);
                 let x = self.raw_text()?;
                 match self.optional_braced()? {
                     // physics: \braket{a}{b}
-                    Some(y) => format!("\\left\\langle {x} \\middle| {y} \\right\\rangle"),
+                    Some(y) => physics_fence(s, "\\langle", "|", "\\rangle", &[&x, &y]),
                     // braket: \braket{a|b}
-                    None => format!("\\left\\langle {} \\right\\rangle", x.replacen('|', " \\middle| ", 2)),
+                    None => physics_fence(s, "\\langle", "|", "\\rangle", &x.splitn(3, '|').collect::<Vec<_>>()),
                 }
             }
             "ketbra" | "outerproduct" | "dyad" => {
+                let s = star(self);
                 let a = self.raw_text()?;
                 let b = self.optional_braced()?.unwrap_or_else(|| a.clone());
-                format!("\\left| {a} \\right\\rangle\\!\\left\\langle {b} \\right|")
+                format!("{}\\!{}", physics_fence(s, "|", "|", "\\rangle", &[&a]), physics_fence(s, "\\langle", "|", "|", &[&b]))
             }
+            // starred, the brackets do not resize; doubly starred (\expval**, \mel**), they do
             "expval" | "ev" | "expectationvalue" => {
+                let s = star(self) && !star(self);
                 let a = self.raw_text()?;
                 match self.optional_braced()? {
-                    Some(psi) => format!("\\left\\langle {psi} \\middle| {a} \\middle| {psi} \\right\\rangle"),
-                    None => format!("\\left\\langle {a} \\right\\rangle"),
+                    Some(psi) => physics_fence(s, "\\langle", "|", "\\rangle", &[&psi, &a, &psi]),
+                    None => physics_fence(s, "\\langle", "|", "\\rangle", &[&a]),
                 }
             }
             "mel" | "matrixel" | "matrixelement" => {
+                let s = star(self) && !star(self);
                 let a = self.raw_text()?;
                 let op = self.raw_text()?;
                 let b = self.raw_text()?;
-                format!("\\left\\langle {a} \\middle| {op} \\middle| {b} \\right\\rangle")
+                physics_fence(s, "\\langle", "|", "\\rangle", &[&a, &op, &b])
             }
-            "comm" | "commutator" | "acomm" | "anticommutator" | "pb" | "poissonbracket" => {
+            "comm" | "commutator" | "acomm" | "acommutator" | "anticommutator" | "pb" | "poissonbracket" => {
+                let s = star(self);
                 let a = self.raw_text()?;
                 let b = self.raw_text()?;
+                let ab = format!("{a}, {b}");
                 if matches!(name, "comm" | "commutator") {
-                    format!("\\left[ {a}, {b} \\right]")
+                    physics_fence(s, "[", "|", "]", &[&ab])
                 } else {
-                    format!("\\left\\{{ {a}, {b} \\right\\}}")
+                    physics_fence(s, "\\{", "|", "\\}", &[&ab])
                 }
             }
             // physics' vector calculus: the nabla in bold (U+1D6C1), like the package
@@ -4441,13 +4474,15 @@ impl Reader<'_> {
             // physics' \qty(…), \qty[…], \qty|…|, \qty{x}; siunitx's \qty{3}{m} (two groups) goes to the units
             "qty" | "quantity" if name == "quantity" || self.physics_qty_follows() => self.physics_brackets()?.unwrap_or_default(),
             "pqty" | "bqty" | "vqty" | "Bqty" => {
+                let s = star(self);
                 let x = self.raw_text()?;
-                match name {
-                    "pqty" => format!("\\left( {x} \\right)"),
-                    "bqty" => format!("\\left[ {x} \\right]"),
-                    "vqty" => format!("\\left| {x} \\right|"),
-                    _ => format!("\\left\\{{ {x} \\right\\}}"),
-                }
+                let (open, close) = match name {
+                    "pqty" => ("(", ")"),
+                    "bqty" => ("[", "]"),
+                    "vqty" => ("|", "|"),
+                    _ => ("\\{", "\\}"),
+                };
+                physics_fence(s, open, "|", close, &[&x])
             }
             "idotsint" => "\\int\\!\\cdots\\!\\int ".into(),
             // mathtools: \prescript{sup}{sub}{base}
@@ -4472,8 +4507,26 @@ impl Reader<'_> {
                     None => format!("\\left\\{{ {x} \\right\\}}"),
                 }
             }
-            "abs" => format!("\\left| {} \\right|", self.raw_text()?),
-            "norm" => format!("\\left\\| {} \\right\\|", self.raw_text()?),
+            // physics: \abs*{…} and \norm*{…} keep the delimiters at the text size
+            "abs" | "absolutevalue" => {
+                let s = star(self);
+                physics_fence(s, "|", "|", "|", &[&self.raw_text()?])
+            }
+            "norm" => {
+                let s = star(self);
+                physics_fence(s, "\\|", "|", "\\|", &[&self.raw_text()?])
+            }
+            // physics' \sin[2](x): the power on the function, the argument in parentheses that resize
+            // (without the parentheses, physics leaves [2] as written, as mathra does)
+            "sin" | "cos" | "tan" | "csc" | "sec" | "cot" | "arcsin" | "arccos" | "arctan" | "arccsc" | "arcsec" | "arccot" | "sinh" | "cosh" | "tanh" | "csch" | "sech"
+            | "coth" | "log" | "ln"
+                if self.current() == Some('[') =>
+            {
+                match self.physics_function_power(name) {
+                    Some(expansion) => expansion,
+                    None => return Ok(None),
+                }
+            }
             "sfrac" | "nicefrac" => {
                 let a = self.raw_text()?;
                 let b = self.raw_text()?;
@@ -4548,6 +4601,29 @@ impl Reader<'_> {
         self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), "drawn in red")?;
         items.push(Node::Colored { color: "#c0392b".into(), base: Box::new(Node::Text { parts: vec![TextPart::Text(format!("\\{name}"))] }) });
         Ok(None)
+    }
+}
+
+/// physics' brackets around `parts`, separated by `\middle{middle}`. Unstarred, `\left…\right` sizes them
+/// to the content; starred, they keep the text size: the parts are smashed and a `\vphantom` keeps their
+/// height, as the package's `\braces` does.
+fn physics_fence(star: bool, open: &str, middle: &str, close: &str, parts: &[&str]) -> String {
+    let separator = format!(" \\middle{middle} ");
+    if star {
+        let smashed: Vec<String> = parts.iter().map(|p| format!("\\smash{{{p}}}")).collect();
+        format!("\\vphantom{{{}}}\\left{open} {} \\right{close}", parts.join(" "), smashed.join(&separator))
+    } else {
+        format!("\\left{open} {} \\right{close}", parts.join(&separator))
+    }
+}
+
+/// A physics derivative: `\frac`, or starred, physics' `\flatfrac`, `\left.a\middle/b\right.`: a slash at
+/// the text size between the two (TeX keeps the slash at its size around letters and their exponents).
+fn physics_fraction(flat: bool, numerator: String, denominator: String) -> String {
+    if flat {
+        format!("{{{numerator}}}/{{{denominator}}}")
+    } else {
+        format!("\\frac{{{numerator}}}{{{denominator}}}")
     }
 }
 
