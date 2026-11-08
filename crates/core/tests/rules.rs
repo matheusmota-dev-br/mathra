@@ -373,3 +373,29 @@ fn s_svg_10_still_valid_xml_and_still_accessible() {
         assert!(svg.contains("role=\"img\"") && svg.contains("<title"), "{tex}");
     }
 }
+
+#[test]
+fn s_svg_11_html_attributes_on_the_content_group_and_nowhere_else() {
+    for (tex, plain, attributes) in [
+        (r"\class{highlight}{x^2} + 1", r"x^2 + 1", r#"<g class="highlight">"#),
+        (r"\cssId{step-2}{a + b}", r"a + b", r#"<g id="step-2">"#),
+        (r"\htmlData{step=3,kind=sum}{c}", r"c", r#"<g data-step="3" data-kind="sum">"#),
+        (r"\htmlClass{term}{x} + y", r"x + y", r#"<g class="term">"#),
+        (r"\style{opacity:0.5}{\frac{a}{b}}", r"\frac{a}{b}", r#"<g style="opacity:0.5">"#),
+    ] {
+        let with = convert(tex, &Options { strict: true, locale: Locale::En, ..Default::default() }).unwrap_or_else(|e| panic!("{tex}: {e}"));
+        let without = en(plain);
+        assert!(with.svg.contains(attributes), "{tex}: {}", with.svg);
+        assert_eq!(with.speech, without.speech, "{tex}");
+        assert_eq!(with.text, without.text, "{tex}");
+        assert_eq!(with.braille, without.braille, "{tex}");
+        // the group closes around the content's glyphs and nothing moves
+        let body = |svg: &str| svg.split("<defs>").nth(1).unwrap().split("</defs>").nth(1).unwrap().replace(attributes, "").replace("<g>", "").replace("</g>", "").to_string();
+        let ids = |svg: &str| svg.split("aria-labelledby=\"").nth(1).unwrap().split("-speech").next().unwrap().to_string();
+        assert_eq!(body(&with.svg).replace(&ids(&with.svg), ""), body(&without.svg).replace(&ids(&without.svg), ""), "{tex}");
+    }
+    // a style's color colors the glyphs too, as \color does, so outputs without CSS have it
+    let red = en(r"\style{color:red}{x}");
+    assert!(red.svg.contains(r#"<g style="color:red"><use"#) && red.svg.contains(r#"fill="red""#), "{}", red.svg);
+    assert_eq!(red.speech, "x");
+}

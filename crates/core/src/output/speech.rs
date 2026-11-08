@@ -213,7 +213,7 @@ impl Speaker {
                     Frame::Fill => self.say(b),
                 }
             }
-            Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => self.node(base),
+            Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => self.node(base),
             Node::Quantity { value, unit } => {
                 let named = units_by_name(unit, value.as_deref(), self.loc);
                 self.node(&named);

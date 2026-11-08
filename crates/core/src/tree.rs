@@ -199,6 +199,14 @@ pub enum Node {
         color: String,
         base: Box<Node>,
     },
+    /// HTML attributes for the content's group in the SVG (`class`, `id`, `style`, `data-*`), so a
+    /// page can style or animate it: `\class`, `\cssId`, `\style` (MathJax) and `\htmlClass`,
+    /// `\htmlId`, `\htmlStyle`, `\htmlData` (KaTeX). The reader keeps only safe names and values;
+    /// speech, text and braille ignore them.
+    Attributed {
+        attributes: Vec<(String, String)>,
+        base: Box<Node>,
+    },
     /// Quantity with a unit (`\SI`, `\qty`): value and unit in upright form.
     Quantity {
         #[serde(skip_serializing_if = "Option::is_none")]

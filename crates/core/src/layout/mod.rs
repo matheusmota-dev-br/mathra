@@ -510,6 +510,11 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
             math_box.colorize(color);
             Ok(math_box)
         }
+        Node::Attributed { attributes, base } => {
+            let mut math_box = compose(base, e, ctx)?;
+            math_box.group(attributes.clone());
+            Ok(math_box)
+        }
         Node::Quantity { unit, .. } => compose(unit, e, ctx),
         Node::Arrow { symbol, above, below } => compose_arrow(*symbol, above.as_deref(), below.as_deref(), e, ctx),
         Node::Stacked { base, above, below } => {
@@ -591,7 +596,7 @@ pub fn class_of(node: &Node) -> Option<Class> {
         Node::Choice { branches } => return branches.get(1).and_then(class_of),
         Node::Scripts { base, .. } => return class_of(base),
         Node::Arrow { .. } => Class::Rel,
-        Node::Colored { base, .. } | Node::Style { base, .. } => match base.as_ref() {
+        Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::Style { base, .. } => match base.as_ref() {
             Node::Row { children } if children.len() == 1 => return class_of(&children[0]),
             Node::Row { .. } => Class::Ord,
             other => return class_of(other),
@@ -709,7 +714,7 @@ pub(crate) fn compose_row(children: &[Node], e: Style, ctx: &mut Context, initia
         if pending_italic > 0.0 {
             math_box.append(&MathBox::space(pending_italic));
         }
-        pending_italic = if matches!(node, Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. }) { b.italic } else { 0.0 };
+        pending_italic = if slanted_letter(node) { b.italic } else { 0.0 };
         math_box.append(&b);
         if class.is_some() {
             previous = *class;
@@ -740,6 +745,16 @@ fn ends_slanted(node: &Node) -> bool {
     match node {
         Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
         Node::Row { children } if children.len() == 1 => ends_slanted(&children[0]),
+        Node::Attributed { base, .. } => ends_slanted(base),
+        _ => false,
+    }
+}
+
+/// A slanted letter, also inside the group of `\class` and its kin, which changes nothing in the drawing.
+fn slanted_letter(node: &Node) -> bool {
+    match node {
+        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
+        Node::Attributed { base, .. } => slanted_letter(base.single()),
         _ => false,
     }
 }

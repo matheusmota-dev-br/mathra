@@ -25,6 +25,9 @@ pub enum Item {
     /// Items drawn through an affine map `[a, b, c, d, e, f]`: (x, y) → (a·x + c·y + e, b·x + d·y + f),
     /// as SVG's `matrix()`. Turned and unevenly scaled boxes (`\rotatebox`, `\scalebox{2}[1]`).
     Transformed { matrix: [f32; 6], items: Vec<Item> },
+    /// Items drawn inside a group that carries HTML attributes (`class`, `id`, `style`, `data-*`):
+    /// `\class`, `\htmlId`… The names and values are already safe to write.
+    Group { attributes: Vec<(String, String)>, items: Vec<Item> },
 }
 
 impl Item {
@@ -48,13 +51,18 @@ impl Item {
                 matrix[4] += dx;
                 matrix[5] += dy;
             }
+            Item::Group { items, .. } => {
+                for item in items {
+                    item.shift(dx, dy);
+                }
+            }
         }
     }
 
     fn colorize(&mut self, new: &str) {
         let color = match self {
             Item::Glyph { color, .. } | Item::Rule { color, .. } | Item::Line { color, .. } | Item::Ellipse { color, .. } => color,
-            Item::Transformed { items, .. } => {
+            Item::Transformed { items, .. } | Item::Group { items, .. } => {
                 for item in items {
                     item.colorize(new);
                 }
@@ -132,7 +140,12 @@ impl MathBox {
 
     /// Multiplies everything by `f`, from the origin (`\scalebox`).
     pub fn scale_box(&mut self, f: f32) {
-        for item in &mut self.items {
+        fn scale(items: &mut [Item], f: f32) {
+            for item in items {
+                scale_item(item, f);
+            }
+        }
+        fn scale_item(item: &mut Item, f: f32) {
             match item {
                 Item::Glyph { x, y, scale, .. } => {
                     *x *= f;
@@ -164,8 +177,10 @@ impl MathBox {
                         *m *= f;
                     }
                 }
+                Item::Group { items, .. } => scale(items, f),
             }
         }
+        scale(&mut self.items, f);
         self.width *= f;
         self.height *= f;
         self.depth *= f;
@@ -176,8 +191,12 @@ impl MathBox {
 
     /// Mirrors everything left to right inside the box's width (`\reflectbox`).
     pub fn mirror(&mut self) {
-        let w = self.width;
-        for item in &mut self.items {
+        fn mirror_items(items: &mut [Item], w: f32) {
+            for item in items {
+                mirror_item(item, w);
+            }
+        }
+        fn mirror_item(item: &mut Item, w: f32) {
             match item {
                 Item::Glyph { x, flip, .. } => {
                     *x = w - *x;
@@ -194,8 +213,11 @@ impl MathBox {
                     matrix[2] = -matrix[2];
                     matrix[4] = w - matrix[4];
                 }
+                Item::Group { items, .. } => mirror_items(items, w),
             }
         }
+        let w = self.width;
+        mirror_items(&mut self.items, w);
         self.italic = 0.0;
         self.accent_point = self.accent_point.map(|p| w - p);
         self.single_glyph = false;
@@ -209,6 +231,13 @@ impl MathBox {
         self.italic = 0.0;
         self.accent_point = None;
         self.single_glyph = false;
+    }
+
+    /// Puts everything inside a group with these HTML attributes (see [`Item::Group`]). The box
+    /// keeps its size and its metrics.
+    pub fn group(&mut self, attributes: Vec<(String, String)>) {
+        let items = std::mem::take(&mut self.items);
+        self.items.push(Item::Group { attributes, items });
     }
 
     pub fn colorize(&mut self, color: &str) {
@@ -248,6 +277,12 @@ impl MathBox {
                 Item::Ellipse { cx, cy, rx, ry, thickness, .. } => {
                     let h = thickness / 2.0;
                     add(cx - rx - h, cy - ry - h, cx + rx + h, cy + ry + h);
+                }
+                Item::Group { ref items, .. } => {
+                    let inner = MathBox { items: items.clone(), ..MathBox::default() };
+                    if let Some((x0, y0, x1, y1)) = inner.ink(f) {
+                        add(x0, y0, x1, y1);
+                    }
                 }
                 // the corners of the inner ink, mapped: a turned box's ink fits inside them
                 Item::Transformed { ref matrix, ref items } => {

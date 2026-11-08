@@ -467,9 +467,9 @@ fn katex_list_readings_follow_latex() {
 
 #[test]
 fn unsupported_commands_are_refused_or_shown_in_red() {
-    // KaTeX-only names (texvc aliases, HTML extensions) are not LaTeX: refused in strict mode,
+    // KaTeX-only names (texvc aliases) are not LaTeX: refused in strict mode,
     // and with a warning otherwise, never replaced in silence by a look-alike
-    for tex in [r"\R", r"\Reals", r"\larr", r"\hearts", r"\htmlClass{a}{x}", r"\mathreflectbox{x}", r"\foocommand"] {
+    for tex in [r"\R", r"\Reals", r"\larr", r"\hearts", r"\mathreflectbox{x}", r"\foocommand"] {
         assert!(convert(tex, &strict()).is_err(), "{tex} accepted in strict mode");
         let out = convert(tex, &Options::default()).unwrap();
         assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1"), "{tex}: {:?}", out.warnings);

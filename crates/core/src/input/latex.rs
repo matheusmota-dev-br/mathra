@@ -1199,6 +1199,11 @@ impl Reader<'_> {
             }
             "textcircled" | "circled" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None, padding: None, thickness: None },
             "phantom" | "hphantom" | "vphantom" => Node::Phantom { base: Box::new(self.argument()?), width: name != "vphantom", height: name != "hphantom" },
+            // MathJax's \class, \cssId, \style and KaTeX's \htmlClass, \htmlId, \htmlStyle, \htmlData:
+            // HTML attributes for the content's group in the SVG, kept only when safe (in strict mode too:
+            // they are not wrong LaTeX, what is dropped is a warning)
+            // (read in a function of its own: this match's frame is on the stack at every level of \not)
+            "class" | "cssId" | "style" | "htmlClass" | "htmlId" | "htmlStyle" | "htmlData" => self.html_attributes_command(name, col)?,
             "textcolor" => {
                 let color = self.color()?;
                 let base = self.argument()?;
@@ -3449,6 +3454,99 @@ fn measure_em(m: &str) -> Option<f32> {
         }
     }
     None
+}
+
+impl Reader<'_> {
+    /// `\class{…}{…}` and its kin: the content with the attributes [`html_attributes`] keeps.
+    fn html_attributes_command(&mut self, name: &str, col: usize) -> R<Node> {
+        let value = self.raw_text()?;
+        let base = self.argument()?;
+        let (node, dropped) = html_attributes(name, &value, base);
+        if !dropped.is_empty() {
+            self.registry.warn(rules::E_REC_9, format!("column {col}: \\{name}: unsafe or unsupported {}; dropped", dropped.join(", ")));
+        }
+        Ok(node)
+    }
+}
+
+/// The CSS properties `\style` and `\htmlStyle` keep: they change how the content looks, and cannot
+/// load anything or move it out of its place.
+const STYLE_PROPERTIES: [&str; 4] = ["color", "background", "background-color", "opacity"];
+
+/// `\class`, `\cssId`, `\style`, `\htmlClass`, `\htmlId`, `\htmlStyle` or `\htmlData` with its first
+/// argument `value`, around `base`; and what was dropped as unsafe or unsupported. Classes, ids and
+/// data keys keep only `[A-Za-z0-9_-]`; a style keeps only [`STYLE_PROPERTIES`] with plain values
+/// (no `url(`, quotes, `;`, `<` or `>`). A style's color also colors the content, as `\color` does,
+/// so it reaches the outputs that have no CSS.
+fn html_attributes(command: &str, value: &str, base: Node) -> (Node, Vec<String>) {
+    let mut dropped = Vec::new();
+    let mut attributes: Vec<(String, String)> = Vec::new();
+    let mut color = None;
+    let safe_name = |raw: &str, dropped: &mut Vec<String>| -> String {
+        let kept: String = raw.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').collect();
+        if kept.len() != raw.len() {
+            dropped.push(format!("characters of {raw:?}"));
+        }
+        kept
+    };
+    match command {
+        "class" | "htmlClass" => {
+            let classes: Vec<String> = value.split_whitespace().map(|c| safe_name(c, &mut dropped)).filter(|c| !c.is_empty()).collect();
+            if !classes.is_empty() {
+                attributes.push(("class".into(), classes.join(" ")));
+            }
+        }
+        "cssId" | "htmlId" => {
+            let id = safe_name(value.trim(), &mut dropped);
+            if !id.is_empty() {
+                attributes.push(("id".into(), id));
+            }
+        }
+        "style" | "htmlStyle" => {
+            let mut kept = Vec::new();
+            for declaration in value.split(';').map(str::trim).filter(|d| !d.is_empty()) {
+                let Some((property, v)) = declaration.split_once(':') else {
+                    dropped.push(format!("style {declaration:?}"));
+                    continue;
+                };
+                let (property, v) = (property.trim().to_ascii_lowercase(), v.trim());
+                let lower = v.to_ascii_lowercase();
+                let plain = !v.is_empty() && v.len() < 60 && v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),.% -".contains(c));
+                let is_color = v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c));
+                if !STYLE_PROPERTIES.contains(&property.as_str()) || !plain || lower.contains("url(") || lower.contains("expression(") || (property == "color" && !is_color) {
+                    dropped.push(format!("style {declaration:?}"));
+                    continue;
+                }
+                if property == "color" {
+                    color = Some(v.to_string());
+                }
+                kept.push(format!("{property}:{v}"));
+            }
+            if !kept.is_empty() {
+                attributes.push(("style".into(), kept.join(";")));
+            }
+        }
+        _ => {
+            for pair in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                let (key, v) = pair.split_once('=').unwrap_or((pair, ""));
+                // HTML lowercases attribute names; XML keeps them as written
+                let key = safe_name(key.trim(), &mut dropped).to_ascii_lowercase();
+                if key.is_empty() {
+                    dropped.push(format!("data {pair:?}"));
+                    continue;
+                }
+                attributes.push((format!("data-{key}"), v.trim().to_string()));
+            }
+        }
+    }
+    let mut out = base;
+    if let Some(color) = color {
+        out = Node::Colored { color, base: Box::new(out) };
+    }
+    if !attributes.is_empty() {
+        out = Node::Attributed { attributes, base: Box::new(out) };
+    }
+    (out, dropped)
 }
 
 /// A number in siunitx format: decimal comma or dot, spaces, exponent with `e`.
