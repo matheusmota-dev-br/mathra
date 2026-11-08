@@ -1,10 +1,10 @@
 //! Issue #214: chemfig's default bond values at the start of a structure, `\charge`, `-U>`,
 //! `\chemleft`/`\chemright`, `\chemup`/`\chemdown`, `\chemskipalign`, distant bonds whose mark sits
-//! inside an atom group, and `\merge` (left out with a warning). Section numbers are the chemfig
-//! manual's (v1.83).
+//! inside an atom group, and (#257) `\merge`, with the compound names it joins and the branching arrows
+//! that use them. Section numbers are the chemfig manual's (v1.83).
 #![cfg(feature = "chem")]
 
-use mathra::chem::model::{ArrowKind, Body, BondKind, ChargeContent, Item, LewisMark, Molecule, Scheme, UArc};
+use mathra::chem::model::{ArrowKind, Body, BondKind, ChargeContent, Item, LewisMark, Merge, Molecule, Scheme, UArc};
 use mathra::tree::Node;
 use mathra::{convert, Input, Options};
 
@@ -180,15 +180,92 @@ fn distant_bonds() {
     assert_eq!(molecule("A?[z]-B").bonds.len(), 1);
 }
 
+fn merges(tex: &str) -> Vec<Merge> {
+    scheme_of(strict(tex).tree.single())
+        .items
+        .into_iter()
+        .filter_map(|i| match i {
+            Item::Merge(m) => Some(m),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-fn merge_is_left_out() {
-    // section 6.11: \merge joins compounds named by \arrow(name--name), which mathra does not name
-    let out = warns(r"\schemestart A\arrow{<=>}[90]B\merge>(c1)(c2)--()C\schemestop", "E-REC-1");
-    let s = scheme_of(out.tree.single());
-    assert_eq!(s.items.iter().filter(|i| matches!(i, Item::Compound(_))).count(), 3, "{:?}", s.items);
-    // outside a scheme chemfig does not define it: its arguments go with it
+fn merge_joins_named_compounds() {
+    // section 6.11, the manual's examples: chemfig's own names c1, c2…, the direction (> by default)
+    // and the coefficients [c1,c2,c]
+    let m = merges(r"\schemestart A\arrow{<=>}[90]B\merge(c1)(c2)--()C\schemestop");
+    assert_eq!((m[0].from.clone(), m[0].angle, m[0].coefficients), (vec![(0, None), (1, None)], 0.0, (0.5, 0.5, 0.5)));
+    let m = merges(r"\schemestart A\arrow{<=>}B\merge^(c1)(c2)--()[0.25,1,0.75]C\schemestop");
+    assert_eq!((m[0].angle, m[0].coefficients), (90.0, (0.25, 1.0, 0.75)));
+    let m = merges(r"\schemestart ABC\arrow[30]EFGHIJ\arrow[45]KLM\arrow[30]NO \merge>(c1)(c2)(c3)--()suite 1 \arrow suite 2 \schemestop");
+    assert_eq!(m[0].from.iter().map(|f| f.0).collect::<Vec<_>>(), [0, 1, 2]);
+    // names given by \arrow(a--b) (section 6.4), and an anchor's angle
+    let m = merges(r"\schemestart Foooo\arrow(foo--bar){<=>}Bar\arrow(--baz){<=>}Bz \merge^(foo)(bar)(baz)--()suite \schemestop");
+    assert_eq!(m[0].from.iter().map(|f| f.0).collect::<Vec<_>>(), [0, 1, 2]);
+    let m = merges(r"\schemestart A\arrow{<->}[90]B \merge<(c1.120)(c2)--()CCC \schemestop");
+    assert_eq!((m[0].from.clone(), m[0].angle), (vec![(0, Some(120.0)), (1, None)], 180.0));
+    // the labels above and below the arrow
+    let m = merges(r"\schemestart ABC\arrow{<=>}DEF\merge v[sur][sous](c1)(c2)--()[0.25,1,0.75]GHIJ \schemestop");
+    assert_eq!(m[0].angle, -90.0);
+    assert!(m[0].above.is_some() && m[0].below.is_some());
+    // the next compound's name, for a later merge; a \subscheme's box takes a number (section 6.8) and
+    // what \+ joins is one compound (section 6.12)
+    let m = merges(r"\schemestart A\arrow{<=>}[90]B\merge(c1)(c2)--(x)C\arrow D\merge(x)(c4)--()E\schemestop");
+    assert_eq!(m[1].from.iter().map(|f| f.0).collect::<Vec<_>>(), [2, 3]);
+    let m = merges(r"\schemestart A\arrow \subscheme{B\arrow[-90,2]C} \arrow D \merge v(c1)(c3)(c5)--()E\schemestop");
+    assert_eq!(m[0].from.iter().map(|f| f.0).collect::<Vec<_>>(), [0, 1, 3]);
+    let m = merges(r"\schemestart A\+B\arrow[90] C \merge(c1)(c2)--()E\schemestop");
+    assert_eq!(m[0].from.iter().map(|f| f.0).collect::<Vec<_>>(), [0, 2]);
+    // drawn: the lines and the arrow change the drawing; read as the arrow it ends in
+    let out = strict(r"\schemestart A\arrow{<=>}[90]B\merge(c1)(c2)--()C\schemestop");
+    assert_ne!(out.svg, strict(r"\schemestart A\arrow{<=>}[90]B C\schemestop").svg);
+    assert_eq!(out.text, "A ⇌ B → C");
+    assert!(out.speech.ends_with("reacts to give C"), "{}", out.speech);
+    // what mathra does not draw warns, and strict mode refuses it: a style, a label's rotation, a
+    // name no compound has
+    for tex in [
+        r"\schemestart A\arrow{<=>}[90]B\merge(c1)(c2)--()[,,0.9,red,thick]C\schemestop",
+        r"\schemestart ABC\arrow{<=>}[90]DEF\merge>[*{90}sur][*{90}sous](c1)(c2)--()GHIJ\schemestop",
+        r"\schemestart A\arrow B\merge(c1)(zz)--()C\schemestop",
+    ] {
+        let out = warns(tex, "E-REC-9");
+        assert_eq!(scheme_of(out.tree.single()).items.iter().filter(|i| matches!(i, Item::Merge(_))).count(), 1, "{tex}");
+    }
+    // outside a scheme chemfig does not define it: left out with its arguments
     let out = warns(r"\chemfig{A-B}\merge{->}(c1)(c2)--(c3)", "E-REC-1");
     assert!(!out.text.contains("c1"), "{}", out.text);
+}
+
+#[test]
+fn arrows_name_and_branch() {
+    // section 6.4: \arrow(a--b) names the compounds and is not text of the scheme
+    let out = strict(r"\schemestart A\arrow(aa--bb)B\arrow(--cc)C\arrow D\schemestop");
+    assert_eq!(out.text, "A → B → C → D");
+    // section 6.7: an arrow from a named compound, and one between two compounds already placed
+    let s = scheme_of(strict(r"\schemestart A\arrow(aa--bb)B\arrow(--cc)C\arrow D \arrow(@bb--xx1)[-90]X\arrow(@xx1--@cc)\schemestop").tree.single());
+    let arrows: Vec<(Option<usize>, Option<usize>)> = s
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Arrow(a) => Some((a.from, a.to)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(arrows, [(None, None), (None, None), (None, None), (Some(1), None), (Some(4), Some(2))]);
+    // section 6.1: \schemestart[arrow angle=…, arrow coeff=…] sets the arrows that give none
+    let s = scheme_of(strict(r"\schemestart[arrow angle=-90,arrow coeff=1.5] A\arrow B\arrow[0] C\schemestop").tree.single());
+    let set: Vec<(f32, f32)> = s
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Arrow(a) => Some((a.angle, a.length)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(set, [(-90.0, 1.5), (0.0, 1.5)]);
+    assert_eq!(strict(r"\schemestart[arrow angle=0,init anchor=west] A\arrow B\schemestop").text, "A → B");
 }
 
 #[test]

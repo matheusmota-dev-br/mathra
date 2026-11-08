@@ -118,6 +118,7 @@ fn schemes_and_arrows() {
             Item::Compound(_) => "math",
             Item::Plus => "+",
             Item::Arrow(_) => "arrow",
+            Item::Merge(_) => "merge",
         })
         .collect();
     assert_eq!(kinds, ["structure", "+", "math", "arrow", "structure", "+", "math"]);
