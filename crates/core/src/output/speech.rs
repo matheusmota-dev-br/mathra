@@ -294,8 +294,11 @@ impl Speaker {
                     let (from, to) = (name(self, a.from), name(self, a.to));
                     let mut phrase = format!("; {}", self.t("diagram_arrow", &[&from, &to]));
                     for l in &a.labels {
+                        // a label with nothing to say (xymatrix's \hole) is not read
                         let l = self.spoken(&l.node);
-                        phrase.push_str(&format!(" ({l})"));
+                        if !l.is_empty() {
+                            phrase.push_str(&format!(" ({l})"));
+                        }
                     }
                     self.say(phrase);
                 }
