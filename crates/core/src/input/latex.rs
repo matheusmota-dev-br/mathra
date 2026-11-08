@@ -86,6 +86,15 @@ pub const MARKERS: [char; 9] = [BOLD_START, BOLD_END, SMALL_CAPS_START, SMALL_CA
 fn prepare(tex: &str, registry: &mut Registry, strict: bool) -> String {
     // the repair comes before the trim: a \frac eaten by JSON starts with a form feed, which trim would delete
     let mut s = tex.to_string();
+    // an unescaped % starts a comment in TeX; pasted equations usually mean a percent sign (15%)
+    let (uncommented, percents) = comments(&s);
+    if strict {
+        s = uncommented;
+    } else {
+        for column in percents {
+            registry.warn(rules::E_REC_9, format!("column {column}: '%' starts a comment in TeX (write \\% for a percent sign); drawn as a percent sign"));
+        }
+    }
     if !strict {
         if let Some(repaired) = repair_controls(&s) {
             registry.warn(rules::E_REC_2, "JSON control character in place of the backslash (\\frac stored unescaped): command rebuilt");
@@ -4113,4 +4122,70 @@ fn repair_controls(s: &str) -> Option<String> {
         }
     }
     changed.then_some(output)
+}
+
+/// TeX's comments: an unescaped `%` drops the rest of its line, the line break and the spaces that
+/// start the next line. Returns the text without them and the column (1-based, in `s`) of each `%`.
+/// The verbatim arguments of `\verb`, `\url` and `\href` keep their `%`, as in TeX.
+fn comments(s: &str) -> (String, Vec<usize>) {
+    let c: Vec<char> = s.chars().collect();
+    let mut output = String::with_capacity(s.len());
+    let mut starts = Vec::new();
+    let mut i = 0;
+    while i < c.len() {
+        match c[i] {
+            '\\' => {
+                let start = i;
+                i += 1;
+                while c.get(i).is_some_and(char::is_ascii_alphabetic) {
+                    i += 1;
+                }
+                if i == start + 1 && i < c.len() {
+                    i += 1;
+                }
+                let name: String = c[start + 1..i].iter().collect();
+                output.extend(&c[start..i]);
+                match name.as_str() {
+                    "verb" => {
+                        if c.get(i) == Some(&'*') {
+                            output.push('*');
+                            i += 1;
+                        }
+                        if let Some(&delim) = c.get(i) {
+                            let end = c[i + 1..].iter().position(|&x| x == delim).map_or(c.len(), |p| p + i + 2);
+                            output.extend(&c[i..end]);
+                            i = end;
+                        }
+                    }
+                    "url" | "href" => {
+                        while c.get(i).is_some_and(|x| x.is_whitespace()) {
+                            output.push(c[i]);
+                            i += 1;
+                        }
+                        if c.get(i) == Some(&'{') {
+                            let end = (group_end(&c, i + 1) + 1).min(c.len());
+                            output.extend(&c[i..end]);
+                            i = end;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            '%' => {
+                starts.push(i + 1);
+                while i < c.len() && c[i] != '\n' {
+                    i += 1;
+                }
+                i += 1;
+                while c.get(i).is_some_and(|x| *x == ' ' || *x == '\t') {
+                    i += 1;
+                }
+            }
+            other => {
+                output.push(other);
+                i += 1;
+            }
+        }
+    }
+    (output, starts)
 }

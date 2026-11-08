@@ -142,3 +142,30 @@ fn e_rec_10_unknown_mathml() {
     // the XML itself must be well formed in both modes: there is no tree to recover from
     assert!(mathml("<math><mi>x</math>", false).is_err());
 }
+
+#[test]
+fn e_rec_9_percent_starts_a_comment() {
+    // TeX: '%' drops the rest of the line, the line break and the next line's leading spaces
+    assert_eq!(strict(r"p = 15% \cdot q").unwrap().text, "p = 15");
+    assert_eq!(strict("a + b % the sum\n    + c").unwrap().text, "a + b + c");
+    assert!(strict("a + b % the sum\n    + c").unwrap().warnings.is_empty());
+    // tolerant mode keeps the percent sign the author most likely meant, with a warning
+    assert_eq!(tolerant(r"p = 15% \cdot q").text, "p = 15% · q");
+    assert_eq!(warning_rules(r"p = 15% \cdot q"), vec!["E-REC-9"]);
+    // one warning per comment TeX would see: the second '%' of a line is already inside the first's
+    assert_eq!(warning_rules(r"10% + 20%"), vec!["E-REC-9"]);
+    assert_eq!(warning_rules("10% +\n20%"), vec!["E-REC-9", "E-REC-9"]);
+    // escaped, it is a percent sign in both modes, with no warning
+    for tex in [r"15\% \cdot q", r"\text{15\%}", r"a \\ b"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert!(strict(tex).is_ok(), "{tex}");
+    }
+    assert_eq!(strict(r"15\% \cdot q").unwrap().text, "15% · q");
+    // after an escaped backslash (a line break), '%' is a comment again
+    assert_eq!(strict(r"a \\% b").unwrap().text, strict(r"a \\").unwrap().text);
+    // verbatim arguments keep their '%', as in TeX
+    for tex in [r"\url{https://example.org/a%20b}", r"\verb|5%|"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert_eq!(strict(tex).unwrap().text, tolerant(tex).text, "{tex}");
+    }
+}
