@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 use std::{env, fs, io};
 
-use mathra::font::MathFont;
+use mathra::font::{FallbackFont, MathFont};
 use mathra::{convert, BrailleCode, Input, Locale, Options};
 
 const HELP: &str = "\
@@ -22,6 +22,9 @@ OPTIONS
       --font <file>       set the equation in this OpenType math font (.otf or .ttf with a
                           MATH table); the default is STIX Two Math
                           (math fonts to download: https://matheusmota-dev-br.github.io/mathfonts/)
+      --fallback-font <file>  a font (.otf or .ttf, any) for the characters the math font
+                          lacks, such as CJK text; repeat it to try several in order.
+                          Emoji come from the embedded Noto Emoji, tried after them
       --animate           the SVG writes itself in the browser, in the order the layout set it
       --steps             each element numbered by its step (data-step), with no animation
       --explain           show the tree, the speech and the rules applied
@@ -68,6 +71,8 @@ struct Args {
     animate: bool,
     steps: bool,
     font: MathFont,
+    /// `--fallback-font`, in order; Noto Emoji comes after them.
+    fallbacks: Vec<FallbackFont>,
     mode: Mode,
 }
 
@@ -82,6 +87,7 @@ impl Args {
             animate: self.animate,
             steps: self.steps,
             font: self.font,
+            fallback_fonts: self.fallbacks.iter().copied().chain(FallbackFont::defaults()).collect(),
             ..Default::default()
         }
     }
@@ -99,6 +105,7 @@ fn read_args() -> Result<Option<Args>, String> {
         animate: false,
         steps: false,
         font: MathFont::default(),
+        fallbacks: Vec::new(),
         mode: Mode::Svg,
     };
     let mut it = env::args().skip(1);
@@ -124,6 +131,11 @@ fn read_args() -> Result<Option<Args>, String> {
                 let path = it.next().ok_or("missing file after --font")?;
                 let bytes = fs::read(&path).map_err(|e| format!("cannot read {path}: {e}"))?;
                 args.font = MathFont::load(bytes).map_err(|e| format!("{path}: {e}"))?;
+            }
+            "--fallback-font" => {
+                let path = it.next().ok_or("missing file after --fallback-font")?;
+                let bytes = fs::read(&path).map_err(|e| format!("cannot read {path}: {e}"))?;
+                args.fallbacks.push(FallbackFont::load(bytes).map_err(|e| format!("{path}: {e}"))?);
             }
             "--tree" => args.mode = Mode::Tree,
             "--speech" => args.mode = Mode::Speech,

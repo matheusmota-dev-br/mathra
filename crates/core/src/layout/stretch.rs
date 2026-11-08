@@ -141,8 +141,8 @@ pub fn ink(math_box: &MathBox, e: Style) -> (f32, f32) {
     let f = e.font();
     let mut bounds = (f32::INFINITY, f32::NEG_INFINITY);
     for item in &math_box.items {
-        if let Item::Glyph { id, y, scale, .. } = item {
-            let (_, y0, _, y1) = f.limits(*id);
+        if let Item::Glyph { id, y, scale, font, .. } = item {
+            let (_, y0, _, y1) = crate::font::glyph_font(*font, f).limits(*id);
             bounds = (bounds.0.min(y + y0 * scale), bounds.1.max(y + y1 * scale));
         }
     }
@@ -186,7 +186,7 @@ fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool, f: &Font) -> Ma
     for p in &seq {
         let (x0, y0, _, _) = f.limits(p.id);
         let (x, y) = if vertical { (0.0, (cursor - y0) * s) } else { ((cursor - x0) * s, 0.0) };
-        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None, flip: false });
+        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None, flip: false, font: None });
         let g = glyph_id(p.id, s, f);
         if vertical {
             math_box.width = math_box.width.max(g.width);

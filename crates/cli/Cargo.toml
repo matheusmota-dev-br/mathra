@@ -15,4 +15,5 @@ name = "mathra"
 path = "src/main.rs"
 
 [dependencies]
-mathra.workspace = true
+# Noto Emoji as the fallback font for emoji (the core leaves it off)
+mathra = { workspace = true, features = ["emoji"] }

@@ -3,7 +3,7 @@
 
 use ttf_parser::GlyphId;
 
-use crate::font::Font;
+use crate::font::{glyph_font, FallbackFont, Font};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
@@ -15,6 +15,9 @@ pub enum Item {
         color: Option<String>,
         /// Mirrored left to right around its origin (`\reflectbox`).
         flip: bool,
+        /// The fallback font the glyph is from, for a character the math font lacks; `None`: the
+        /// math font. `id` and `scale` are that font's (the scale takes its em to the math font's).
+        font: Option<FallbackFont>,
     },
     /// Filled rectangle; (x, y) is the lower left corner.
     Rule { x: f32, y: f32, width: f32, height: f32, color: Option<String> },
@@ -232,8 +235,8 @@ impl MathBox {
         };
         for item in &self.items {
             match *item {
-                Item::Glyph { id, x, y, scale, flip, .. } => {
-                    let (x0, y0, x1, y1) = f.limits(id);
+                Item::Glyph { id, x, y, scale, flip, font, .. } => {
+                    let (x0, y0, x1, y1) = glyph_font(font, f).limits(id);
                     if x1 > x0 || y1 > y0 {
                         let (left, right) = if flip { (x - x1 * scale, x - x0 * scale) } else { (x + x0 * scale, x + x1 * scale) };
                         add(left, y + y0 * scale, right, y + y1 * scale);

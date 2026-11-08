@@ -2,7 +2,18 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 #[allow(clippy::too_many_arguments)]
-fn convert(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>, animate: bool, steps: bool, font: Option<usize>) -> PyResult<mathra::Output> {
+fn convert(
+    tex: &str,
+    locale: &str,
+    display: bool,
+    strict: bool,
+    input: &str,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<usize>,
+    fallback_fonts: Option<Vec<i64>>,
+) -> PyResult<mathra::Output> {
     let locale = locale.parse().map_err(PyValueError::new_err)?;
     let input = input.parse().map_err(PyValueError::new_err)?;
     let braille = braille.map(str::parse).transpose().map_err(PyValueError::new_err)?;
@@ -10,7 +21,32 @@ fn convert(tex: &str, locale: &str, display: bool, strict: bool, input: &str, br
         None => mathra::font::MathFont::default(),
         Some(id) => *mathra::font::MathFont::loaded().get(id).ok_or_else(|| PyValueError::new_err(format!("no font loaded with id {id}")))?,
     };
-    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, ..Default::default() }).map_err(|e| PyValueError::new_err(e.to_string()))
+    let fallback_fonts = fallbacks(&fallback_fonts.unwrap_or_default())?;
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, fallback_fonts, ..Default::default() })
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// The fallback fonts by id, in order, then Noto Emoji: an id `n >= 0` is what `load_fallback_font`
+/// gave, and `-(n + 1)` the math font `load_font` gave as `n`.
+fn fallbacks(ids: &[i64]) -> PyResult<Vec<mathra::font::FallbackFont>> {
+    let loaded = mathra::font::FallbackFont::loaded();
+    let math = mathra::font::MathFont::loaded();
+    let mut list = Vec::with_capacity(ids.len() + 1);
+    for &id in ids {
+        let font = if id >= 0 { loaded.get(id as usize).copied() } else { math.get((-(id + 1)) as usize).map(|f| (*f).into()) };
+        list.push(font.ok_or_else(|| PyValueError::new_err(format!("no fallback font loaded with id {id}")))?);
+    }
+    list.extend(mathra::font::FallbackFont::defaults());
+    Ok(list)
+}
+
+/// Loads a fallback font (any OpenType or TrueType font with outlines) from its bytes: its id, to
+/// pass in `fallback_fonts`, and its name.
+#[pyfunction]
+fn load_fallback_font(data: Vec<u8>) -> PyResult<(usize, String)> {
+    let font = mathra::font::FallbackFont::load(data).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let id = mathra::font::FallbackFont::loaded().iter().position(|f| *f == font).expect("a loaded font is listed");
+    Ok((id, font.name().to_string()))
 }
 
 /// Loads an OpenType math font from its bytes: its id, to pass as `font`, and its name.
@@ -23,26 +59,59 @@ fn load_font(data: Vec<u8>) -> PyResult<(usize, String)> {
 
 /// Converts an equation (LaTeX, MathML or AsciiMath, by `input`) to SVG.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, fallback_fonts = None))]
 #[allow(clippy::too_many_arguments)]
-fn tex_to_svg(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>, animate: bool, steps: bool, font: Option<usize>) -> PyResult<String> {
-    convert(tex, locale, display, strict, input, braille, animate, steps, font).map(|r| r.svg)
+fn tex_to_svg(
+    tex: &str,
+    locale: &str,
+    display: bool,
+    strict: bool,
+    input: &str,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<usize>,
+    fallback_fonts: Option<Vec<i64>>,
+) -> PyResult<String> {
+    convert(tex, locale, display, strict, input, braille, animate, steps, font, fallback_fonts).map(|r| r.svg)
 }
 
 /// Tree of meaning as JSON.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, fallback_fonts = None))]
 #[allow(clippy::too_many_arguments)]
-fn tex_to_tree(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>, animate: bool, steps: bool, font: Option<usize>) -> PyResult<String> {
-    convert(tex, locale, display, strict, input, braille, animate, steps, font).map(|r| r.tree.to_json())
+fn tex_to_tree(
+    tex: &str,
+    locale: &str,
+    display: bool,
+    strict: bool,
+    input: &str,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<usize>,
+    fallback_fonts: Option<Vec<i64>>,
+) -> PyResult<String> {
+    convert(tex, locale, display, strict, input, braille, animate, steps, font, fallback_fonts).map(|r| r.tree.to_json())
 }
 
 /// Every output as JSON; `mathra.render` turns it into a dict.
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, animate = false, steps = false, font = None, fallback_fonts = None))]
 #[allow(clippy::too_many_arguments)]
-fn render(tex: &str, locale: &str, display: bool, strict: bool, input: &str, braille: Option<&str>, animate: bool, steps: bool, font: Option<usize>) -> PyResult<String> {
-    convert(tex, locale, display, strict, input, braille, animate, steps, font).map(|r| r.to_json())
+fn render(
+    tex: &str,
+    locale: &str,
+    display: bool,
+    strict: bool,
+    input: &str,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<usize>,
+    fallback_fonts: Option<Vec<i64>>,
+) -> PyResult<String> {
+    convert(tex, locale, display, strict, input, braille, animate, steps, font, fallback_fonts).map(|r| r.to_json())
 }
 
 /// The supported languages as (code, name) pairs, English first.
@@ -59,6 +128,7 @@ fn mathra_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render, m)?)?;
     m.add_function(wrap_pyfunction!(locales, m)?)?;
     m.add_function(wrap_pyfunction!(load_font, m)?)?;
+    m.add_function(wrap_pyfunction!(load_fallback_font, m)?)?;
     // the Python package has its own version (crates/python/Cargo.toml); the core's is `core_version`
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add("core_version", mathra::VERSION)?;

@@ -18,6 +18,16 @@ export interface Options {
   steps?: boolean;
   /** The math font the equation is set in: what `loadFont` returned, or its id. Default STIX Two Math. */
   font?: Font | number;
+  /** Fonts for the characters the math font lacks (emoji, CJK in `\text{…}`), tried in order: what `loadFallbackFont` returned, or a math font from `loadFont` or `loadFontFromCatalog`. Their outlines go in the SVG as the other glyphs'. Default none: the npm package embeds no emoji font, so a character no font has is drawn as a box (E-REC-8) or, with `strict`, refused. */
+  fallbackFonts?: (FallbackFont | Font)[];
+}
+
+/** A font loaded with `loadFallbackFont`, for `options.fallbackFonts`. */
+export interface FallbackFont {
+  id: number;
+  /** The font's family name. */
+  name: string;
+  fallback: true;
 }
 
 /** A math font loaded with `loadFont`. */
@@ -64,6 +74,9 @@ export function render(tex: string, options?: Options | Locale): Result;
 
 /** Loads an OpenType math font (an `.otf` or `.ttf` with a MATH table, such as Libertinus Math or Fira Math) from its bytes, to pass as `options.font`. The same bytes again give the same font. Throws if it is not a font or has no MATH table. */
 export function loadFont(bytes: Uint8Array | ArrayBuffer): Font;
+
+/** Loads a fallback font from its bytes, to pass in `options.fallbackFonts`: any OpenType or TrueType font with outlines (glyf or CFF), such as Noto Emoji (the monochrome one) or a CJK font; no MATH table needed. Color layers are not read: glyphs are drawn in one color, `currentColor`. The same bytes again give the same font. Throws if it is not a font or has no outlines. */
+export function loadFallbackFont(bytes: Uint8Array | ArrayBuffer): FallbackFont;
 
 /** A font of the mathfonts catalog (https://matheusmota-dev-br.github.io/mathfonts/). */
 export interface CatalogFont {

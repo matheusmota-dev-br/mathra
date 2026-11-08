@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { init, texToSvg, render, locales, loadFont, catalogFonts, loadFontFromCatalog, version } from "@mathlabs/mathra";
+import { init, texToSvg, render, locales, loadFont, loadFallbackFont, catalogFonts, loadFontFromCatalog, version } from "@mathlabs/mathra";
 
 test("works right away in Node, init is optional", async () => {
   assert.match(texToSvg("x^2"), /^<svg/);
@@ -74,6 +74,23 @@ test("a math font from outside", async () => {
   assert.match(render("x", { font }).svg, /Latin Modern Math/);
   assert.throws(() => loadFont(new Uint8Array([1, 2, 3])), /not a font/);
   assert.throws(() => texToSvg("x", { font: 99 }), /no font loaded/);
+});
+
+test("fallback fonts for what the math font lacks", async () => {
+  const { readFile } = await import("node:fs/promises");
+  // the npm package embeds no emoji font: a box and a warning, or refused in strict mode
+  assert.equal(render("😀").warnings[0].rule, "E-REC-8");
+  assert.throws(() => texToSvg("😀", { strict: true }), /has no '😀'/);
+  const fallback = loadFallbackFont(await readFile(process.env.MATHRA_TEST_FALLBACK));
+  assert.deepEqual(fallback, { id: fallback.id, name: "fallback-a", fallback: true });
+  const r = render(String.raw`😀 + 	ext{中}`, { strict: true, fallbackFonts: [fallback] });
+  assert.deepEqual(r.warnings, []);
+  assert.match(r.svg, /M500 -100 L900 300/);
+  // a math font can stand in too, in its place in the list (Latin Modern Math has no 😀)
+  const lm = loadFont(await readFile(process.env.MATHRA_TEST_FONT));
+  assert.equal(render("😀", { fallbackFonts: [lm, fallback] }).warnings.length, 0);
+  assert.equal(render("😀", { fallbackFonts: [lm] }).warnings[0].rule, "E-REC-8");
+  assert.throws(() => loadFallbackFont(new Uint8Array([1, 2, 3])), /not a font/);
 });
 
 test("a font from a catalog, checked by its hash", async () => {

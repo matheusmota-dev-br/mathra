@@ -20,6 +20,8 @@
 //!   `\chemfig` and `\schemestart` are unsupported commands.
 //! - `latin-modern`: Latin Modern Math as a second font, chosen with [`convert_in_font`]; some 700 KB
 //!   more in the binary.
+//! - `emoji`: Noto Emoji (monochrome, OFL) as the default fallback font ([`Options::fallback_fonts`]),
+//!   for the emoji the math font lacks; about 780 KB more in the binary.
 
 #[cfg(feature = "chem")]
 pub mod chem;
@@ -106,6 +108,10 @@ pub struct Options {
     /// The math font the equation is set in: STIX Two Math by default, or one loaded with
     /// [`font::MathFont::load`].
     pub font: font::MathFont,
+    /// Fonts for the characters the math font lacks (emoji, CJK in `\text{…}`), looked up in order;
+    /// a character none has is drawn as a box (E-REC-8) or, strict, refused. Noto Emoji with the
+    /// `emoji` feature ([`font::FallbackFont::defaults`]), else none.
+    pub fallback_fonts: Vec<font::FallbackFont>,
 }
 
 impl Default for Options {
@@ -120,12 +126,14 @@ impl Default for Options {
             steps: false,
             text_kerning: Default::default(),
             font: font::MathFont::StixTwo,
+            fallback_fonts: font::FallbackFont::defaults(),
         }
     }
 }
 
 /// The tree of meaning of an equation, in the notation `options.input` says.
-fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Result<(Node, Input), Error> {
+/// `font` in place of `options.font` (the `_in_font` functions).
+fn read(source: &str, options: &Options, font: font::MathFont, registry: &mut rules::Registry) -> Result<(Node, Input), Error> {
     let input = match options.input {
         Input::Latex if input::mathml::looks_like_mathml(source) => {
             registry.note(rules::L_ENT_4, "MathML pasted as LaTeX: read as MathML");
@@ -134,7 +142,7 @@ fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Resu
         other => other,
     };
     let tree = match input {
-        Input::Latex => input::latex::read_in_font(source, options.locale, registry, options.strict, options.font)?,
+        Input::Latex => input::latex::read_in_font(source, options.locale, registry, options.strict, font)?,
         Input::MathMl => input::mathml::read_with(source, options.locale, registry, options.strict)?,
         Input::AsciiMath => input::asciimath::read_with(source, options.locale, registry, options.strict)?,
     };
@@ -202,12 +210,12 @@ pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
 
 /// [`convert`], with the equation set in `font` (in place of [`Options::font`]).
 pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<Output, Error> {
-    let options = &Options { font, ..options.clone() };
     let mut registry = rules::Registry::default();
-    let (tree, input) = read(tex, options, &mut registry)?;
+    let (tree, input) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let math_box = {
-        let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+        let mut ctx =
+            layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
         layout::compose_list(&tree, style, &mut ctx)?
     };
     let speech = output::speech::speak(&tree, options.locale);
@@ -246,11 +254,10 @@ pub fn typeset(tex: &str, options: &Options) -> Result<(layout::MathBox, Vec<App
 /// [`typeset`], with the equation set in `font` (in place of [`Options::font`]; its glyph ids are
 /// that font's).
 pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<(layout::MathBox, Vec<Applied>), Error> {
-    let options = &Options { font, ..options.clone() };
     let mut registry = rules::Registry::default();
-    let (tree, _) = read(tex, options, &mut registry)?;
+    let (tree, _) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
-    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
     registry.dedup();
     Ok((math_box, registry.warnings))
@@ -261,9 +268,9 @@ pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
 pub fn pen(tex: &str, options: &Options, pen: &output::pen::Pen) -> Result<String, Error> {
     let font = options.font;
     let mut registry = rules::Registry::default();
-    let (tree, _) = read(tex, options, &mut registry)?;
+    let (tree, _) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
-    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
     let speech = output::speech::speak(&tree, options.locale);
     Ok(output::pen::generate(&math_box, font, tex, &speech, pen))

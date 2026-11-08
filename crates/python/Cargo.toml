@@ -13,5 +13,6 @@ name = "mathra_python"
 crate-type = ["cdylib"]
 
 [dependencies]
-mathra.workspace = true
+# Noto Emoji as the fallback font for emoji (the core leaves it off)
+mathra = { workspace = true, features = ["emoji"] }
 pyo3 = { version = "0.25", features = ["extension-module", "abi3-py39"] }

@@ -34,11 +34,58 @@ pub fn convert_in(
     steps: bool,
     font: Option<u32>,
 ) -> Result<mathra::Output, String> {
+    convert_full(tex, locale, display, strict, input, braille, animate, steps, font, &[])
+}
+
+/// `convert_in`, with fallback fonts for the characters the math font lacks, tried in order (see
+/// `fallbacks_by_ids`).
+#[allow(clippy::too_many_arguments)]
+pub fn convert_full(
+    tex: &str,
+    locale: Option<&str>,
+    display: bool,
+    strict: bool,
+    input: Option<&str>,
+    braille: Option<&str>,
+    animate: bool,
+    steps: bool,
+    font: Option<u32>,
+    fallbacks: &[i32],
+) -> Result<mathra::Output, String> {
     let locale = locale.map_or(Ok(mathra::Locale::default()), str::parse)?;
     let input = input.map_or(Ok(mathra::Input::default()), str::parse)?;
     let braille = braille.map(str::parse).transpose()?;
     let font = font_by_id(font)?;
-    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, ..Default::default() }).map_err(|e| e.to_string())
+    let fallback_fonts = fallbacks_by_ids(fallbacks)?;
+    mathra::convert(tex, &mathra::Options { locale, display, strict, input, braille, animate, steps, font, fallback_fonts, ..Default::default() }).map_err(|e| e.to_string())
+}
+
+/// The fallback fonts by id, in order, then the build's own (none in the npm package, which leaves
+/// out the `emoji` feature): an id `n >= 0` is what `load_fallback_font` gave, and `-(n + 1)` the font
+/// `load_font` gave as `n` (a math font can stand in for another).
+pub fn fallbacks_by_ids(ids: &[i32]) -> Result<Vec<mathra::font::FallbackFont>, String> {
+    let fallbacks = mathra::font::FallbackFont::loaded();
+    let mut list = Vec::with_capacity(ids.len() + 1);
+    for &id in ids {
+        list.push(if id >= 0 { *fallbacks.get(id as usize).ok_or_else(|| format!("no fallback font loaded with id {id}"))? } else { font_by_id(Some((-(id + 1)) as u32))?.into() });
+    }
+    list.extend(mathra::font::FallbackFont::defaults());
+    Ok(list)
+}
+
+/// Loads a fallback font (any `.otf`/`.ttf` with outlines) from its bytes: its id, to pass in
+/// `fallback_fonts`, and its name. The same bytes again give the same id.
+pub fn load_fallback_font_bytes(bytes: Vec<u8>) -> Result<(u32, String), String> {
+    let font = mathra::font::FallbackFont::load(bytes).map_err(|e| e.to_string())?;
+    let id = mathra::font::FallbackFont::loaded().iter().position(|f| *f == font).expect("a loaded font is listed");
+    Ok((id as u32, font.name().to_string()))
+}
+
+/// Loads a fallback font for the characters the math font lacks (emoji, CJK): any OpenType or
+/// TrueType font with outlines. Returns `{"id": …, "name": …, "fallback": true}` as JSON.
+#[wasm_bindgen(js_name = loadFallbackFont)]
+pub fn load_fallback_font(bytes: Vec<u8>) -> Result<String, JsError> {
+    load_fallback_font_bytes(bytes).map(|(id, name)| serde_json::json!({ "id": id, "name": name, "fallback": true }).to_string()).map_err(|e| JsError::new(&e))
 }
 
 /// A font loaded with `load_font`, by the id it gave; none, STIX Two Math.
@@ -83,12 +130,13 @@ pub fn render_json_in(
     steps: bool,
     font: Option<u32>,
 ) -> Result<String, String> {
-    convert_in(tex, locale, display, strict, input, braille, animate, steps, font).map(|r| r.to_json())
+    convert_full(tex, locale, display, strict, input, braille, animate, steps, font, &[]).map(|r| r.to_json())
 }
 
 /// Converts an equation to SVG. `locale`: a language code such as "en" (default), "pt-BR", "es" or "ja";
 /// `display` defaults to true, `strict` to false; `input` is "latex" (default), "mathml" or "asciimath";
-/// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math).
+/// `animate` and `steps` default to false; `font` is the id `loadFont` gave (none: STIX Two Math);
+/// `fallback_fonts` the fonts for characters the math font lacks (see `fallbacks_by_ids`).
 #[wasm_bindgen(js_name = texToSvg)]
 #[allow(clippy::too_many_arguments)]
 pub fn tex_to_svg(
@@ -101,8 +149,9 @@ pub fn tex_to_svg(
     animate: Option<bool>,
     steps: Option<bool>,
     font: Option<u32>,
+    fallback_fonts: Option<Vec<i32>>,
 ) -> Result<String, JsError> {
-    convert_in(
+    convert_full(
         tex,
         locale.as_deref(),
         display.unwrap_or(true),
@@ -112,6 +161,7 @@ pub fn tex_to_svg(
         animate.unwrap_or(false),
         steps.unwrap_or(false),
         font,
+        fallback_fonts.as_deref().unwrap_or_default(),
     )
     .map(|r| r.svg)
     .map_err(|e| JsError::new(&e))
@@ -135,7 +185,8 @@ pub fn locales() -> String {
 }
 
 /// Every output in one JSON string (see `render_json`). `display` defaults to true, `strict` to false,
-/// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave.
+/// `input` to "latex", `animate` and `steps` to false; `font` is the id `loadFont` gave;
+/// `fallback_fonts` as in `texToSvg`.
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render(
@@ -148,8 +199,9 @@ pub fn render(
     animate: Option<bool>,
     steps: Option<bool>,
     font: Option<u32>,
+    fallback_fonts: Option<Vec<i32>>,
 ) -> Result<String, JsError> {
-    render_json_in(
+    convert_full(
         tex,
         locale.as_deref(),
         display.unwrap_or(true),
@@ -159,22 +211,39 @@ pub fn render(
         animate.unwrap_or(false),
         steps.unwrap_or(false),
         font,
+        fallback_fonts.as_deref().unwrap_or_default(),
     )
+    .map(|r| r.to_json())
     .map_err(|e| JsError::new(&e))
 }
 
 /// The equation written by a pen, as an SVG that plays by itself (SMIL). `seconds`: how long the
 /// pen takes; none, from how much it writes.
 pub fn pen_svg(tex: &str, locale: Option<&str>, display: bool, input: Option<&str>, seconds: Option<f64>, font: Option<u32>) -> Result<String, String> {
+    pen_svg_with(tex, locale, display, input, seconds, font, &[])
+}
+
+/// `pen_svg`, with fallback fonts (see `fallbacks_by_ids`).
+pub fn pen_svg_with(tex: &str, locale: Option<&str>, display: bool, input: Option<&str>, seconds: Option<f64>, font: Option<u32>, fallbacks: &[i32]) -> Result<String, String> {
     let locale = locale.map_or(Ok(mathra::Locale::default()), str::parse)?;
     let input = input.map_or(Ok(mathra::Input::default()), str::parse)?;
     let font = font_by_id(font)?;
+    let fallback_fonts = fallbacks_by_ids(fallbacks)?;
     let pen = mathra::output::pen::Pen { seconds, ..Default::default() };
-    mathra::pen(tex, &mathra::Options { locale, display, input, font, ..Default::default() }, &pen).map_err(|e| e.to_string())
+    mathra::pen(tex, &mathra::Options { locale, display, input, font, fallback_fonts, ..Default::default() }, &pen).map_err(|e| e.to_string())
 }
 
 /// The equation written by a pen (see `pen_svg`). `display` defaults to true, `input` to "latex".
 #[wasm_bindgen(js_name = texToPen)]
-pub fn tex_to_pen(tex: &str, locale: Option<String>, display: Option<bool>, input: Option<String>, seconds: Option<f64>, font: Option<u32>) -> Result<String, JsError> {
-    pen_svg(tex, locale.as_deref(), display.unwrap_or(true), input.as_deref(), seconds, font).map_err(|e| JsError::new(&e))
+#[allow(clippy::too_many_arguments)]
+pub fn tex_to_pen(
+    tex: &str,
+    locale: Option<String>,
+    display: Option<bool>,
+    input: Option<String>,
+    seconds: Option<f64>,
+    font: Option<u32>,
+    fallback_fonts: Option<Vec<i32>>,
+) -> Result<String, JsError> {
+    pen_svg_with(tex, locale.as_deref(), display.unwrap_or(true), input.as_deref(), seconds, font, fallback_fonts.as_deref().unwrap_or_default()).map_err(|e| JsError::new(&e))
 }

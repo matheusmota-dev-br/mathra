@@ -136,6 +136,7 @@ println!("{}", r.speech);</pre>
           <tr><td>Braille code</td><td><code>braille: "cmu"</code></td><td><code>braille="cmu"</code></td><td><code>--braille-code cmu</code></td><td><code>braille: Some(BrailleCode::Cmu)</code></td></tr>
           <tr><td>The SVG writes itself</td><td><code>animate: true</code></td><td><code>animate=True</code></td><td><code>--animate</code></td><td><code>animate: true</code></td></tr>
           <tr><td>Each element numbered by its step</td><td><code>steps: true</code></td><td><code>steps=True</code></td><td><code>--steps</code></td><td><code>steps: true</code></td></tr>
+          <tr><td>Fonts for what the math font lacks</td><td><code>fallbackFonts: [loadFallbackFont(bytes)]</code></td><td><code>fallback_fonts=[mathra.load_fallback_font(path)]</code></td><td><code>--fallback-font file.ttf</code> (repeatable)</td><td><code>fallback_fonts: vec![FallbackFont::load(bytes)?]</code></td></tr>
         </table></div>
         <ul>
           <li><strong>Language</strong>: <code>en</code> by default. The 16 codes are under <a href="#languages">Languages</a>. A region is accepted (<code>es-MX</code>, <code>zh-CN</code>). In JavaScript, a plain string as the second argument is read as the locale: <code>texToSvg(tex, "fr")</code>.</li>
@@ -143,6 +144,7 @@ println!("{}", r.speech);</pre>
           <li><strong>Strict</strong>: off by default, so broken input is drawn and reported as <a href="#broken">warnings</a>. On, it is refused like TeX does: an exception in JavaScript, <code>ValueError</code> in Python, an <code>Err</code> in Rust, exit code 1 in the terminal.</li>
           <li><strong>Input</strong>: <code>latex</code> by default, <code>mathml</code> or <code>asciimath</code>. MathML passed as LaTeX (starting with <code>&lt;math</code>) is recognized on its own.</li>
           <li><strong>Braille code</strong>: by default the language's: CMU in pt-BR and es, Nemeth elsewhere.</li>
+          <li><strong>Fallback fonts</strong>: a character the math font lacks (an emoji, Chinese in <code>\text{…}</code>) is looked up in these fonts, in order, and its outline goes in the SVG like any other glyph, in the text color. Any <code>.otf</code> or <code>.ttf</code> with outlines works; no MATH table is needed. The terminal and Python embed Noto Emoji (the monochrome one), tried after yours, so emoji just work there; the npm package does not (it would add some 770 KB to the download), so pass a font you load. A character no font has is still a box (<a href="#broken">E-REC-8</a>), or refused in strict mode.</li>
         </ul>
       </section>
 
@@ -193,7 +195,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
           <tr><td>E-REC-5</td><td>Unpaired <code>\left</code>, <code>\right</code>, <code>\begin</code>, <code>\end</code></td><td>Closed with an empty delimiter, or ignored</td></tr>
           <tr><td>E-REC-6</td><td>Unknown environment</td><td>Read as a centered table</td></tr>
           <tr><td>E-REC-7</td><td>Missing argument (<code>\frac{1}</code>)</td><td>Left empty</td></tr>
-          <tr><td>E-REC-8</td><td>Character the font lacks</td><td>A box (□)</td></tr>
+          <tr><td>E-REC-8</td><td>Character neither the font nor a fallback font has</td><td>A box (□)</td></tr>
           <tr><td>E-REC-9</td><td>Others: stray <code>#</code>, invalid color, control characters, <code>\divchave</code> with a zero divisor…</td><td>Drawn as written, or ignored</td></tr>
           <tr><td>E-REC-10</td><td>MathML: unknown element or entity, wrong number of children</td><td>Children read as a row; unknown entity dropped</td></tr>
         </table></div>

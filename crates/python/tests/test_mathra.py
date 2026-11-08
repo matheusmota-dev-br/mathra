@@ -118,6 +118,35 @@ def test_a_math_font_from_outside():
         mathra.load_font(b"not a font")
 
 
+FALLBACK = pathlib.Path(__file__).resolve().parents[3] / "crates" / "core" / "tests" / "fonts" / "fallback-a.ttf"
+
+
+def test_emoji_from_the_embedded_noto_emoji():
+    # the issue's examples (#125): no warning, and strict accepts them
+    for tex in ["E = mc^2 😀", r"🍎 + 🍎 = 2 \cdot 🍎", r"\text{nota: 10 ⭐}"]:
+        assert mathra.render(tex)["warnings"] == []
+        assert mathra.tex_to_svg(tex, strict=True).startswith("<svg")
+    assert mathra.render("🍎")["speech"] == "🍎"
+
+
+def test_fallback_fonts():
+    # 中 is in neither STIX Two Math nor Noto Emoji
+    assert mathra.render(r"\text{中}")["warnings"][0]["rule"] == "E-REC-8"
+    with pytest.raises(ValueError, match="has no '中'"):
+        mathra.tex_to_svg(r"\text{中}", strict=True)
+    fallback = mathra.load_fallback_font(FALLBACK)
+    assert fallback.name == "fallback-a"
+    assert mathra.load_fallback_font(FALLBACK.read_bytes()) == fallback
+    r = mathra.render(r"\text{中}", strict=True, fallback_fonts=[fallback])
+    assert r["warnings"] == [] and "M100 -100 L900 -100" in r["svg"]
+    # tried before Noto Emoji: the diamond for 😀
+    assert "M500 -100 L900 300" in mathra.tex_to_svg("😀", fallback_fonts=[fallback])
+    # a math font can stand in too
+    assert mathra.tex_to_svg("x", fallback_fonts=[mathra.load_font(FONT), fallback]).startswith("<svg")
+    with pytest.raises(ValueError, match="not a font"):
+        mathra.load_fallback_font(b"not a font")
+
+
 def test_a_font_from_a_catalog(tmp_path):
     import hashlib
     import http.server
