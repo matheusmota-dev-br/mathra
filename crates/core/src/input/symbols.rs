@@ -700,6 +700,27 @@ pub fn greek(name: &str) -> Option<char> {
         "digamma" => 'ϝ',
         "Digamma" => 'Ϝ',
         "varkappa" => 'ϰ',
+        // #168: upgreek's capitals and var forms (upgreek.dtx), upright like the rest of `\up…`;
+        // the package has no upright ϱ or ς: `\let\upvarrho\uprho`, `\let\upvarsigma\upsigma`.
+        // `\upomicron` is MathJax's (its upgreek extension), not the package's
+        "Upgamma" => 'Γ',
+        "Updelta" => 'Δ',
+        "Uptheta" => 'Θ',
+        "Uplambda" => 'Λ',
+        "Upxi" => 'Ξ',
+        "Uppi" => 'Π',
+        "Upsigma" => 'Σ',
+        "Upupsilon" => 'Υ',
+        "Upphi" => 'Φ',
+        "Uppsi" => 'Ψ',
+        "Upomega" => 'Ω',
+        "upvarepsilon" => 'ε',
+        "upvartheta" => 'ϑ',
+        "upvarpi" => 'ϖ',
+        "upvarrho" => 'ρ',
+        "upvarsigma" => 'σ',
+        "upvarphi" => 'φ',
+        "upomicron" => 'ο',
         _ => return None,
     })
 }
