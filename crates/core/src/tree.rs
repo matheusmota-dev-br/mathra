@@ -387,6 +387,13 @@ pub enum Variant {
     Fraktur,
     SansSerif,
     Monospace,
+    // #173: the other alphabets of Unicode's Mathematical Alphanumeric Symbols, which unicode-math
+    // names (`\mathbfcal`, `\mathbffrak`, `\mathbfsf`, `\mathsfit`, `\mathbfsfit`)
+    BoldScript,
+    BoldFraktur,
+    BoldSansSerif,
+    SansSerifItalic,
+    SansSerifBoldItalic,
 }
 
 impl Variant {
@@ -416,6 +423,9 @@ pub enum Cancel {
     Bar,
     Backslash,
     X,
+    /// The Feynman slash of slashed.sty (`\slashed{D}`): a "/" over the base, which keeps its width.
+    /// Notation, not a cancellation.
+    Slash,
     /// centernot's `\centernot`: the slash of `\not`, at its own size, over the middle of the base.
     CenterNot,
 }
@@ -646,6 +656,25 @@ impl Node {
         match self {
             Node::Row { children } if children.len() == 1 => children[0].single(),
             other => other,
+        }
+    }
+
+    /// The function or large operator a `\mathop{…}` holds, with phantoms beside it at most (as
+    /// mathtools' `\adjustlimits` writes it): what speech, text, braille and MathML take the limits
+    /// of. The node itself otherwise.
+    pub fn operator_core(&self) -> &Node {
+        let Node::ForcedClass { class: Class::Op, base } = self else { return self };
+        let mut kept = base.single();
+        if let Node::Row { children } = kept {
+            let mut operators = children.iter().filter(|c| !matches!(c, Node::Phantom { .. }));
+            match (operators.next(), operators.next()) {
+                (Some(only), None) => kept = only,
+                _ => return self,
+            }
+        }
+        match kept {
+            Node::Function { .. } | Node::LargeOperator { .. } => kept,
+            _ => self,
         }
     }
 

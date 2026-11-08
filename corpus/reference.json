@@ -1188,7 +1188,13 @@
      "tex": "\\Gamma \\Delta \\Theta \\Lambda \\Pi \\Sigma \\Phi \\Omega"
     },
     {
+     "tex": "\\Updelta E = 0 \\quad \\upvarepsilon_0 \\quad \\Upomega = \\Upgamma \\upvarphi"
+    },
+    {
      "tex": "\\le \\ge \\ne \\approx \\equiv \\sim \\cong \\propto"
+    },
+    {
+     "tex": "f\\colon \\R \\to \\R \\quad \\alef_0 < \\cnums \\quad A \\sube B \\Rarr x \\isin A \\quad \\hearts \\spades \\clubs \\diamonds"
     },
     {
      "tex": "\\Gamma \\vdash \\lightning \\quad a \\boxast b \\quad \\Lbag x \\Rbag \\quad \\mathbold{x} + \\mathbold{\\alpha}"
@@ -1212,13 +1218,22 @@
      "tex": "\\infty \\partial \\nabla \\hbar \\ell \\aleph"
     },
     {
+     "tex": "3\\perthousand \\quad 25\\,\\textcelsius \\quad R = 50\\,\\textohm \\quad \\textonehalf + \\textonequarter \\quad \\textnumero\\, \\textbullet\\, \\textsection"
+    },
+    {
      "tex": "\\varGamma \\varDelta \\varTheta \\varLambda \\varPi \\varSigma \\varPhi \\varOmega"
     },
     {
      "tex": "a \\coloneqq b \\quad c \\eqqcolon d \\quad e \\Coloneq f \\quad g \\colonapprox h \\quad i \\dblcolon j"
     },
     {
+     "tex": "\\Ketbra{\\psi}{\\phi} \\quad \\Koppa \\koppa \\Stigma \\stigma \\Sampi \\sampi \\quad \\smiley \\quad \\openone \\quad \\lAngle x \\rAngle \\quad a \\wedgeq b \\quad \\text{\\sout{old} \\textcircled{a}}"
+    },
+    {
      "tex": "\\backepsilon \\gtreqqless \\lesseqqgtr \\circledcirc \\circledR \\maltese"
+    },
+    {
+     "tex": "a \\minuso b \\quad \\bigsqcap_{i} A_i \\quad f \\leftsquigarrow g \\quad a \\ndivides b \\quad A \\subsetplus B \\quad x \\leftarrowtriangle y"
     },
     {
      "tex": "A \\xrightleftharpoons[\\text{below}]{\\text{above}} B \\xtwoheadrightarrow{f} C \\xhookleftarrow{g} D"
@@ -1249,6 +1264,9 @@
     },
     {
      "tex": "\\mathtt{x}"
+    },
+    {
+     "tex": "\\mathbfcal{L} = \\symcal{L} \\quad \\mathsfit{x} + \\mathbfsfit{y} \\quad \\mathbffrak{g} \\quad \\symup{d}x"
     },
     {
      "tex": "\\mathrm{d}x"

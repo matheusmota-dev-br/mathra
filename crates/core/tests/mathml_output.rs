@@ -264,6 +264,26 @@ fn the_double_struck_one() {
 }
 
 #[test]
+fn slashed_is_a_token_with_the_long_solidus() {
+    // X̸ in one token, with no fallback; an italic letter as its mathematical italic, since MathML Core
+    // italicizes only a token of one character
+    for (tex, token) in [
+        (r"\slashed{D}", "<mi>𝐷\u{0338}</mi>"),
+        (r"\slashed{\partial}", "<mo>∂\u{0338}</mo>"),
+        (r"\slashed{\mathrm{D}}", "<mi>D\u{0338}</mi>"),
+        (r"\slashed{\mathbf{p}}", "<mi>𝐩\u{0338}</mi>"),
+    ] {
+        let r = convert(tex, &Options::default()).unwrap();
+        assert!(r.mathml.contains(token) && !r.mathml.contains("semantics"), "{tex}: {}", r.mathml);
+        let back = convert(&r.mathml, &Options { input: Input::MathMl, ..Options::default() }).unwrap();
+        assert_eq!(back.tree, r.tree, "{tex}: {}", r.mathml);
+    }
+    // more than one symbol under the slash has no token: S-MML-1
+    let r = convert(r"\slashed{AB}", &Options::default()).unwrap();
+    assert!(r.mathml.contains("<semantics>") && r.applied.iter().any(|a| a.rule == "S-MML-1"), "{}", r.mathml);
+}
+
+#[test]
 fn letters_in_their_variant() {
     // MathML Core draws variants as Unicode's mathematical letters; a single letter is italic on its own
     assert_eq!(

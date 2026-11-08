@@ -66,6 +66,9 @@ fn needs_fallback(tree: &Node) -> Option<&'static str> {
             Node::ArrowDiagram { .. } | Node::VerticalArrow { .. } | Node::Table { shape: TableKind::Diagram, .. } => Some("commutative diagram"),
             Node::LongDivision { .. } => Some("long division"),
             Node::ColumnArithmetic { .. } => Some("column arithmetic"),
+            // the Feynman slash of a letter or a symbol is a token with the combining long solidus
+            Node::Canceled { shape: Cancel::Slash, base } if slashed_token(base).is_some() => None,
+            Node::Canceled { shape: Cancel::Slash, .. } => Some("\\slashed on more than one symbol"),
             Node::Canceled { .. } => Some("crossed-out content (cancel)"),
             Node::Framed { shape: Frame::Fill, border: None, .. } => None,
             Node::Framed { .. } => Some("framed content"),
@@ -189,6 +192,27 @@ fn default_class(c: char) -> Class {
     symbols::class_of_char(c).unwrap_or(Class::Ord)
 }
 
+/// slashed.sty's `\slashed{X}` as one token: the element and its text, X then U+0338 (the combining long
+/// solidus overlay, as Unicode writes ≠ as = with it). The text has two characters, so MathML Core does
+/// not italicize it: an italic letter is written as its mathematical italic (𝐷̸). `None` when the base
+/// is not a single letter or ordinary symbol (S-MML-1).
+fn slashed_token(base: &Node) -> Option<(&'static str, String)> {
+    let (tag, c) = match base {
+        Node::Identifier { name, variant } => {
+            let mut chars = name.chars();
+            let (Some(c), None) = (chars.next(), chars.next()) else { return None };
+            let shown = if *variant == Variant::Upright { c } else { alphabet::character(c, *variant) };
+            if shown == c && *variant != Variant::Upright {
+                return None;
+            }
+            ("mi", shown)
+        }
+        Node::Operator { symbol, class: Class::Ord } if default_class(*symbol) == Class::Ord && !stretches(*symbol) => ("mo", *symbol),
+        _ => return None,
+    };
+    Some((tag, format!("{c}\u{0338}")))
+}
+
 /// Characters MathML stretches on its own as fences, in an `<mrow>`: outside `\left…\right` they are
 /// written `stretchy="false"`, as TeX keeps a plain parenthesis its size.
 fn stretches(c: char) -> bool {
@@ -207,6 +231,11 @@ fn variant_name(v: Variant) -> &'static str {
         Variant::Fraktur => "fraktur",
         Variant::SansSerif => "sans-serif",
         Variant::Monospace => "monospace",
+        Variant::BoldScript => "bold-script",
+        Variant::BoldFraktur => "bold-fraktur",
+        Variant::BoldSansSerif => "bold-sans-serif",
+        Variant::SansSerifItalic => "sans-serif-italic",
+        Variant::SansSerifBoldItalic => "sans-serif-bold-italic",
     }
 }
 
@@ -309,6 +338,9 @@ impl Writer {
 
     fn node(&mut self, n: &Node) {
         // a chain of crossed-out content (`\not\not…`) draws its base, in a loop rather than a recursion
+        if matches!(n, Node::Canceled { shape: Cancel::Slash, .. }) && self.slashed(n) {
+            return;
+        }
         let mut n = n;
         while let Node::Canceled { base, .. }
         | Node::Rotated { base, .. }
@@ -361,6 +393,15 @@ impl Writer {
             // handled by the loop above
             Node::Canceled { .. } | Node::Rotated { .. } | Node::Reflected { .. } | Node::Scaled { .. } | Node::Resized { .. } | Node::VCenter { .. } => {}
         }
+    }
+
+    /// `\slashed{X}` as one token (`slashed_token`); false when it has none, and the fallback draws X.
+    #[inline(never)]
+    fn slashed(&mut self, n: &Node) -> bool {
+        let Node::Canceled { base, .. } = n else { return false };
+        let Some((tag, text)) = slashed_token(base) else { return false };
+        self.leaf(tag, &text);
+        true
     }
 
     #[inline(never)]
@@ -608,7 +649,7 @@ impl Writer {
     #[inline(never)]
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>) {
         // limits under and over: a large operator that takes them (∑ by default, ∫ with \limits), lim
-        let under = match base {
+        let under = match base.operator_core() {
             Node::LargeOperator { symbol, limits } => limits.unwrap_or_else(|| symbols::limits_by_default(*symbol)),
             Node::Function { limits, .. } => *limits,
             _ => false,
@@ -1173,14 +1214,14 @@ impl Writer {
 fn applies(n: &Node) -> bool {
     match n {
         Node::Function { .. } => true,
-        Node::Scripts { base, .. } => matches!(base.as_ref(), Node::Function { .. }),
+        Node::Scripts { base, .. } => matches!(base.operator_core(), Node::Function { .. }),
         _ => false,
     }
 }
 
 /// What follows a function is its argument, unless it is a relation, an operation or punctuation.
 fn takes_argument(n: &Node) -> bool {
-    !matches!(n, Node::Operator { class: Class::Rel | Class::Bin | Class::Punct | Class::Close, .. } | Node::Space { .. })
+    !matches!(n, Node::Operator { class: Class::Rel | Class::Bin | Class::Punct | Class::Close, .. } | Node::Space { .. } | Node::Phantom { .. })
 }
 
 /// A node that starts with an opening delimiter: `\sin(x)` takes no space before it.

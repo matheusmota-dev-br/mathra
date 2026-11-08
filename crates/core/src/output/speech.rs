@@ -168,6 +168,8 @@ impl Speaker {
                     '\u{0308}' => "accent.ddot",
                     '\u{0303}' => "accent.tilde",
                     '⏜' | '⏠' => "accent.arc",
+                    // KaTeX's \overlinesegment and \underlinesegment
+                    '\u{20E9}' => "accent.segment",
                     _ => {
                         self.say(b);
                         return;
@@ -199,9 +201,10 @@ impl Speaker {
                 }
             }
             Node::Space { .. } | Node::Phantom { .. } => {}
-            Node::Canceled { base, .. } => {
+            Node::Canceled { base, shape } => {
                 let b = self.spoken(base);
-                self.say(self.t("canceled", &[&b]));
+                // the Feynman slash is notation, not a cancellation: "D slash"
+                self.say(self.t(if *shape == Cancel::Slash { "slashed" } else { "canceled" }, &[&b]));
             }
             Node::Framed { base, shape, .. } => {
                 let b = self.spoken(base);
@@ -314,6 +317,7 @@ impl Speaker {
     }
 
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>) {
+        let base = base.operator_core();
         if let Node::LargeOperator { symbol, .. } = base {
             let name = large_operator(*symbol, self.loc);
             let from = sub.map(|s| self.spoken(s));
@@ -482,6 +486,17 @@ fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
                 .iter()
                 .map(|c| match c {
                     Node::Row { children: inner } if inner.iter().any(is_unit) => Node::row(words(inner)),
+                    // siunitx's per-mode=fraction: the units over the others, read as with the slash
+                    Node::Row { children: inner } if matches!(inner.as_slice(), [Node::Fraction { den, .. }] if den.children().iter().any(is_unit)) => {
+                        let [Node::Fraction { num, den, .. }] = inner.as_slice() else { unreachable!("matched above") };
+                        let mut flat = match num.as_ref() {
+                            Node::Row { children } => children.clone(),
+                            other => vec![other.clone()],
+                        };
+                        flat.push(Node::Operator { symbol: '/', class: Class::Ord });
+                        flat.extend(den.children().iter().cloned());
+                        Node::row(words(&flat))
+                    }
                     other => other.clone(),
                 })
                 .collect(),

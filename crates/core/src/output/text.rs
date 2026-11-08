@@ -93,8 +93,9 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         Node::Scripts { base, sup, sub } => {
             // sin²x, log₂x, ∑_(i = 1)^n i: the scripts stick to the function name or the large
             // operator, and the space goes after them
-            let spaced = matches!(base.as_ref(), Node::Function { .. } | Node::LargeOperator { .. });
-            match base.as_ref() {
+            let base = base.operator_core();
+            let spaced = matches!(base, Node::Function { .. } | Node::LargeOperator { .. });
+            match base {
                 Node::Function { name, .. } => s.push_str(&loc.function_name(name)),
                 Node::LargeOperator { symbol, .. } => s.push(*symbol),
                 other => write_node(other, loc, s),
@@ -219,6 +220,11 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
             if let Some(b) = branches.get(1) {
                 write_node(b, loc, s);
             }
+        }
+        // the Feynman slash as Unicode writes an overstruck slash: D̸, with the combining long solidus
+        Node::Canceled { base, shape: Cancel::Slash } => {
+            write_node(base, loc, s);
+            s.push('\u{0338}');
         }
         Node::Canceled { base, .. }
         | Node::Colored { base, .. }

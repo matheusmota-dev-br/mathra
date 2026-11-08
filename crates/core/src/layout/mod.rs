@@ -797,7 +797,7 @@ pub fn compose_list(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
 /// A slanted letter or word (`\mathit{diff}`), alone or in a row of one: the row adds no kern of its own.
 fn ends_slanted(node: &Node) -> bool {
     match node {
-        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
+        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, .. } => true,
         Node::Row { children } if children.len() == 1 => ends_slanted(&children[0]),
         Node::Attributed { base, .. } => ends_slanted(base),
         _ => false,
@@ -807,7 +807,7 @@ fn ends_slanted(node: &Node) -> bool {
 /// A slanted letter, also inside the group of `\class` and its kin, which changes nothing in the drawing.
 fn slanted_letter(node: &Node) -> bool {
     match node {
-        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic, .. } => true,
+        Node::Identifier { variant: Variant::Italic | Variant::BoldItalic | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, .. } => true,
         Node::Attributed { base, .. } => slanted_letter(base.single()),
         _ => false,
     }
@@ -1119,8 +1119,11 @@ fn compose_vdots_within(symbol: &Node, e: Style, ctx: &mut Context) -> R<MathBox
 }
 
 fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
+    if stretchy && matches!(accent, LINE_SEGMENT | '\u{0304}') {
+        return compose_drawn_accent(base, accent, below, e, ctx);
+    }
     if below {
-        return compose_under_accent(base, accent, e, ctx);
+        return compose_under_accent(base, accent, stretchy, e, ctx);
     }
     let b = compose(base, e.cramp(), ctx)?;
     let base_point = if b.single_glyph { b.accent_point.unwrap_or(b.width / 2.0) } else { b.width / 2.0 };
@@ -1159,9 +1162,48 @@ fn compose_accent(base: &Node, accent: char, stretchy: bool, below: bool, e: Sty
     Ok(math_box)
 }
 
+/// The accent that stands for KaTeX's `\overlinesegment` and `\underlinesegment` (U+20E9, the
+/// combining wide bridge).
+const LINE_SEGMENT: char = '\u{20E9}';
+
+/// The wide accents no glyph of the font draws, drawn with rules:
+/// - KaTeX's `\overlinesegment` and `\underlinesegment` (`LINE_SEGMENT`): a line as wide as the base
+///   with a tick across each end, in KaTeX's proportions (a 0.04 em line, ticks 0.334 em tall), as far
+///   from the base as `\overline`'s bar;
+/// - mathabx's `\widebar` (a stretchy macron): `\bar`'s macron, where `\bar` puts it, as wide as the
+///   base (the fonts' macron does not stretch, and their overline sits higher).
+#[inline(never)]
+fn compose_drawn_accent(base: &Node, accent: char, below: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
+    let b = compose(base, if below { e } else { e.cramp() }, ctx)?;
+    if accent != LINE_SEGMENT {
+        let macron = glyph(accent, e)?;
+        let (bottom, top) = stretch::ink(&macron, e);
+        let lift = if combining(accent) { (b.height - k(e, |c| c.accent_base_height())).max(0.0) } else { b.height };
+        let mut math_box = b.clone();
+        math_box.single_glyph = false;
+        math_box.place(&MathBox::bar(b.width, top - bottom, lift + bottom), 0.0, 0.0);
+        return Ok(math_box);
+    }
+    let (t, half) = (em(e, 0.04), em(e, 0.167));
+    let gap = if below { k(e, |c| c.underbar_vertical_gap()) } else { k(e, |c| c.overbar_vertical_gap()) };
+    // the middle of the line
+    let y = if below { -(b.depth + gap + half) } else { b.height + gap + half };
+    let mut math_box = b.clone();
+    math_box.single_glyph = false;
+    let mut segment = MathBox::bar(b.width, t, y - t / 2.0);
+    for x in [0.0, b.width - t] {
+        segment.place(&MathBox::bar(t, 2.0 * half, y - half), x, 0.0);
+    }
+    math_box.place(&segment, 0.0, 0.0);
+    Ok(math_box)
+}
+
 /// Stretchy accent under the base (`\underrightarrow`, `\underleftarrow`), as far below as `\underline`.
-fn compose_under_accent(base: &Node, accent: char, e: Style, ctx: &mut Context) -> R<MathBox> {
+fn compose_under_accent(base: &Node, accent: char, stretchy: bool, e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, e, ctx)?;
+    if !stretchy {
+        return under_mark(b, accent, e);
+    }
     let a = stretch::horizontal(accent, b.width, e)?;
     let width = b.width.max(a.width);
     let gap = k(e, |c| c.underbar_vertical_gap());
@@ -1170,6 +1212,33 @@ fn compose_under_accent(base: &Node, accent: char, e: Style, ctx: &mut Context) 
     math_box.place(&a, (width - a.width) / 2.0, -(b.depth + gap + a.height));
     math_box.depth += k(e, |c| c.underbar_extra_descender());
     math_box.italic = b.italic;
+    Ok(math_box)
+}
+
+/// An accent's mark at its own size under the base (accents' `\underaccent{\tilde}{x}`): its ink
+/// centered on the base and as far below it as `\underline`'s rule. The mark of a combining accent
+/// sits high over its baseline and left of its origin, so it is placed by its ink.
+#[inline(never)]
+fn under_mark(b: MathBox, accent: char, e: Style) -> R<MathBox> {
+    let a = glyph(accent, e)?;
+    let f = e.font();
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for item in &a.items {
+        if let Item::Glyph { id, x, y, scale, font, .. } = item {
+            let (g0, h0, g1, h1) = crate::font::glyph_font(*font, f).limits(*id);
+            (x0, y0, x1, y1) = (x0.min(x + g0 * scale), y0.min(y + h0 * scale), x1.max(x + g1 * scale), y1.max(y + h1 * scale));
+        }
+    }
+    if x0 > x1 {
+        (x0, y0, x1, y1) = (0.0, -a.depth, a.width, a.height);
+    }
+    let gap = k(e, |c| c.underbar_vertical_gap());
+    let dy = -(b.depth + gap) - y1;
+    let mut math_box = b.clone();
+    math_box.single_glyph = false;
+    math_box.place(&a, (b.width - (x0 + x1)) / 2.0, dy);
+    math_box.height = b.height;
+    math_box.depth = b.depth.max(-(dy + y0)) + k(e, |c| c.underbar_extra_descender());
     Ok(math_box)
 }
 
@@ -1277,6 +1346,9 @@ fn compose_vertical_arrow(symbol: char, left: Option<&Node>, right: Option<&Node
 
 fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R<MathBox> {
     let b = compose(base, e, ctx)?;
+    if kind == Cancel::Slash {
+        return slashed(b, e);
+    }
     let t = k(e, |c| c.fraction_rule_thickness());
     let slack = em(e, 0.05);
     let (x0, x1, y0, y1) = (-slack, b.width + slack, -b.depth - slack, b.height + slack);
@@ -1294,6 +1366,22 @@ fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R
     if kind == Cancel::CenterNot {
         center_not(&mut math_box, e, ctx)?;
     }
+    Ok(math_box)
+}
+
+/// slashed.sty's `\slashed`: the font's "/" over the base, both centered across the wider of the two
+/// and the slash's middle on the base's middle, in a box as wide as the wider one. Each is a box of
+/// its own in TeX (`\hbox{$X$}`), with its italic correction in its width.
+#[inline(never)]
+fn slashed(b: MathBox, e: Style) -> R<MathBox> {
+    let slash = glyph('/', e)?;
+    let (base_width, slash_width) = (b.width + b.italic, slash.width + slash.italic);
+    let width = base_width.max(slash_width);
+    let mut math_box = MathBox::empty();
+    math_box.place(&b, (width - base_width) / 2.0, 0.0);
+    let lift = ((b.height - b.depth) - (slash.height - slash.depth)) / 2.0;
+    math_box.place(&slash, (width - slash_width) / 2.0, lift);
+    math_box.width = width;
     Ok(math_box)
 }
 

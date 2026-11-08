@@ -472,6 +472,15 @@ fn tall_delimiter_assembles_parts() {
     svg(&tex);
 }
 
+#[test]
+fn lgroup_grows_from_the_brace_halves() {
+    // the font has ⟮ ⟯ at one size: a tall \lgroup is built as cmex builds it (physics' \Pmqty)
+    let matrix = math_box(r"\begin{matrix} a \\ b \\ c \\ d \end{matrix}");
+    let grouped = math_box(r"\left\lgroup \begin{matrix} a \\ b \\ c \\ d \end{matrix} \right\rgroup");
+    assert!(total(&grouped) >= total(&matrix), "{} < {}", total(&grouped), total(&matrix));
+    assert_eq!(total(&math_box(r"\left\lgroup x \right\rgroup")), total(&math_box(r"\lgroup x \rgroup")), "at the size of a letter, the glyph");
+}
+
 // ---------- accents, bars, braces, arrows ----------
 
 #[test]
@@ -486,6 +495,35 @@ fn simple_stretchy_and_combining_accents() {
     consistent(&compose_node(&node, Style::display(), true).unwrap(), "arrow as an accent");
     let node = Node::Accent { base: Box::new(ident("x")), accent: '\u{0302}', stretchy: false, below: false };
     consistent(&compose_node(&node, Style::display(), true).unwrap(), "combinante");
+}
+
+#[test]
+fn drawn_wide_accents_and_marks_under() {
+    let rules = |b: &MathBox| b.items.iter().filter(|i| matches!(i, Item::Rule { .. })).count();
+    let ab = math_box("AB");
+    // KaTeX's line segment: a line and a tick across each end, over or under the base
+    let over = math_box(r"\overlinesegment{AB}");
+    let under = math_box(r"\underlinesegment{AB}");
+    assert_eq!((rules(&over), rules(&under)), (3, 3));
+    assert!(over.height > ab.height && over.depth == ab.depth && over.width == ab.width);
+    assert!(under.depth > ab.depth && under.height == ab.height);
+    consistent(&over, "overlinesegment");
+    // mathabx's \widebar: one rule as wide as the base, where \bar puts its macron (below \overline's bar)
+    for base in ["x", "AB", "ABCDEF"] {
+        let rule = |tex: String| match math_box(&tex).items.iter().find(|i| matches!(i, Item::Rule { .. })) {
+            Some(Item::Rule { width, y, .. }) => (*width, *y),
+            _ => panic!("{tex}: no rule"),
+        };
+        let (wide, overline) = (rule(format!(r"\widebar{{{base}}}")), rule(format!(r"\overline{{{base}}}")));
+        assert!((wide.0 - overline.0).abs() < 1e-3 && wide.1 <= overline.1, "{base}: {wide:?} {overline:?}");
+    }
+    // a mark of its own size under the base (accents' \underaccent), not stretched to the base
+    let x = math_box("x");
+    let under_tilde = math_box(r"\underaccent{\tilde}{x}");
+    assert!(under_tilde.depth > x.depth && under_tilde.height == x.height, "{under_tilde:?}");
+    let glyphs = |b: &MathBox| b.items.iter().filter(|i| matches!(i, Item::Glyph { .. })).count();
+    assert_eq!(glyphs(&math_box(r"\underaccent{\hat}{ABCDEF}")), 7, "the hat's own glyph, not a stretched one");
+    consistent(&under_tilde, "underaccent");
 }
 
 #[test]
@@ -664,6 +702,25 @@ fn cancels_and_frames() {
     assert_eq!(bars(&boxed), 4);
     let circ = math_box(r"\textcircled{1}");
     assert!(circ.items.iter().any(|i| matches!(i, Item::Ellipse { .. })));
+}
+
+#[test]
+fn slashed_overstrikes_a_slash_and_keeps_the_width() {
+    let glyphs = |b: &MathBox| b.items.iter().filter(|i| matches!(i, Item::Glyph { .. })).count();
+    // slashed.sty: the slash as a glyph over the letter, in a box as wide as the wider of the two
+    for letter in ["D", "p", "A"] {
+        let plain = math_box(letter);
+        let slashed = math_box(&format!(r"\slashed{{{letter}}}"));
+        assert_eq!(glyphs(&slashed), 2, "{letter}");
+        assert_eq!(lines(&slashed), 0, "{letter}: a glyph, not a drawn line");
+        assert!((slashed.width - plain.width).abs() < 1e-4, "{letter}: {} vs {}", slashed.width, plain.width);
+    }
+    // a slash wider than the letter (i) sets the width, both centered
+    let i = math_box("i");
+    let slash = math_box("/");
+    assert!((math_box(r"\slashed{i}").width - i.width.max(slash.width)).abs() < 1e-4);
+    // the spacing around it is a letter's
+    assert!((math_box(r"a\slashed{D}b").width - math_box("aDb").width).abs() < 1e-4);
 }
 
 #[test]

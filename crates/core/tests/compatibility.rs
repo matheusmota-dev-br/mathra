@@ -467,17 +467,15 @@ fn katex_list_readings_follow_latex() {
 
 #[test]
 fn unsupported_commands_are_refused_or_shown_in_red() {
-    // KaTeX-only names (texvc aliases) are not LaTeX: refused in strict mode,
-    // and with a warning otherwise, never replaced in silence by a look-alike
-    for tex in [r"\R", r"\Reals", r"\larr", r"\hearts", r"\mathreflectbox{x}", r"\foocommand"] {
+    // unknown names are refused in strict mode, and with a warning otherwise, never replaced in
+    // silence by a look-alike (KaTeX's texvc aliases, \R or \larr, are known since #172: texvc_aliases.rs)
+    for tex in [r"\mathreflectbox{x}", r"\foocommand"] {
         assert!(convert(tex, &strict()).is_err(), "{tex} accepted in strict mode");
         let out = convert(tex, &Options::default()).unwrap();
         assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1"), "{tex}: {:?}", out.warnings);
     }
     // what has no reading at all is drawn in red, as written
-    for tex in [r"\R", r"\larr", r"\foocommand"] {
-        assert!(convert(tex, &Options::default()).unwrap().svg.contains("#c0392b"), "{tex}: not drawn in red");
-    }
+    assert!(convert(r"\foocommand", &Options::default()).unwrap().svg.contains("#c0392b"), "\\foocommand: not drawn in red");
 }
 
 // ---------- TeX primitives and package commands added after the audit ----------

@@ -8,11 +8,15 @@ use crate::tree::*;
 use crate::Error;
 
 use super::symbols::{self, Symbol};
+use siunitx::{joined_units, unit_node, PerMode, UnitEntry};
 
 #[cfg(feature = "chem")]
 mod chemistry;
 mod color;
 mod diagram;
+mod mathtools;
+mod siunitx;
+mod tex;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
     read_with(tex, locale, registry, true)
@@ -93,6 +97,8 @@ struct Macros {
     environments: std::collections::HashMap<String, (String, String)>,
     /// Colors defined by `\definecolor` and `\colorlet`, for the rest of the input.
     colors: color::Colors,
+    /// Units declared by `\DeclareSIUnit` and options set by `\sisetup`, for the rest of the input.
+    siunitx: siunitx::State,
     expansions: usize,
     /// How much the text may grow through expansions, counting the original size.
     max_size: usize,
@@ -111,8 +117,18 @@ struct Macro {
     arguments: usize,
     default_arg: Option<String>,
     body: String,
-    /// `\DeclarePairedDelimiter`: opening and closing delimiters.
-    paired: Option<(String, String)>,
+    /// `\DeclarePairedDelimiter` and mathtools' X and XPP forms: the delimiters around the body.
+    paired: Option<Box<Paired>>,
+}
+
+/// The delimiters of a mathtools paired delimiter, and what `\DeclarePairedDelimiterXPP` puts before
+/// and after them.
+#[derive(Clone)]
+struct Paired {
+    open: String,
+    close: String,
+    pre: String,
+    post: String,
 }
 
 /// More than this is almost certainly a macro that calls itself.
@@ -977,15 +993,34 @@ impl Reader<'_> {
         Ok(())
     }
 
-    /// mathtools' `\vdotswithin` and `\shortvdotswithin`, asked by `mod_command`: not in `structure_command`,
-    /// which is on the path of every nested environment, where arms widen its stack frame.
+    /// mathtools' `\vdotswithin` and `\shortvdotswithin`, and the accents package's `\underaccent` and
+    /// `\accentset`, asked by `mod_command`: not in `structure_command`, which is on the path of every
+    /// nested environment, nor in `accent_command`, on the path of every nested `\not`, where arms widen
+    /// the stack frame.
     fn vdots_command(&mut self, name: &str, col: usize, start: usize, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
         match name {
             "vdotswithin" => items.push(self.vdots_within()?),
             "shortvdotswithin" => self.short_vdots_within(start, col)?,
+            "underaccent" | "accentset" => items.push(self.accents_package(name == "underaccent")?),
             _ => return Ok(None),
         }
         Ok(Some(None))
+    }
+
+    /// The accents package: `\underaccent{accent}{base}` puts the mark of an accent command under the
+    /// base (`\underaccent{\tilde}{x}`), and anything else under it in scriptscript style;
+    /// `\accentset{mark}{base}` sets the mark over the base in scriptscript style, as an accent (an
+    /// ordinary atom, whatever the base).
+    #[inline(never)]
+    fn accents_package(&mut self, under: bool) -> R<Node> {
+        let mark = self.raw_text()?;
+        let base = Box::new(self.argument()?);
+        let command = mark.trim().strip_prefix('\\').filter(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_alphabetic()));
+        if let Some((accent, stretchy)) = command.filter(|_| under).and_then(symbols::accent) {
+            return Ok(Node::Accent { base, accent, stretchy, below: true });
+        }
+        let mark = Some(Box::new(Node::Style { level: 3, base: Box::new(self.sub_reader(&mark, self.variant)?) }));
+        Ok(if under { Node::Stacked { base, above: None, below: mark } } else { Node::Stacked { base, above: mark, below: None } })
     }
 
     /// mathtools' `\vdotswithin{=}`: ⋮ centered in a box as wide as `{}={}`, so that it sits under
@@ -1065,41 +1100,9 @@ impl Reader<'_> {
                 });
                 return Ok(Some(Some(p)));
             }
-            "over" | "choose" | "atop" | "brack" | "brace" | "above" => {
-                let num = Node::row(std::mem::take(items));
-                // \above<dimen>: TeX reads a dimension, written bare (2pt) or, as KaTeX allows, braced
-                let thickness = if name == "above" {
-                    self.skip_spaces();
-                    let raw = if self.current() == Some('{') {
-                        self.raw_text()?
-                    } else {
-                        let start = self.pos;
-                        while self.current().is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')) {
-                            self.pos += 1;
-                        }
-                        while self.current().is_some_and(|c| c.is_ascii_alphabetic()) && self.pos - start < 12 {
-                            self.pos += 1;
-                            if measure_em(&self.c[start..self.pos].iter().collect::<String>()).is_some() {
-                                break;
-                            }
-                        }
-                        self.c[start..self.pos].iter().collect()
-                    };
-                    Some(measure_em(&raw).ok_or(Error::Syntax { column: col, message: format!("\\above needs a dimension, not {raw:?}") })?.max(0.0))
-                } else {
-                    None
-                };
-                let (remainder, p) = self.list()?;
-                let den = Node::row(remainder);
-                let rule = matches!(name, "over" | "above");
-                let fraction = Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
-                items.push(match name {
-                    "choose" => Node::Delimited { open: Some('('), close: Some(')'), parts: vec![fraction], middles: vec![] },
-                    "brack" => Node::Delimited { open: Some('['), close: Some(']'), parts: vec![fraction], middles: vec![] },
-                    "brace" => Node::Delimited { open: Some('{'), close: Some('}'), parts: vec![fraction], middles: vec![] },
-                    _ => fraction,
-                });
-                return Ok(Some(Some(p)));
+            // generalized fractions, out of line (tex.rs): the rest of the group is their denominator
+            "over" | "choose" | "atop" | "brack" | "brace" | "above" | "overwithdelims" | "atopwithdelims" | "abovewithdelims" => {
+                return self.generalized_fraction(name, col, items).map(|p| Some(Some(p)));
             }
             "bf" | "rm" | "it" | "sf" | "tt" | "cal" | "mit" | "boldmath" | "unboldmath" | "normalfont" => {
                 self.variant = match name {
@@ -1264,6 +1267,8 @@ impl Reader<'_> {
                     node
                 }
             }
+            // #173: unicode-math's alphabets and its \sym… commands, and bbm's
+            other if symbols::unicode_math_alphabet(other).is_some() => self.unicode_math_alphabet(other)?,
             "operatorname" => {
                 let raw = self.raw_text()?;
                 // in math mode TeX ignores spaces: \operatorname{ l i m } is "lim"
@@ -1303,12 +1308,14 @@ impl Reader<'_> {
                 self.raw_optional();
                 Node::Brace { base: Box::new(self.argument()?), above: name == "overbracket", label: None, bracket: true }
             }
-            "underrightarrow" | "underleftarrow" | "underleftrightarrow" | "utilde" => {
+            "underrightarrow" | "underleftarrow" | "underleftrightarrow" | "utilde" | "undertilde" | "underlinesegment" => {
                 let accent = match name {
                     "underrightarrow" => '→',
                     "underleftarrow" => '←',
-                    // undertilde
-                    "utilde" => '\u{0303}',
+                    // undertilde (\utilde), accents' and mathabx's \undertilde
+                    "utilde" | "undertilde" => '\u{0303}',
+                    // KaTeX's line segment (see \overlinesegment in symbols.rs)
+                    "underlinesegment" => '\u{20E9}',
                     _ => '↔',
                 };
                 Node::Accent { base: Box::new(self.argument()?), accent, stretchy: true, below: true }
@@ -1360,12 +1367,14 @@ impl Reader<'_> {
                 let below = self.optional_argument()?;
                 let above = self.argument()?;
                 let above = if empty(&above) { None } else { Some(Box::new(above)) };
-                Node::Arrow { symbol, above, below: below.map(Box::new) }
+                Node::Arrow { symbol, above, below: below.filter(|b| !empty(b)).map(Box::new) }
             }
-            "cancel" | "bcancel" | "xcancel" | "sout" => {
+            // slashed.sty's \slashed, the Feynman slash, an overlay drawn like the cancels
+            "cancel" | "bcancel" | "xcancel" | "sout" | "slashed" => {
                 let kind = match name {
                     "bcancel" => Cancel::Backslash,
                     "xcancel" => Cancel::X,
+                    "slashed" => Cancel::Slash,
                     _ => Cancel::Bar,
                 };
                 Node::Canceled { base: Box::new(self.argument()?), shape: kind }
@@ -1481,7 +1490,7 @@ impl Reader<'_> {
                 let value = self.raw_text()?;
                 // siunitx leaves out an explicit plus (`retain-explicit-plus` is off) and adds the
                 // zero of a bare point (`add-integer-zero`)
-                let value = value.trim_start().strip_prefix('+').map_or(value.clone(), str::to_string);
+                let value = if self.macros.siunitx.retain_plus { value } else { value.trim_start().strip_prefix('+').map_or(value.clone(), str::to_string) };
                 let value = match value.trim_start().strip_prefix('-') {
                     Some(rest) if rest.starts_with('.') => format!("-0{rest}"),
                     _ if value.trim_start().starts_with('.') => format!("0{}", value.trim_start()),
@@ -1494,6 +1503,18 @@ impl Reader<'_> {
                 self.raw_optional();
                 let unit = self.raw_text()?;
                 self.quantity(None, &unit, col)?
+            }
+            // siunitx v3's complex numbers, in siunitx.rs
+            "complexnum" => {
+                self.raw_optional();
+                let value = self.raw_text()?;
+                self.complex_number(&value, col)?.0
+            }
+            "complexqty" => {
+                self.raw_optional();
+                let value = self.raw_text()?;
+                let unit = self.raw_text()?;
+                self.complex_quantity(&value, &unit, col)?
             }
             // \tablenum: the number as \num (the alignment on the decimal marker of an S column is not done)
             "num" | "tablenum" => {
@@ -1820,7 +1841,7 @@ impl Reader<'_> {
                 let points = (0..n.clamp(1, 50) * 3).flat_map(|_| [Node::Operator { symbol: '.', class: Class::Ord }, Node::Space { em: 0.35 }]).collect();
                 Node::Multicolumn { columns: n.clamp(1, 50), alignment: 'c', base: Box::new(Node::row(points)) }
             }
-            _ => return Ok(None),
+            _ => return self.tex_command(name, items),
         };
         items.push(node);
         Ok(Some(None))
@@ -1898,6 +1919,15 @@ impl Reader<'_> {
         };
         items.push(node);
         Ok(None)
+    }
+
+    /// #173: `\mathbfcal{L}`, `\symup{d}`: the argument in the alphabet the command names. Out of line,
+    /// so that `text_command`'s frame, on the stack of every nested argument, does not grow.
+    #[inline(never)]
+    fn unicode_math_alphabet(&mut self, name: &str) -> R<Node> {
+        let variant = symbols::unicode_math_alphabet(name).unwrap_or(Variant::Upright);
+        let raw = self.raw_text()?;
+        self.sub_reader(&raw, variant)
     }
 
     /// The optional `[length]` of a graphicx box: `None` without brackets; `Some(None)` for a length it
@@ -2472,10 +2502,8 @@ impl Reader<'_> {
                     }
                 }
                 ' ' => i += 1,
-                other => {
-                    self.tolerate(rules::E_REC_9, col, format!("unsupported array column: '{other}'"), "ignored")?;
-                    i += 1;
-                }
+                // anything else, the array package's >{…} and <{…} among it (#177)
+                _ => i = self.other_column(&c, i, col)?,
             }
         }
         Ok(())
@@ -2622,7 +2650,7 @@ impl Reader<'_> {
                             current.push(ITALIC_START);
                             open_until.push((level, ITALIC_END));
                         }
-                        "textrm" | "textsf" | "text" | "mbox" | "textup" | "textnormal" | "rm" | "sf" | "small" | "scriptsize" | "footnotesize" | "tiny" | "large"
+                        "textrm" | "textsf" | "textsl" | "text" | "mbox" | "textup" | "textnormal" | "rm" | "sf" | "small" | "scriptsize" | "footnotesize" | "tiny" | "large"
                         | "normalsize" | "mdseries" | "selectfont" => {}
                         // L-ENT-3: the size comes from whoever uses the SVG
                         "fontsize" => {
@@ -2637,7 +2665,7 @@ impl Reader<'_> {
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
                         // L-CHE-1: mhchem typesets its formulas and quantities in text as in math
-                        "ce" | "pu" => {
+                        "ce" | "pu" | "cf" => {
                             let tex = format!("\\{name}{}", text_arguments(&c, &mut i, "{"));
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
@@ -2720,8 +2748,8 @@ impl Reader<'_> {
                             split_text(&mut parts, &mut current, &open_until);
                             parts.push(TextPart::Math(self.sub_reader(&tex, math_variant)?));
                         }
-                        "phantom" | "hphantom" | "vphantom" => {
-                            // the argument stays text: the room it takes is the text's
+                        "phantom" | "hphantom" | "vphantom" | "sout" | "textcircled" => {
+                            // the argument stays text: the room it takes is the text's (#177: also what \sout strikes and \textcircled circles)
                             let arg = text_arguments(&c, &mut i, "{");
                             let arg = if arg.starts_with('{') { arg } else { format!("{{{arg}}}") };
                             split_text(&mut parts, &mut current, &open_until);
@@ -2861,16 +2889,20 @@ impl Reader<'_> {
         }
     }
 
-    /// L-UNI-1: `\SI{9,8}{\meter\per\second\squared}` → 9,8 m/s² in pt-BR.
+    /// L-UNI-1: `\SI{9,8}{\meter\per\second\squared}` → 9,8 m/s² in pt-BR. The units declared with
+    /// `\DeclareSIUnit`, the ones based on constants and `\highlight` come from siunitx.rs; so does
+    /// `per-mode`, which only `\sisetup` changes from the slash.
     fn quantity(&mut self, value: Option<String>, unit: &str, col: usize) -> R<Node> {
+        let unit = self.declared_units_written_out(unit);
         let unit_node = if unit.contains('\\') {
-            // (symbol, exponent, prefix names, unit name)
-            let mut numerator: Vec<(String, i32, String, String)> = Vec::new();
-            let mut denominator: Vec<(String, i32, String, String)> = Vec::new();
+            // (symbol, exponent, prefix names, unit name, highlight color)
+            let mut numerator: Vec<UnitEntry> = Vec::new();
+            let mut denominator: Vec<UnitEntry> = Vec::new();
             let mut prefix = String::new();
             let mut prefix_names = String::new();
             let mut per = false;
             let mut last_in_den = false;
+            let mut highlight = None;
             let mut raised: Option<i32> = None;
             for token in unit.split('\\').map(str::trim).filter(|t| !t.is_empty()) {
                 let (name, remainder) = token.split_at(token.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(token.len()));
@@ -2890,20 +2922,25 @@ impl Reader<'_> {
                             u.1 *= n;
                         }
                     }
+                    // \highlight{color}: the next unit's symbol in that color
+                    "highlight" => highlight = self.named_color(remainder.trim().trim_matches(['{', '}']).trim(), col)?,
                     // \raiseto{4}\metre: the prefix form of \tothe, for the next unit (m⁴)
                     "raiseto" => raised = remainder.trim_matches(['{', '}', ' ']).parse().ok(),
                     _ => {
-                        if let Some(p) = symbols::prefix(name) {
+                        if let Some(p) = symbols::prefix(name).filter(|_| !self.macros.siunitx.units.contains_key(name)) {
                             // \square\kilo\meter: the pending exponent still applies (km²)
                             prefix.insert_str(0, p);
                             prefix_names.insert_str(0, symbols::canonical_prefix(name));
                             continue;
                         }
-                        let symbol = match symbols::unit(name) {
-                            Some(symbol) => symbol.to_string(),
-                            None => {
+                        // a declared unit comes first, even over one of siunitx's own names
+                        let other = if self.macros.siunitx.units.contains_key(name) || symbols::unit(name).is_none() { self.other_unit_symbol(name)? } else { None };
+                        let symbol = match (other, symbols::unit(name)) {
+                            (Some(node), _) => node,
+                            (None, Some(symbol)) => Node::Text { parts: vec![TextPart::Text(symbol.to_string())] },
+                            (None, None) => {
                                 self.tolerate(rules::E_REC_1, col, format!("unsupported unit: \\{name}"), "written by its name")?;
-                                name.to_string()
+                                Node::Text { parts: vec![TextPart::Text(name.to_string())] }
                             }
                         };
                         let exponent = if let Some(n) = raised.take() {
@@ -2915,15 +2952,24 @@ impl Reader<'_> {
                         } else {
                             1
                         };
-                        let text = format!("{}{symbol}", prefix.trim_end_matches(['²', '³']));
+                        let written = prefix.trim_end_matches(['²', '³']).to_string();
+                        let base = match symbol {
+                            Node::Text { parts: p } => match p.as_slice() {
+                                [TextPart::Text(t)] => Node::Text { parts: vec![TextPart::Text(format!("{written}{t}"))] },
+                                _ => Node::Text { parts: p },
+                            },
+                            other if !written.is_empty() => Node::row(vec![Node::Text { parts: vec![TextPart::Text(written)] }, other]),
+                            other => other,
+                        };
                         prefix.clear();
                         let names = (std::mem::take(&mut prefix_names), symbols::canonical_unit(name).to_string());
+                        let entry = (base, exponent, names.0, names.1, highlight.take());
                         if per {
-                            denominator.push((text, exponent, names.0, names.1));
+                            denominator.push(entry);
                             last_in_den = true;
                             per = false;
                         } else {
-                            numerator.push((text, exponent, names.0, names.1));
+                            numerator.push(entry);
                             last_in_den = false;
                         }
                     }
@@ -2933,47 +2979,66 @@ impl Reader<'_> {
             if let Some((n, u)) = raised.zip(if last_in_den { denominator.last_mut() } else { numerator.last_mut() }) {
                 u.1 *= n;
             }
-            let mut children = Vec::new();
-            let unit_node = |u: &(String, i32, String, String)| -> Node {
-                let text = Node::Text { parts: vec![TextPart::Text(u.0.clone())] };
-                let base = Node::Unit { prefix: Some(u.2.clone()).filter(|p| !p.is_empty()), name: u.3.clone(), base: Box::new(text) };
-                if u.1 == 1 {
-                    base
-                } else {
-                    Node::Scripts { base: Box::new(base), sup: Some(Box::new(Node::Number { value: u.1.to_string(), group: false, thousands: None })), sub: None }
-                }
-            };
-            for (i, u) in numerator.iter().enumerate() {
-                if i > 0 {
-                    children.push(Node::Space { em: 3.0 / 18.0 });
-                }
-                children.push(unit_node(u));
-            }
+            let mode = self.macros.siunitx.per_mode;
+            let inter = self.macros.siunitx.inter_unit_product.clone();
+            let product = self.si_product(inter)?;
+            let mut children = joined_units(&numerator, false, &product);
             if !denominator.is_empty() {
-                if numerator.is_empty() {
-                    children.push(Node::Number { value: "1".into(), group: false, thousands: None });
-                }
-                children.push(Node::Operator { symbol: '/', class: Class::Ord });
-                let several = denominator.len() > 1;
-                if several {
-                    children.push(Node::Operator { symbol: '(', class: Class::Open });
-                }
-                for (i, u) in denominator.iter().enumerate() {
-                    if i > 0 {
-                        children.push(Node::Operator { symbol: '·', class: Class::Ord });
+                let one = || Node::Number { value: "1".into(), group: false, thousands: None };
+                match mode {
+                    PerMode::Power => {
+                        if !children.is_empty() {
+                            children.push(product.clone());
+                        }
+                        children.extend(joined_units(&denominator, true, &product));
                     }
-                    children.push(unit_node(u));
-                }
-                if several {
-                    children.push(Node::Operator { symbol: ')', class: Class::Close });
+                    PerMode::Fraction => {
+                        let num = if children.is_empty() { one() } else { Node::row(std::mem::take(&mut children)) };
+                        let den = Node::row(joined_units(&denominator, false, &product));
+                        children.push(Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true, thickness: None });
+                    }
+                    PerMode::Repeated => {
+                        if children.is_empty() {
+                            children.push(one());
+                        }
+                        for u in &denominator {
+                            children.push(Node::Operator { symbol: '/', class: Class::Ord });
+                            children.push(unit_node(u, false));
+                        }
+                    }
+                    PerMode::Symbol => {
+                        if children.is_empty() {
+                            children.push(one());
+                        }
+                        children.push(Node::Operator { symbol: '/', class: Class::Ord });
+                        let several = denominator.len() > 1;
+                        if several {
+                            children.push(Node::Operator { symbol: '(', class: Class::Open });
+                        }
+                        for (i, u) in denominator.iter().enumerate() {
+                            if i > 0 {
+                                children.push(Node::Operator { symbol: '·', class: Class::Ord });
+                            }
+                            children.push(unit_node(u, false));
+                        }
+                        if several {
+                            children.push(Node::Operator { symbol: ')', class: Class::Close });
+                        }
+                    }
                 }
             }
-            self.registry.note(rules::L_UNI_1, format!("unit {unit} written with a slash for negative exponents"));
+            let how = match mode {
+                PerMode::Symbol => "with a slash for negative exponents",
+                PerMode::Repeated => "with a slash before each unit of the denominator (per-mode=repeated-symbol)",
+                PerMode::Power => "with negative exponents (per-mode=power)",
+                PerMode::Fraction => "as a fraction (per-mode=fraction)",
+            };
+            self.registry.note(rules::L_UNI_1, format!("unit {unit} written {how}"));
             let names: Vec<String> = numerator.iter().chain(&denominator).map(|u| format!("{}{}", u.2, u.3)).collect();
             self.registry.note(rules::L_UNI_3, format!("units kept by name for the speech: {}", names.join(", ")));
             Node::row(children)
         } else {
-            self.sub_reader(unit, Variant::Upright)?
+            self.sub_reader(&unit, Variant::Upright)?
         };
         self.quantity_node(value, unit_node, col)
     }
@@ -2995,7 +3060,8 @@ impl Reader<'_> {
         let mut children = Vec::new();
         if let Some(v) = value {
             children.push(v);
-            children.push(Node::Space { em: 3.0 / 18.0 });
+            let product = self.macros.siunitx.quantity_product.clone();
+            children.push(self.si_product(product)?);
         }
         children.push(unit_node);
         Ok(Node::Quantity { value: text_value.filter(|v| !v.is_empty()), unit: Box::new(Node::row(children)) })
@@ -3496,6 +3562,175 @@ fn staggered_indices(raw: &str, pre: bool) -> String {
 }
 
 /// mhchem's `\pu` unit to math: `J mol^-1` → `J\,mol^{-1}`, `.` and `*` between units → `\cdot`.
+/// The commands of `physics_expansion`, besides the long names of `physics_long_name`.
+const PHYSICS: &[&str] = &[
+    "mqty",
+    "matrixquantity",
+    "smqty",
+    "smallmatrixquantity",
+    "pmqty",
+    "Pmqty",
+    "bmqty",
+    "vmqty",
+    "mdet",
+    "matrixdeterminant",
+    "spmqty",
+    "sPmqty",
+    "sbmqty",
+    "svmqty",
+    "smdet",
+    "smallmatrixdeterminant",
+    "imat",
+    "identitymatrix",
+    "xmat",
+    "xmatrix",
+    "zmat",
+    "zeromatrix",
+    "paulimatrix",
+    "pmat",
+    "paulixmatrix",
+    "pauliymatrix",
+    "paulizmatrix",
+    "dmat",
+    "diagonalmatrix",
+    "admat",
+    "antidiagonalmatrix",
+    "qq",
+    "qqtext",
+    "qc",
+    "qcomma",
+    "qcc",
+    "qif",
+    "qthen",
+    "qelse",
+    "qotherwise",
+    "qunless",
+    "qgiven",
+    "qusing",
+    "qassume",
+    "qsince",
+    "qlet",
+    "qfor",
+    "qall",
+    "qeven",
+    "qodd",
+    "qinteger",
+    "qand",
+    "qor",
+    "qas",
+    "qin",
+    "var",
+    "variation",
+    "pv",
+    "principalvalue",
+    "PV",
+    "op",
+    "vev",
+    "flatfrac",
+    "Trace",
+    "Residue",
+    "asin",
+    "acos",
+    "atan",
+    "acsc",
+    "asec",
+    "acot",
+    "asine",
+    "acosine",
+    "atangent",
+    "acosecant",
+    "asecant",
+    "acotangent",
+    "vnabla",
+    "gradientnabla",
+    "diffd",
+    "real",
+    "imaginary",
+];
+
+/// physics' Pauli matrices σx, σy, σz, as the package writes their contents.
+const PAULI: [&str; 3] = ["0&1\\\\1&0", "0&-i\\\\i&0", "1&0\\\\0&-1"];
+
+/// A physics matrix: `shape` is `(`, `[`, `|`, `P` (\lgroup…\rgroup) or `{` (none); `small` for
+/// `\smqty` and its family, a `smallmatrix` between `\left…\right` delimiters, as the package's
+/// `\spmqty` is `\pqty{\begin{smallmatrix}…}`.
+fn physics_matrix(small: bool, shape: char, body: &str) -> String {
+    let (env, open, close) = match (small, shape) {
+        (false, '(') => ("pmatrix", "", ""),
+        (false, '[') => ("bmatrix", "", ""),
+        (false, '|') => ("vmatrix", "", ""),
+        (false, 'P') => ("matrix", "\\lgroup", "\\rgroup"),
+        (false, _) => ("matrix", "", ""),
+        (true, '(') => ("smallmatrix", "(", ")"),
+        (true, '[') => ("smallmatrix", "[", "]"),
+        (true, '|') => ("smallmatrix", "|", "|"),
+        (true, 'P') => ("smallmatrix", "\\lgroup", "\\rgroup"),
+        (true, _) => ("smallmatrix", "", ""),
+    };
+    let table = format!("\\begin{{{env}}}{body}\\end{{{env}}}");
+    if open.is_empty() {
+        table
+    } else {
+        format!("\\left{open} {table} \\right{close}")
+    }
+}
+
+/// The contents of a generated matrix (`\imat`, `\xmat`, `\dmat`…): `rows` × `columns` entries, by
+/// row and column from 0, in `&` and `\\`.
+fn generated_matrix(rows: usize, columns: usize, entry: impl Fn(usize, usize) -> String) -> String {
+    (0..rows).map(|i| (0..columns).map(|j| entry(i, j)).collect::<Vec<_>>().join("&")).collect::<Vec<_>>().join("\\\\")
+}
+
+/// `raw` split at each `separator` outside braces, each part trimmed.
+fn split_top_level(raw: &str, separator: char) -> Vec<String> {
+    let mut parts = vec![String::new()];
+    let mut level = 0usize;
+    for c in raw.chars() {
+        match c {
+            '{' => level += 1,
+            '}' => level = level.saturating_sub(1),
+            c if c == separator && level == 0 => {
+                parts.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        parts.last_mut().unwrap().push(c);
+    }
+    parts.into_iter().map(|p| p.trim().to_string()).collect()
+}
+
+/// physics' long names of the elementary functions (`\sine` is `\sin`), which the package keeps when
+/// it redefines the short ones.
+fn physics_long_name(long: &str) -> Option<&'static str> {
+    Some(match long {
+        "sine" => "sin",
+        "cosine" => "cos",
+        "tangent" => "tan",
+        "cosecant" => "csc",
+        "secant" => "sec",
+        "cotangent" => "cot",
+        "hypsine" => "sinh",
+        "hypcosine" => "cosh",
+        "hyptangent" => "tanh",
+        "hypcosecant" => "csch",
+        "hypsecant" => "sech",
+        "hypcotangent" => "coth",
+        "arcsine" => "arcsin",
+        "arccosine" => "arccos",
+        "arctangent" => "arctan",
+        "arccosecant" => "arccsc",
+        "arcsecant" => "arcsec",
+        "arccotangent" => "arccot",
+        "exponential" => "exp",
+        "logarithm" => "log",
+        "naturallogarithm" => "ln",
+        "determinant" => "det",
+        "Probability" => "Pr",
+        _ => return None,
+    })
+}
+
 fn mhchem_unit(unit: &str) -> String {
     // `//` is a fraction bar: mhchem.js' `pu` state reads the unit before it and after it apart and
     // writes them as a `pu-frac`, \frac in text style (\mathchoice{\textstyle\frac{…}{…}}…)
@@ -3540,6 +3775,8 @@ fn natural_class(node: &Node) -> Class {
     match node {
         Node::Operator { class, .. } => *class,
         Node::LargeOperator { .. } | Node::Function { .. } => Class::Op,
+        // \overset{a}{\underset{b}{=}}: the class the inner command gave
+        Node::ForcedClass { class, .. } => *class,
         _ => Class::Ord,
     }
 }
@@ -3739,6 +3976,8 @@ fn siunitx_in_text(name: &str) -> Option<&'static str> {
         "SI" | "qty" | "SIlist" | "qtylist" | "SIproduct" | "qtyproduct" => "[{{",
         "si" | "unit" | "ang" | "numlist" | "anglist" | "numproduct" => "[{",
         "num" => "[{[",
+        "complexnum" => "[{",
+        "complexqty" => "[{{",
         "tablenum" => "[{",
         "SIrange" | "qtyrange" => "[{{{",
         "numrange" | "angrange" => "[{{",
@@ -3897,6 +4136,109 @@ impl Reader<'_> {
             self.registry.warn(rules::E_REC_9, format!("column {col}: \\{name}: unsafe or unsupported {}; dropped", dropped.join(", ")));
         }
         Ok(node)
+    }
+
+    /// #177: colortbl's colors, which mathra's tables have no place for, and the array package's
+    /// `\newcolumntype`, which mathra does not expand: read with their arguments and ignored (E-REC-9).
+    /// MathJax's `\Newextarrow{\cs}{lspace,rspace}{code}` defines `\cs[below]{above}`: an extensible
+    /// arrow mathra knows (`\xrightarrow` and family) when the code is its arrow, else the character
+    /// with the labels over and under it, not stretched (E-REC-9). What is left in place of the command.
+    #[inline(never)]
+    fn table_and_arrow_definitions(&mut self, name: &str, col: usize) -> R<String> {
+        match name {
+            "newcolumntype" => {
+                let letter = self.raw_text()?;
+                self.raw_optional();
+                self.raw_text()?;
+                self.tolerate(rules::E_REC_9, col, format!("\\newcolumntype{{{}}}: new column types are not expanded", letter.trim()), "ignored")?;
+            }
+            "Newextarrow" => {
+                let target = self.raw_text()?.trim().trim_start_matches('\\').to_string();
+                self.raw_text()?;
+                let raw = self.raw_text()?;
+                let code = raw.trim();
+                let symbol = match code.strip_prefix("0x").or_else(|| code.strip_prefix("0X")) {
+                    Some(hex) => u32::from_str_radix(hex, 16).ok(),
+                    None => code.parse::<u32>().ok(),
+                }
+                .and_then(char::from_u32)
+                .ok_or(Error::Syntax { column: col, message: format!("\\Newextarrow: {code} is not a character code") })?;
+                let known = match symbol {
+                    '→' => "xrightarrow",
+                    '←' => "xleftarrow",
+                    '⇒' => "xRightarrow",
+                    '⇐' => "xLeftarrow",
+                    '↔' => "xleftrightarrow",
+                    '⇔' => "xLeftrightarrow",
+                    '⇌' => "xrightleftharpoons",
+                    '⇋' => "xleftrightharpoons",
+                    '↦' => "xmapsto",
+                    '↪' => "xhookrightarrow",
+                    '↩' => "xhookleftarrow",
+                    '↠' => "xtwoheadrightarrow",
+                    '↞' => "xtwoheadleftarrow",
+                    '⇀' => "xrightharpoonup",
+                    '⇁' => "xrightharpoondown",
+                    '↼' => "xleftharpoonup",
+                    '↽' => "xleftharpoondown",
+                    '⇄' => "xtofrom",
+                    '=' => "xlongequal",
+                    _ => "",
+                };
+                let body = if known.is_empty() {
+                    self.tolerate(
+                        rules::E_REC_9,
+                        col,
+                        format!("\\Newextarrow{{\\{target}}}: U+{:04X} has no extensible form in mathra", symbol as u32),
+                        "drawn with its labels over and under it, not stretched",
+                    )?;
+                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{{:X}}}}}}}}}", symbol as u32)
+                } else {
+                    format!("\\{known}[#1]{{#2}}")
+                };
+                self.registry.note(rules::L_MAC_1, format!("macro \\{target} defined with 2 argument(s)"));
+                self.macros.commands.insert(target, Macro { arguments: 2, default_arg: Some(String::new()), body, paired: None });
+            }
+            _ => {
+                self.raw_optional();
+                let color = self.raw_text()?;
+                if matches!(name, "rowcolor" | "columncolor") {
+                    self.raw_optional();
+                    self.raw_optional();
+                }
+                self.tolerate(rules::E_REC_9, col, format!("\\{name}{{{}}}: mathra's tables have no colors", color.trim()), "ignored")?;
+            }
+        }
+        Ok(String::new())
+    }
+
+    /// A character of an array's column specification that is no column mathra knows, at `spec[at]`:
+    /// ignored (E-REC-9); the position after it. #177: the `>{…}` or `<{…}` of the array package,
+    /// declarations put before or after each cell of the column, which mathra does not apply, are
+    /// skipped with their group. Out of line, so the frame of `array_columns`, which `*{n}{…}` nests,
+    /// does not grow.
+    #[inline(never)]
+    fn other_column(&mut self, spec: &[char], at: usize, col: usize) -> R<usize> {
+        if !(matches!(spec[at], '>' | '<') && spec.get(at + 1) == Some(&'{')) {
+            self.tolerate(rules::E_REC_9, col, format!("unsupported array column: '{}'", spec[at]), "ignored")?;
+            return Ok(at + 1);
+        }
+        let mut level = 0;
+        let mut end = at + 1;
+        while end < spec.len() {
+            match spec[end] {
+                '{' => level += 1,
+                '}' => level -= 1,
+                _ => {}
+            }
+            end += 1;
+            if level == 0 {
+                break;
+            }
+        }
+        let group: String = spec[at + 1..end].iter().collect();
+        self.tolerate(rules::E_REC_9, col, format!("{}{group} of an array column: declarations are not applied to the cells", spec[at]), "ignored")?;
+        Ok(end)
     }
 }
 
@@ -4103,20 +4445,15 @@ impl Reader<'_> {
 
     fn expand(&mut self, start: usize, m: &Macro, col: usize) -> R<()> {
         self.macros.expansions += 1;
-        if let Some((open, close)) = &m.paired {
-            // \abs{x} → \mathopen{|}x\mathclose{|};  \abs*{x} → \left|x\right|
-            let star = self.current() == Some('*');
+        let mut star = false;
+        let mut size = None;
+        if m.paired.is_some() {
+            // \abs{x} → \mathopen{|}x\mathclose{|};  \abs*{x} → \left|x\right|;  \abs[\big]{x} → \bigl|x\bigr|
+            star = self.current() == Some('*');
             if star {
                 self.pos += 1;
             }
-            let size = self.raw_optional();
-            let x = self.raw_text()?;
-            let text = match (star, size) {
-                (true, _) => format!("\\left{open} {x} \\right{close}"),
-                (false, Some(t)) => format!("{t}l{open} {x} {t}r{close}"),
-                (false, None) => format!("\\mathopen{{{open}}} {x} \\mathclose{{{close}}}"),
-            };
-            return self.inject(start, &text, col);
+            size = self.raw_optional();
         }
         let mut args = Vec::new();
         if let Some(default_arg) = &m.default_arg {
@@ -4132,10 +4469,16 @@ impl Reader<'_> {
             if c[i] == '#' && i + 1 < c.len() {
                 if let Some(d) = c[i + 1].to_digit(10) {
                     // #0 does not exist in TeX: it disappears, like a missing argument
+                    // a paired delimiter's argument goes in as written, as TeX puts it in
                     if let Some(a) = (d as usize).checked_sub(1).and_then(|k| args.get(k)) {
-                        body.push('{');
+                        let braces = m.paired.is_none();
+                        if braces {
+                            body.push('{');
+                        }
                         body.push_str(a);
-                        body.push('}');
+                        if braces {
+                            body.push('}');
+                        }
                     }
                     i += 2;
                     continue;
@@ -4143,6 +4486,17 @@ impl Reader<'_> {
             }
             body.push(c[i]);
             i += 1;
+        }
+        if let Some(p) = &m.paired {
+            // mathtools' \delimsize: the size the delimiters got, \middle with the star
+            let delimsize = if star { "\\middle" } else { size.as_deref().unwrap_or("") };
+            let x = body.replace("\\delimsize", delimsize);
+            let (open, close, pre, post) = (&p.open, &p.close, &p.pre, &p.post);
+            body = match (star, size) {
+                (true, _) => format!("{pre}\\left{open} {x} \\right{close}{post}"),
+                (false, Some(t)) => format!("{pre}{t}l{open} {x} {t}r{close}{post}"),
+                (false, None) => format!("{pre}\\mathopen{{{open}}} {x} \\mathclose{{{close}}}{post}"),
+            };
         }
         // a space keeps the macro from sticking to what follows (\foo x)
         body.push(' ');
@@ -4244,11 +4598,21 @@ impl Reader<'_> {
                 self.macros.commands.insert(target, Macro { arguments: 0, default_arg: None, body, paired: None });
                 Ok(true)
             }
-            "DeclarePairedDelimiter" => {
+            // mathtools: \DeclarePairedDelimiter{\abs}{\lvert}{\rvert}; the X form takes [n] arguments and
+            // a body, where \delimsize is the size of the delimiters; XPP adds what goes before and after
+            "DeclarePairedDelimiter" | "DeclarePairedDelimiterX" | "DeclarePairedDelimiterXPP" => {
                 let target = self.defined_name(col)?;
+                let arguments = match self.raw_optional() {
+                    Some(n) => n.trim().parse::<usize>().map_err(|_| Error::Syntax { column: col, message: format!("invalid number of arguments: {n}") })?,
+                    None => 1,
+                };
+                let pre = if name == "DeclarePairedDelimiterXPP" { self.raw_text()? } else { String::new() };
                 let open = self.raw_text()?.trim().to_string();
                 let close = self.raw_text()?.trim().to_string();
-                self.macros.commands.insert(target, Macro { arguments: 1, default_arg: None, body: String::new(), paired: Some((open, close)) });
+                let post = if name == "DeclarePairedDelimiterXPP" { self.raw_text()? } else { String::new() };
+                let body = if name == "DeclarePairedDelimiter" { "#1".to_string() } else { self.raw_text()? };
+                let paired = Some(Box::new(Paired { open, close, pre, post }));
+                self.macros.commands.insert(target, Macro { arguments, default_arg: None, body, paired });
                 Ok(true)
             }
             "newenvironment" | "renewenvironment" => {
@@ -4310,7 +4674,7 @@ impl Reader<'_> {
                 }
                 Ok(true)
             }
-            _ => Ok(false),
+            _ => self.siunitx_definition(name, col),
         }
     }
 
@@ -4445,8 +4809,11 @@ impl Reader<'_> {
             }
             s
         };
+        if let Some(text) = self.tex_expansion(name, col)? {
+            return Ok(Some(text));
+        }
         Ok(Some(match name {
-            "fdv" | "functionalderivative" => {
+            "fdv" | "functionalderivative" | "fderivative" => {
                 let flat = star(self);
                 let power = self.raw_optional().map(|n| format!("^{{{n}}}")).unwrap_or_default();
                 let f = self.raw_text()?;
@@ -4455,7 +4822,7 @@ impl Reader<'_> {
                     None => physics_fraction(flat, format!("\\delta{power}"), format!("\\delta {f}{power}")),
                 }
             }
-            "dv" | "odv" | "pdv" | "derivative" | "partialderivative" | "pd" => {
+            "dv" | "odv" | "pdv" | "derivative" | "partialderivative" | "pderivative" | "pd" => {
                 let partial = name.starts_with('p');
                 // physics' \dv* and \pdv*: the derivative as a flat fraction, df/dx
                 let flat = matches!(name, "dv" | "pdv" | "derivative" | "partialderivative") && star(self);
@@ -4513,6 +4880,14 @@ impl Reader<'_> {
                 self.raw_optional();
                 format!("{{{}}}", self.raw_text()?)
             }
+            // slashed.sty's \declareslashed{class}{slash}{right shift}{up shift}{symbol}: another slash or
+            // offset for one symbol; read, and not applied (each \slashed is drawn centered)
+            "declareslashed" => {
+                for _ in 0..5 {
+                    self.raw_text()?;
+                }
+                String::new()
+            }
             // the LaTeX kernel
             "underbar" => format!("\\underline{{{}}}", self.raw_text()?),
             // definitions already last for the whole equation: \global changes nothing
@@ -4568,6 +4943,20 @@ impl Reader<'_> {
                 let b = self.optional_braced()?.unwrap_or_else(|| a.clone());
                 format!("{}\\!{}", physics_fence(s, "|", "|", "\\rangle", &[&a]), physics_fence(s, "\\langle", "|", "|", &[&b]))
             }
+            // #177: the \Ketbra braket.sty suggests (its comments: each side as tall as both)
+            "Ketbra" => {
+                let a = self.raw_text()?;
+                let b = self.raw_text()?;
+                format!("\\left|{{{a}}}\\vphantom{{{b}}}\\right\\rangle\\left\\langle{{{b}}}\\vphantom{{{a}}}\\right|")
+            }
+            // bm's \hm: heavy bold where a heavy math version exists, \bm otherwise (`\let\hm\bm`)
+            "hm" => format!("\\bm{{{}}}", self.raw_text()?),
+            // MathJax's \data{key=value}{math}, its html extension: KaTeX's \htmlData
+            "data" => "\\htmlData".into(),
+            // mhchem's deprecated \cf, its old name for \ce
+            "cf" => format!("\\ce{{{}}}", self.raw_text()?),
+            // colortbl, the array package's \newcolumntype and MathJax's \Newextarrow
+            "cellcolor" | "rowcolor" | "columncolor" | "arrayrulecolor" | "newcolumntype" | "Newextarrow" => self.table_and_arrow_definitions(name, col)?,
             // starred, the brackets do not resize; doubly starred (\expval**, \mel**), they do
             "expval" | "ev" | "expectationvalue" => {
                 let s = star(self) && !star(self);
@@ -4600,7 +4989,7 @@ impl Reader<'_> {
             "divergence" => "\\unicode{1D6C1} \\cdot ".into(),
             "curl" | "rot" => "\\unicode{1D6C1} \\times ".into(),
             "laplacian" => "\\nabla^{2} ".into(),
-            "cross" | "crossproduct" => "\\times ".into(),
+            "cross" | "crossproduct" | "cp" => "\\times ".into(),
             "vdot" | "dotproduct" => "\\cdot ".into(),
             "vb" | "vectorbold" => {
                 let bold = if star(self) { "\\boldsymbol" } else { "\\mathbf" };
@@ -4657,7 +5046,8 @@ impl Reader<'_> {
                 };
                 physics_fence(s, open, "|", close, &[&x])
             }
-            "idotsint" => "\\int\\!\\cdots\\!\\int ".into(),
+            // esint's \dotsint is amsmath's \idotsint
+            "idotsint" | "dotsint" => "\\int\\!\\cdots\\!\\int ".into(),
             // mathtools: \prescript{sup}{sub}{base}
             "prescript" => {
                 let sup = self.raw_text()?;
@@ -4673,6 +5063,15 @@ impl Reader<'_> {
                 let indices = self.raw_text()?;
                 format!("{}{{{base}}}{}", pre.map(|p| staggered_indices(&p, true)).unwrap_or_default(), staggered_indices(&indices, false))
             }
+            // esvect: \vv*{x}{i} is \vv{x}_{i}, the index pulled 1 mu closer (\vv alone is in the accents)
+            "vv" if self.current() == Some('*') => {
+                self.pos += 1;
+                let x = self.raw_text()?;
+                let index = self.raw_text()?;
+                format!("\\overrightarrow{{{x}}}_{{\\mkern-1mu {index}}}")
+            }
+            // mathabx: \widering, built on \wideparen as the package builds it, a ring at the top of the arc
+            "widering" => format!("\\mathring{{\\wideparen{{{}}}}}", self.raw_text()?),
             "Set" | "set" => {
                 let x = self.raw_text()?;
                 match x.split_once('|') {
@@ -4717,11 +5116,168 @@ impl Reader<'_> {
                 let u = self.raw_text()?;
                 format!("{v}\\,\\mathrm{{{u}}}")
             }
-            _ => {
-                let _ = col;
-                return Ok(None);
-            }
+            // (asked by name: its frame stays off the stack of the commands that nest, \frac or \sqrt)
+            _ if PHYSICS.contains(&name) || physics_long_name(name).is_some() => return self.physics_expansion(name, col),
+            // #172: KaTeX's texvc aliases (\R, \cnums, \bold…)
+            _ if symbols::texvc_macro(name).is_some() => return Ok(symbols::texvc_macro(name).map(str::to_string)),
+            // #169's mathtools, asked by name too
+            _ if mathtools::is_mathtools(name, &self.c, self.pos) => return self.mathtools_expansion(name, col),
+            _ => return Ok(None),
         }))
+    }
+
+    /// physics' matrices, spaced text and the long names of its operators (physics.sty 1.3; MathJax's
+    /// physics extension draws the same), the names in `PHYSICS`. Out of line, so `package_expansion`,
+    /// which runs for every command, keeps its size.
+    #[inline(never)]
+    fn physics_expansion(&mut self, name: &str, col: usize) -> R<Option<String>> {
+        let starred = |this: &mut Self| {
+            let s = this.current() == Some('*');
+            if s {
+                this.pos += 1;
+            }
+            s
+        };
+        Ok(Some(match name {
+            // \mqty(…), \mqty*(…) (\lgroup…\rgroup), \mqty[…], \mqty|…|, \mqty{…} (no delimiters); \mqty
+            // alone is "()", as in the package. What follows the first form is read as written
+            "mqty" | "matrixquantity" | "smqty" | "smallmatrixquantity" => {
+                let small = name.starts_with('s');
+                let star = starred(self);
+                self.skip_spaces();
+                let (shape, body) = match self.current() {
+                    Some('(') => (if star { 'P' } else { '(' }, self.raw_delimited('(', ')')),
+                    Some('[') => ('[', self.raw_delimited('[', ']')),
+                    Some('|') => ('|', self.raw_delimited('|', '|')),
+                    Some('{') => ('{', self.raw_text()?),
+                    _ => return Ok(Some("()".into())),
+                };
+                physics_matrix(small, shape, &body)
+            }
+            "pmqty" | "Pmqty" | "bmqty" | "vmqty" | "mdet" | "matrixdeterminant" | "spmqty" | "sPmqty" | "sbmqty" | "svmqty" | "smdet" | "smallmatrixdeterminant" => {
+                let small = name.starts_with("sm") || (name.len() == 6 && name.starts_with('s'));
+                let shape = match name.trim_start_matches('s').chars().next() {
+                    Some('p') => '(',
+                    Some('P') => 'P',
+                    Some('b') => '[',
+                    _ => '|',
+                };
+                physics_matrix(small, shape, &self.raw_text()?)
+            }
+            // the generated contents, to be put in a matrix: \pmqty{\imat{2}}
+            "imat" | "identitymatrix" => {
+                let n = self.matrix_size(name, col)?;
+                generated_matrix(n, n, |i, j| if i == j { "1".into() } else { "0".into() })
+            }
+            "xmat" | "xmatrix" | "zmat" | "zeromatrix" => {
+                let indexed = name.starts_with('x') && starred(self);
+                let x = if name.starts_with('x') { self.raw_text()? } else { "0".into() };
+                let rows = self.matrix_size(name, col)?;
+                // \zeromatrix{m}: square
+                let columns = match name.starts_with('z') {
+                    true => match self.optional_braced()? {
+                        Some(raw) => self.size_of(name, &raw, col)?,
+                        None => rows,
+                    },
+                    false => self.matrix_size(name, col)?,
+                };
+                generated_matrix(rows, columns, |i, j| match indexed {
+                    true => format!("{x}_{{{}{}}}", if rows > 1 { (i + 1).to_string() } else { String::new() }, if columns > 1 { (j + 1).to_string() } else { String::new() }),
+                    false => x.clone(),
+                })
+            }
+            "paulimatrix" | "pmat" => {
+                let which = self.raw_text()?;
+                match which.trim() {
+                    "0" => generated_matrix(2, 2, |i, j| if i == j { "1".into() } else { "0".into() }),
+                    "1" | "x" => PAULI[0].into(),
+                    "2" | "y" => PAULI[1].into(),
+                    "3" | "z" => PAULI[2].into(),
+                    other => {
+                        self.tolerate(rules::E_REC_9, col, format!("\\{name}{{{other}}}: no Pauli matrix by that name (0 to 3, x, y or z)"), "left empty")?;
+                        String::new()
+                    }
+                }
+            }
+            "paulixmatrix" => PAULI[0].into(),
+            "pauliymatrix" => PAULI[1].into(),
+            "paulizmatrix" => PAULI[2].into(),
+            // \dmat[filler]{a,b,c}: the entries on the diagonal (\admat: the antidiagonal), the filler
+            // elsewhere; an entry with its own rows is a matrix, as the package's \mqty{…} makes it
+            "dmat" | "diagonalmatrix" | "admat" | "antidiagonalmatrix" => {
+                let filler = self.raw_optional().unwrap_or_default();
+                let entries = split_top_level(&self.raw_text()?, ',');
+                let n = entries.len();
+                let anti = name.starts_with('a');
+                generated_matrix(n, n, |i, j| match (anti && j == n - 1 - i) || (!anti && i == j) {
+                    true if entries[i].contains('&') || entries[i].contains("\\\\") => format!("\\begin{{matrix}}{}\\end{{matrix}}", entries[i]),
+                    true => entries[i].clone(),
+                    false => filler.clone(),
+                })
+            }
+            // spaced text: \qq{text} is \quad\text{text}\quad, without the first \quad when starred
+            "qq" | "qqtext" => {
+                let lead = if starred(self) { "" } else { "\\quad" };
+                format!("{lead}\\text{{{}}}\\quad ", self.raw_text()?)
+            }
+            "qc" | "qcomma" => ",\\quad ".into(),
+            "qcc" | "qif" | "qthen" | "qelse" | "qotherwise" | "qunless" | "qgiven" | "qusing" | "qassume" | "qsince" | "qlet" | "qfor" | "qall" | "qeven" | "qodd"
+            | "qinteger" | "qand" | "qor" | "qas" | "qin" => {
+                let lead = if starred(self) { "" } else { "\\quad" };
+                let word = if name == "qcc" { "c.c." } else { &name[1..] };
+                format!("{lead}\\text{{{word}}}\\quad ")
+            }
+            // the variation δ, written like the differential \dd
+            "var" | "variation" => {
+                let order = self.raw_optional();
+                let power = order.map(|n| format!("^{{{n}}}")).unwrap_or_default();
+                let x = self.optional_braced()?.unwrap_or_default();
+                format!("\\mathop{{}}\\!\\delta{power} {x} ")
+            }
+            "pv" | "principalvalue" | "PV" => {
+                let symbol = if name == "PV" { "\\mathrm{P.V.}" } else { "\\mathcal{P}" };
+                let x = self.optional_braced()?.map(|x| format!("{{{x}}}")).unwrap_or_default();
+                format!("{symbol}{x}")
+            }
+            "op" => "\\dyad".into(),
+            // the vacuum expectation value ⟨0|x|0⟩
+            "vev" => format!("\\expval{{{}}}{{0}}", self.raw_text()?),
+            // the same flat fraction as \dv* (#157)
+            "flatfrac" => {
+                let a = self.raw_text()?;
+                let b = self.raw_text()?;
+                physics_fraction(true, a, b)
+            }
+            "Trace" => "\\operatorname{Tr}".into(),
+            "Residue" => "\\operatorname{Res}".into(),
+            "asin" | "acos" | "atan" | "acsc" | "asec" | "acot" => format!("\\operatorname{{{name}}}"),
+            "asine" | "acosine" | "atangent" | "acosecant" | "asecant" | "acotangent" => format!("\\operatorname{{a{}}}", physics_long_name(&name[1..]).unwrap_or_default()),
+            // physics' bold nabla (its default, bolddel), as \grad draws it
+            "vnabla" | "gradientnabla" => "\\unicode{1D6C1} ".into(),
+            // the upright d of the package's default (uprightdiff)
+            "diffd" => "\\mathrm{d}".into(),
+            // physics' \real and \imaginary are LaTeX's \Re and \Im (ℜ, ℑ), kept by the package when it
+            // redefines those two as the operators Re and Im, which mathra does not do
+            "real" => "\\Re ".into(),
+            "imaginary" => "\\Im ".into(),
+            long => match physics_long_name(long) {
+                Some(short) => format!("\\{short} "),
+                None => return Ok(None),
+            },
+        }))
+    }
+
+    /// The number of rows or columns of a generated physics matrix.
+    fn matrix_size(&mut self, name: &str, col: usize) -> R<usize> {
+        let raw = self.raw_text()?;
+        self.size_of(name, &raw, col)
+    }
+
+    fn size_of(&self, name: &str, raw: &str, col: usize) -> R<usize> {
+        match raw.trim().parse::<usize>() {
+            Ok(n) if (1..=64).contains(&n) => Ok(n),
+            _ => self.error(col, format!("\\{name} needs a size from 1 to 64, not {:?}", raw.trim())),
+        }
     }
 }
 
@@ -4758,7 +5314,8 @@ impl Reader<'_> {
         // ASCII names only: a character like '∠' after the backslash has no prefix to cut
         for cut in (2..if name.is_ascii() { name.len() } else { 0 }).rev() {
             let (prefix, remainder) = name.split_at(cut);
-            if known(prefix) {
+            // #174: \text… names are textcomp's symbols (\textcelsius, \textbaht), not \text and a word
+            if known(prefix) && prefix != "text" {
                 self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\{prefix} {remainder}"))?;
                 self.inject(start, &format!("\\{prefix} {remainder}"), col)?;
                 return Ok(None);

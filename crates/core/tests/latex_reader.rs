@@ -397,6 +397,18 @@ fn not_negates_or_strikes() {
 }
 
 #[test]
+fn slashed_is_the_feynman_slash() {
+    has(&tree(r"\slashed{D}"), &["Canceled { base: Identifier { name: \"D\"", "shape: Slash"]);
+    has(&tree(r"i\slashed{\partial}\psi"), &["Canceled { base: Operator { symbol: '∂'", "shape: Slash"]);
+    // \declareslashed is read and not applied: the next \slashed is the plain one
+    assert_eq!(tree(r"\declareslashed{}{/}{.2}{0}{D}\slashed{D}"), tree(r"\slashed{D}"));
+    // the Standard Model Lagrangian of the issue, refused today in strict mode
+    let lagrangian = r"\mathcal{L}_{\text{MP}} = -\frac{1}{4} F_{\mu\nu} F^{\mu\nu} + i \bar{\psi} \slashed{D} \psi + \text{h.c.} + \bar{\psi}_i \, y_{ij} \, \psi_j \, \phi + \text{h.c.} + \left| D_\mu \phi \right|^2 - V(\phi)";
+    let r = convert(lagrangian, &Options { strict: true, ..Options::default() }).unwrap();
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+}
+
+#[test]
 fn fixed_size_delimiters() {
     for (tex, class, size) in [(r"\bigl(", "Open", 1), (r"\Bigr)", "Close", 2), (r"\biggm|", "Rel", 3), (r"\Bigg\{", "Ord", 4), (r"\big(", "Open", 1), (r"\big|", "Ord", 1)] {
         has(&tree(tex), &[&format!("class: {class}, size: {size}")]);
@@ -729,6 +741,29 @@ fn square_brackets_and_arrows_under_and_over() {
         has(&tree(&format!(r"\{name}{{AB}}")), &[&format!("accent: '{arrow}', stretchy: true, below: true")]);
     }
     has(&tree(r"\arc{AB}"), &["accent: '⏜', stretchy: true, below: false"]);
+}
+
+#[test]
+fn accents_of_esvect_accents_mathabx_and_katex() {
+    // esvect's \vv is \overrightarrow; \vv*{x}{i} puts the index after the arrow
+    assert_eq!(tree(r"\vv{AB}"), tree(r"\overrightarrow{AB}"));
+    has(&tree(r"\vv*{u}{1}"), &["Scripts { base: Accent { base: Identifier { name: \"u\"", "accent: '→', stretchy: true", "Number { value: \"1\""]);
+    // accents' \underaccent: an accent command's mark under the base, at its own size; any other mark
+    // in scriptscript style
+    has(&tree(r"\underaccent{\tilde}{x}"), &["accent: '\\u{303}', stretchy: false, below: true"]);
+    has(&tree(r"\underaccent{\widehat}{AB}"), &["accent: '\\u{302}', stretchy: true, below: true"]);
+    has(&tree(r"\underaccent{\star}{X}"), &["Stacked { base: Identifier { name: \"X\"", "above: None, below: Some(Style { level: 3"]);
+    // \accentset: the mark over the base in scriptscript style, an ordinary atom (not \overset's class)
+    has(&tree(r"\accentset{\star}{X}"), &["Stacked { base: Identifier { name: \"X\"", "above: Some(Style { level: 3"]);
+    assert!(!tree(r"\accentset{\star}{=}").contains("ForcedClass"));
+    // mathabx
+    has(&tree(r"\widebar{AB}"), &["accent: '\\u{304}', stretchy: true, below: false"]);
+    has(&tree(r"\widering{AB}"), &["Accent { base: Accent { base: Row", "accent: '⏜', stretchy: true", "accent: '\\u{30a}', stretchy: false"]);
+    assert_eq!(tree(r"\undertilde{AB}"), tree(r"\utilde{AB}"));
+    // KaTeX
+    has(&tree(r"\Overrightarrow{AB}"), &["accent: '⇒', stretchy: true, below: false"]);
+    has(&tree(r"\overlinesegment{AB}"), &["accent: '\\u{20e9}', stretchy: true, below: false"]);
+    has(&tree(r"\underlinesegment{AB}"), &["accent: '\\u{20e9}', stretchy: true, below: true"]);
 }
 
 #[test]
@@ -1326,15 +1361,17 @@ fn unknown_negation_of_a_known_relation_reads_as_not() {
 /// name is a LaTeX text command, or a longer run when the input shows another JSON escape.
 #[test]
 fn unknown_commands_starting_with_n_r_t_are_not_json() {
-    for name in ["real", "rrceil", "rArr", "rowcolor", "refeq", "newcolumntype", "numberwithin", "th", "raise", "noexpand", "reals"] {
+    // (\real, \rArr, \reals, \th, \rowcolor, \newcolumntype and \refeq, the first examples, are read
+    // since the enhancements of 2026-11b: unknown names of the same shapes take their place)
+    for name in ["raisetag", "rrceil", "rescale", "nonscript", "rowsep", "nobreak", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
         let tex = format!(r"x \{name}");
         let (_, warnings) = tolerant(&tex);
         assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");
         assert!(warnings.iter().any(|w| w.starts_with("E-REC-1")), "{tex}: {warnings:?}");
         assert!(strict_error(&tex).contains("unsupported command"), "{tex}");
     }
-    // \real{z} keeps its first letter: drawn in red, not "ealz"
-    has(&recovers(r"\real{z}", "E-REC-1"), &["\\\\real", "\"z\""]);
+    // \raisetag{z} keeps its first letter: drawn in red, not "aisetagz"
+    has(&recovers(r"\raisetag{z}", "E-REC-1"), &["\\\\raisetag", "\"z\""]);
     // the message names the escape that was read
     let (_, warnings) = tolerant(r"x\rb");
     assert!(warnings.iter().any(|w| w.contains(r"JSON '\r' read as a line break")), "{warnings:?}");
@@ -1449,7 +1486,7 @@ fn every_new_symbol_is_in_the_font() {
                  oslash ltimes rtimes leftthreetimes rightthreetimes barwedge veebar curlywedge curlyvee Cap Cup dotplus divideontimes \
                  centerdot lhd rhd unlhd unrhd doublebarwedge sphericalangle Diamond surd hslash triangledown diagup diagdown backprime \
                  Finv Bbbk circledS standardstate hdots digamma Digamma varkappa iiiint varoiint intclockwise varointclockwise \
-                 ointctrclockwise fint sqint idotsint i j";
+                 ointctrclockwise ointclockwise varointctrclockwise fint sqint idotsint dotsint i j";
     for name in names.split_whitespace() {
         let tex = format!(r"a \{name} b");
         let r = convert(&tex, &Options { strict: true, ..Options::default() });
@@ -1466,14 +1503,27 @@ fn greek_variants_dotless_letters_and_arg_max() {
 
 #[test]
 fn more_integrals_keep_their_limits_on_the_side() {
-    for (name, symbol) in [("iiiint", '⨌'), ("varoiint", '∯'), ("intclockwise", '∱'), ("varointclockwise", '∲'), ("ointctrclockwise", '∳'), ("fint", '⨏'), ("sqint", '⨖')]
-    {
+    for (name, symbol) in [
+        ("iiiint", '⨌'),
+        ("varoiint", '∯'),
+        ("intclockwise", '∱'),
+        ("varointclockwise", '∲'),
+        ("ointctrclockwise", '∳'),
+        ("ointclockwise", '∲'),
+        ("varointctrclockwise", '∳'),
+        ("fint", '⨏'),
+        ("sqint", '⨖'),
+    ] {
         has(&tree(&format!(r"\{name}_V f")), &[&format!("LargeOperator {{ symbol: '{symbol}'")]);
         let speech = convert(&format!(r"\{name}_V f"), &Options::default()).unwrap().speech;
         assert!(speech.starts_with("integral over V"), "{name}: {speech}");
     }
     // \idotsint is ∫⋯∫, and the subscript goes on the last integral
     has(&tree(r"\idotsint_V f"), &["LargeOperator { symbol: '∫'", "'⋯'", "sub: Some(Identifier { name: \"V\""]);
+    // esint's \dotsint is the same
+    assert_eq!(tree(r"\dotsint_V f"), tree(r"\idotsint_V f"));
+    // \sqiint (a double integral with a square loop) has no character and no faithful composite: unsupported
+    assert!(convert(r"\sqiint_S F", &Options { strict: true, ..Options::default() }).is_err());
 }
 
 #[test]

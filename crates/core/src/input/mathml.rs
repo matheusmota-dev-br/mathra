@@ -187,6 +187,7 @@ impl Reader<'_> {
             // KaTeX writes \mathbb{1} as <mn mathvariant="double-struck">1</mn>: the symbol 𝟙, as from LaTeX
             "mn" if variant == Variant::DoubleStruck && text_of(node).trim().len() == 1 => self.identifier(node, variant),
             "mn" => self.number(node),
+            "mo" if slashed(&text_of(node)).is_some() => slashed_symbol(&text_of(node)),
             "mo" => match spaced(node, operator(&text_of(node))) {
                 // a word with limits that move aside in inline style: \operatorname*{argmax}
                 Node::Function { name, .. } if node.attribute("movablelimits") == Some("true") => Node::Function { name, limits: true },
@@ -318,6 +319,15 @@ impl Reader<'_> {
     fn identifier(&mut self, node: Xml, variant: Variant) -> Node {
         let mut t = text_of(node);
         let mut explicit = node.attribute("mathvariant").and_then(parse_variant);
+        // X̸, the Feynman slash (`\slashed`): two characters, which MathML Core does not italicize
+        if let Some(c) = slashed(&t) {
+            let base = match math_letters(&c.to_string()) {
+                Some((plain, v)) => Node::Identifier { name: plain, variant: v },
+                None if c.is_alphabetic() => Node::Identifier { name: c.to_string(), variant: explicit.unwrap_or(Variant::Upright) },
+                None => operator(&c.to_string()),
+            };
+            return Node::Canceled { base: Box::new(base), shape: Cancel::Slash };
+        }
         // Unicode's mathematical letters (𝐱, ℝ), as MathML Core writes a variant: the letter and its variant
         if let Some((plain, v)) = math_letters(&t) {
             t = plain;
@@ -417,7 +427,15 @@ impl Reader<'_> {
         };
         if let Some(o) = over {
             let said = node.attribute("accent") == Some("true");
-            match decoration(&o, true, accent).or_else(|| other_accent(&o, said, if name == "munderover" { 2 } else { 1 }, false)) {
+            let at = if name == "munderover" { 2 } else { 1 };
+            // a macron said to stretch is a bar accent that widens with its base (mathabx's \widebar)
+            let widened = |d: Decoration| match d {
+                Decoration::Accent('\u{0304}', false, false) if elements.get(at).is_some_and(|e| e.attribute("stretchy") == Some("true")) => {
+                    Decoration::Accent('\u{0304}', true, false)
+                }
+                other => other,
+            };
+            match decoration(&o, true, accent).map(widened).or_else(|| other_accent(&o, said, at, false)) {
                 Some(d) => out = d.apply(out),
                 None => above_left = Some(o),
             }
@@ -698,7 +716,21 @@ fn math_letter(c: char) -> Option<(char, Variant)> {
     if !(('\u{1D400}'..='\u{1D7FF}').contains(&c) || letterlike.contains(c)) {
         return None;
     }
-    let variants = [Variant::Italic, Variant::Bold, Variant::BoldItalic, Variant::Calligraphic, Variant::Fraktur, Variant::DoubleStruck, Variant::SansSerif, Variant::Monospace];
+    let variants = [
+        Variant::Italic,
+        Variant::Bold,
+        Variant::BoldItalic,
+        Variant::Calligraphic,
+        Variant::Fraktur,
+        Variant::DoubleStruck,
+        Variant::SansSerif,
+        Variant::Monospace,
+        Variant::BoldScript,
+        Variant::BoldFraktur,
+        Variant::BoldSansSerif,
+        Variant::SansSerifItalic,
+        Variant::SansSerifBoldItalic,
+    ];
     let plain = ('A'..='Z').chain('a'..='z').chain('0'..='9').chain('Α'..='Ω').chain('α'..='ω').chain("ϵϑϰϕϱϖıȷ".chars());
     for p in plain {
         for v in variants {
@@ -725,9 +757,15 @@ fn parse_variant(v: &str) -> Option<Variant> {
         "bold" => Variant::Bold,
         "bold-italic" => Variant::BoldItalic,
         "double-struck" => Variant::DoubleStruck,
-        "script" | "bold-script" => Variant::Calligraphic,
-        "fraktur" | "bold-fraktur" => Variant::Fraktur,
-        "sans-serif" | "bold-sans-serif" | "sans-serif-italic" | "sans-serif-bold-italic" => Variant::SansSerif,
+        "script" => Variant::Calligraphic,
+        "fraktur" => Variant::Fraktur,
+        "sans-serif" => Variant::SansSerif,
+        // #173
+        "bold-script" => Variant::BoldScript,
+        "bold-fraktur" => Variant::BoldFraktur,
+        "bold-sans-serif" => Variant::BoldSansSerif,
+        "sans-serif-italic" => Variant::SansSerifItalic,
+        "sans-serif-bold-italic" => Variant::SansSerifBoldItalic,
         "monospace" => Variant::Monospace,
         _ => return None,
     })
@@ -760,6 +798,22 @@ fn number_value(t: &str, locale: Locale) -> Option<(String, Option<char>)> {
     }
     let canonical = if locale.comma_is_decimal() { t.replace(',', ".") } else { t.to_string() };
     (canonical.matches('.').count() <= 1 && canonical.chars().all(|c| c.is_ascii_digit() || c == '.')).then_some((canonical, None))
+}
+
+/// The symbol of a token written X̸ (X and the combining long solidus overlay, U+0338): slashed.sty's
+/// Feynman slash, as mathra's MathML writes `\slashed{X}`.
+fn slashed(t: &str) -> Option<char> {
+    let mut chars = t.trim().chars();
+    match (chars.next(), chars.next(), chars.next()) {
+        (Some(c), Some('\u{0338}'), None) => Some(c),
+        _ => None,
+    }
+}
+
+/// `<mo>∂̸</mo>`: the slashed symbol.
+fn slashed_symbol(t: &str) -> Node {
+    let base = slashed(t).map_or_else(|| Node::row(vec![]), |c| operator(&c.to_string()));
+    Node::Canceled { base: Box::new(base), shape: Cancel::Slash }
 }
 
 /// `<mo>`: the class of the character, a large operator, or a function name (`lim`, `max`).
@@ -831,6 +885,9 @@ fn large_operator(c: char) -> Option<char> {
             | '∳'
             | '⨏'
             | '⨖'
+            // #176: stmaryrd's \bigsqcap and \biginterleave
+            | '⨅'
+            | '⫼'
     )
     .then_some(c)
 }

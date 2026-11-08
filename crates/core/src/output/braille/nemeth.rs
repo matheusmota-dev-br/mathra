@@ -246,6 +246,12 @@ impl Writer {
             }
             Node::Arrow { symbol, above, below } => self.labeled_arrow(*symbol, above.as_deref(), below.as_deref(), ctx),
             Node::Stacked { base, above, below } => self.modified(base, below.as_deref(), above.as_deref(), ctx),
+            // the Feynman slash is not a cancellation, and the code has no overlay sign for it: the base,
+            // then the full cell for the slash overlay (S-BRL-1)
+            Node::Canceled { base, shape: Cancel::Slash } => {
+                self.node(base, ctx);
+                self.missing(ctx, '\u{0338}');
+            }
             // cancellation indicators around the canceled expression (§12)
             Node::Canceled { base, .. } => {
                 self.put(ctx, "⠪", Kind::Other);
@@ -556,6 +562,7 @@ impl Writer {
     }
 
     fn scripts(&mut self, base: &Node, sup: Option<&Node>, sub: Option<&Node>, ctx: &Ctx) {
+        let base = base.operator_core();
         // Σ, ∏, lim, max…: limits under and over, as a modified expression (§15)
         let limits = match base {
             // integrals take their bounds as scripts (Ex. 23-16), unless print stacks them (Ex. 23-17)
@@ -638,7 +645,8 @@ impl Writer {
 
     fn accent(&mut self, base: &Node, accent: char, below: bool, ctx: &Ctx) {
         let modifier = match accent {
-            '\u{0304}' => "156",
+            // the line segment with a tick at each end (KaTeX's \overlinesegment) as the bar of a segment
+            '\u{0304}' | '\u{20E9}' => "156",
             '\u{0302}' => "456 126",
             '\u{20D7}' | '→' => "1246 135",
             '\u{0307}' => "16",
@@ -872,11 +880,13 @@ fn typeform(c: char, variant: Variant) -> &'static str {
         (Variant::Bold | Variant::BoldItalic, true) => "⠸",
         (Variant::DoubleStruck, false) => "⠠⠸⠰",
         (Variant::DoubleStruck, true) => "⠠⠸",
-        (Variant::Calligraphic, false) => "⠈⠰",
-        (Variant::Calligraphic, true) => "⠈",
-        (Variant::SansSerif, false) => "⠠⠨⠰",
-        (Variant::SansSerif, true) => "⠠⠨",
-        (Variant::Fraktur, false) => "⠸",
+        // #173: the bold and italic forms of script, Fraktur and sans-serif take the indicator of their
+        // alphabet (this module follows no rule of the code for the combined typeforms)
+        (Variant::Calligraphic | Variant::BoldScript, false) => "⠈⠰",
+        (Variant::Calligraphic | Variant::BoldScript, true) => "⠈",
+        (Variant::SansSerif | Variant::BoldSansSerif | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, false) => "⠠⠨⠰",
+        (Variant::SansSerif | Variant::BoldSansSerif | Variant::SansSerifItalic | Variant::SansSerifBoldItalic, true) => "⠠⠨",
+        (Variant::Fraktur | Variant::BoldFraktur, false) => "⠸",
         _ => "",
     }
 }
@@ -1032,7 +1042,7 @@ fn sign(c: char) -> Option<(&'static str, Kind)> {
 fn is_function(n: &Node) -> bool {
     match n {
         Node::Function { .. } => true,
-        Node::Scripts { base, .. } => matches!(**base, Node::Function { .. }),
+        Node::Scripts { base, .. } => matches!(base.operator_core(), Node::Function { .. }),
         _ => false,
     }
 }
