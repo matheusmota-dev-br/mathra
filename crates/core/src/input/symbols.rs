@@ -588,8 +588,67 @@ const COMMANDS: &[(&str, char, Class)] = {
         // unicode-math
         ("imageof", '⊷', Rel),
         ("origof", '⊶', Rel),
+        // #172: KaTeX's texvc aliases (its macros.ts, "texvc.sty"), the ones that are one symbol, each as
+        // the command KaTeX expands it to; the rest are in `texvc_macro`
+        ("alef", 'ℵ', Ord),
+        ("alefsym", 'ℵ', Ord),
+        ("bull", '•', Bin),
+        ("clubs", '♣', Ord),
+        ("diamonds", '♢', Ord),
+        ("hearts", '♡', Ord),
+        ("spades", '♠', Ord),
+        ("Dagger", '‡', Bin),
+        ("empty", '∅', Ord),
+        ("exist", '∃', Ord),
+        ("image", 'ℑ', Ord),
+        ("infin", '∞', Ord),
+        ("isin", '∈', Rel),
+        ("plusmn", '±', Bin),
+        ("real", 'ℜ', Ord),
+        ("sdot", '·', Bin),
+        ("sect", '§', Ord),
+        ("sub", '⊂', Rel),
+        ("sube", '⊆', Rel),
+        ("supe", '⊇', Rel),
+        ("weierp", '℘', Ord),
+        ("lang", '⟨', Open),
+        ("rang", '⟩', Close),
+        ("darr", '↓', Rel),
+        ("dArr", '⇓', Rel),
+        ("Darr", '⇓', Rel),
+        ("uarr", '↑', Rel),
+        ("uArr", '⇑', Rel),
+        ("Uarr", '⇑', Rel),
+        ("larr", '←', Rel),
+        ("lArr", '⇐', Rel),
+        ("Larr", '⇐', Rel),
+        ("rarr", '→', Rel),
+        ("rArr", '⇒', Rel),
+        ("Rarr", '⇒', Rel),
+        ("harr", '↔', Rel),
+        ("hArr", '⇔', Rel),
+        ("Harr", '⇔', Rel),
+        ("lrarr", '↔', Rel),
+        ("lrArr", '⇔', Rel),
+        ("Lrarr", '⇔', Rel),
     ]
 };
+
+/// #172: KaTeX's texvc aliases that are more than one symbol, as KaTeX expands them (its macros.ts and,
+/// for `\bold` and `\frak`, font.ts). An author's `\newcommand` or `\def` of the same name comes first.
+/// The operators (`\sh`, `\ctg`, `\plim`…) are in [`function`].
+pub fn texvc_macro(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "N" | "natnums" => "\\mathbb{N}",
+        "R" | "Reals" | "reals" => "\\mathbb{R}",
+        "Z" => "\\mathbb{Z}",
+        "cnums" | "Complex" => "\\mathbb{C}",
+        "thetasym" => "\\vartheta ",
+        "bold" => "\\mathbf ",
+        "frak" => "\\mathfrak ",
+        _ => return None,
+    })
+}
 
 /// The commands by name, and the class of each character.
 type Table = (HashMap<&'static str, Symbol>, HashMap<char, Class>);
@@ -773,6 +832,15 @@ pub fn function(name: &str) -> Option<(&'static str, bool)> {
         "Pr" => ("Pr", true),
         "argmax" => ("arg max", true),
         "argmin" => ("arg min", true),
+        // #172: KaTeX's texvc operators, read as the functions they name, as \cotg and \senh are;
+        // \plim is statmath's (KaTeX: \mathop{\operatorname{plim}}\limits)
+        "ctg" => ("cot", false),
+        "arcctg" => ("arccot", false),
+        "sh" => ("sinh", false),
+        "ch" => ("cosh", false),
+        "th" => ("tanh", false),
+        "cth" => ("coth", false),
+        "plim" => ("plim", true),
         _ => return None,
     })
 }
@@ -858,6 +926,13 @@ pub fn delimiter_command(name: &str) -> Option<Option<char>> {
         "Arrowvert" => '‖',
         "bracevert" => '⎪',
         "backslash" => '\\',
+        // #172: KaTeX's texvc aliases of delimiters (KaTeX expands them before \left reads one)
+        "lang" => '⟨',
+        "rang" => '⟩',
+        "uarr" => '↑',
+        "darr" => '↓',
+        "uArr" | "Uarr" => '⇑',
+        "dArr" | "Darr" => '⇓',
         _ => return None,
     }))
 }

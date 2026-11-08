@@ -4494,7 +4494,8 @@ impl Reader<'_> {
             }
             _ => {
                 let _ = col;
-                return Ok(None);
+                // #172: KaTeX's texvc aliases (\R, \cnums, \bold…)
+                return Ok(symbols::texvc_macro(name).map(str::to_string));
             }
         }))
     }
