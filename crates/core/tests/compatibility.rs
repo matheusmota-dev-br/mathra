@@ -884,3 +884,28 @@ fn a_tree_node_stays_small() {
     let size = std::mem::size_of::<Node>();
     assert!(size <= 176, "Node is {size} bytes");
 }
+
+/// #204: MathJax's \unicode reads a bare number as decimal and `x…` or `0x…` as hexadecimal; TeX's \char
+/// keeps its own reading (decimal, "hex, 'octal), and the commands that expand to \unicode keep theirs.
+#[test]
+fn unicode_reads_decimal_as_mathjax() {
+    for options in [strict(), Options::default()] {
+        for (tex, text) in [
+            (r"\unicode{8918}", "⋖"),
+            (r"\unicode{x22D6}", "⋖"),
+            (r"\unicode{0x22D6}", "⋖"),
+            (r"\unicode{X22D6}", "⋖"),
+            (r"\unicode{U+22D6}", "⋖"),
+            (r"\unicode{65}", "A"),
+            (r"\unicode{8918} \quad \unicode{x22D6}", "⋖ ⋖"),
+            (r#"\char65 \char"41 \char'101 \char`A"#, "AAAA"),
+            (r"\grad f", "𝛁f"),
+        ] {
+            let out = convert(tex, &options).unwrap_or_else(|e| panic!("{tex}: {e}"));
+            assert!(out.warnings.is_empty(), "{tex}: {:?}", out.warnings);
+            assert_eq!(out.text, text, "{tex}");
+        }
+    }
+    // a decimal code point out of Unicode's range is not a character
+    assert!(convert(r"\unicode{99999999}", &strict()).is_err());
+}

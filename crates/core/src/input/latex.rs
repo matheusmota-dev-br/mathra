@@ -1644,9 +1644,7 @@ impl Reader<'_> {
                     self.raw_optional();
                 }
                 let raw = self.raw_text()?;
-                let code = raw.trim().trim_start_matches("0x").trim_start_matches(['x', 'X', '#', 'U', '+']);
-                let c = u32::from_str_radix(code, 16).ok().and_then(char::from_u32);
-                match c {
+                match unicode_code_point(&raw) {
                     Some(c) => Node::Operator { symbol: c, class: Class::Ord },
                     None => return self.error(col, format!("\\unicode{{{raw}}}: invalid code point")),
                 }
@@ -4192,7 +4190,7 @@ impl Reader<'_> {
                         format!("\\Newextarrow{{\\{target}}}: U+{:04X} has no extensible form in mathra", symbol as u32),
                         "drawn with its labels over and under it, not stretched",
                     )?;
-                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{{:X}}}}}}}}}", symbol as u32)
+                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{x{:X}}}}}}}}}", symbol as u32)
                 } else {
                     format!("\\{known}[#1]{{#2}}")
                 };
@@ -4910,7 +4908,7 @@ impl Reader<'_> {
                     }
                     let c = self.current().ok_or(Error::Syntax { column: col, message: "\\char` without a character".into() })?;
                     self.pos += 1;
-                    return Ok(Some(format!("\\unicode{{{:X}}}", c as u32)));
+                    return Ok(Some(format!("\\unicode{{x{:X}}}", c as u32)));
                 }
                 let (radix, digits): (u32, fn(char) -> bool) = match self.current() {
                     Some('"') => (16, |c| c.is_ascii_hexdigit()),
@@ -4923,7 +4921,7 @@ impl Reader<'_> {
                 let code: String = self.c[self.pos..].iter().take_while(|c| digits(**c)).collect();
                 self.pos += code.chars().count();
                 match u32::from_str_radix(&code, radix).ok().and_then(char::from_u32).filter(|c| !c.is_control()) {
-                    Some(c) => format!("\\unicode{{{:X}}}", c as u32),
+                    Some(c) => format!("\\unicode{{x{:X}}}", c as u32),
                     None => return self.error(col, format!("\\char needs a character code, not \"{code}\"")),
                 }
             }
@@ -4985,9 +4983,9 @@ impl Reader<'_> {
                 }
             }
             // physics' vector calculus: the nabla in bold (U+1D6C1), like the package
-            "grad" | "gradient" => "\\unicode{1D6C1} ".into(),
-            "divergence" => "\\unicode{1D6C1} \\cdot ".into(),
-            "curl" | "rot" => "\\unicode{1D6C1} \\times ".into(),
+            "grad" | "gradient" => "\\unicode{x1D6C1} ".into(),
+            "divergence" => "\\unicode{x1D6C1} \\cdot ".into(),
+            "curl" | "rot" => "\\unicode{x1D6C1} \\times ".into(),
             "laplacian" => "\\nabla^{2} ".into(),
             "cross" | "crossproduct" | "cp" => "\\times ".into(),
             "vdot" | "dotproduct" => "\\cdot ".into(),
@@ -5253,7 +5251,7 @@ impl Reader<'_> {
             "asin" | "acos" | "atan" | "acsc" | "asec" | "acot" => format!("\\operatorname{{{name}}}"),
             "asine" | "acosine" | "atangent" | "acosecant" | "asecant" | "acotangent" => format!("\\operatorname{{a{}}}", physics_long_name(&name[1..]).unwrap_or_default()),
             // physics' bold nabla (its default, bolddel), as \grad draws it
-            "vnabla" | "gradientnabla" => "\\unicode{1D6C1} ".into(),
+            "vnabla" | "gradientnabla" => "\\unicode{x1D6C1} ".into(),
             // the upright d of the package's default (uprightdiff)
             "diffd" => "\\mathrm{d}".into(),
             // physics' \real and \imaginary are LaTeX's \Re and \Im (ℜ, ℑ), kept by the package when it
@@ -5709,4 +5707,17 @@ fn comments(s: &str) -> (String, Vec<usize>) {
         }
     }
     (output, starts)
+}
+
+/// #204: the code point of `\unicode{…}`, as MathJax reads it: decimal (`8918`), hexadecimal after `x` or
+/// `0x` (`x22D6`, `0x22D6`); `U+22D6` and `#22D6` stay hexadecimal, as mathra read them before.
+#[inline(never)]
+fn unicode_code_point(raw: &str) -> Option<char> {
+    let code = raw.trim();
+    let hex = ["0x", "0X", "x", "X", "U+", "u+", "#"].iter().find_map(|p| code.strip_prefix(p));
+    match hex {
+        Some(h) => u32::from_str_radix(h, 16).ok(),
+        None => code.parse::<u32>().ok(),
+    }
+    .and_then(char::from_u32)
 }
