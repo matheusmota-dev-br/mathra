@@ -134,8 +134,8 @@ fn closings_without_opening_at_top() {
 #[test]
 fn special_atoms() {
     has(&tree("a~b"), &["Space"]);
-    // a dollar sign in the middle: a leftover delimiter
-    has(&tree("a$b"), &["\"a\"", "\"b\""]);
+    // a dollar sign in the middle: a leftover delimiter, ignored with a warning (TeX would leave math mode)
+    has(&recovers("a$b", "E-REC-9"), &["\"a\"", "\"b\""]);
     has(&recovers("a # b", "E-REC-9"), &["'#'"]);
     has(&tree("a*b"), &["'∗'"]);
 }

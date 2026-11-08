@@ -433,7 +433,8 @@ impl Reader<'_> {
                 vec![Node::Space { em: 0.333 }]
             }
             '$' => {
-                // a stray dollar sign in the middle of the equation: a leftover delimiter
+                // a stray dollar sign in the middle of the equation: a leftover delimiter (TeX would leave math mode)
+                self.tolerate(rules::E_REC_9, col, "'$' in the middle of the equation", "ignored")?;
                 self.pos += 1;
                 vec![]
             }
@@ -610,6 +611,21 @@ impl Reader<'_> {
         self.nested(|this| this.scripts_unguarded(items))
     }
 
+    /// `y__k`, `x^_2`: a script whose argument is itself `^` or `_`. TeX stops ("Missing { inserted");
+    /// tolerant mode draws the mark as the script, as before, with a warning.
+    fn script_mark_as_argument(&mut self, mark: char) -> R<()> {
+        let saved = self.pos;
+        self.skip_spaces();
+        let col = self.column();
+        let found = self.current().filter(|c| matches!(c, '^' | '_'));
+        self.pos = saved;
+        if let Some(second) = found {
+            let which = if mark == '^' { "superscript" } else { "subscript" };
+            self.tolerate(rules::E_REC_3, col, format!("'{second}' right after '{mark}': the {which} has no argument"), &format!("'{second}' drawn as the {which}"))?;
+        }
+        Ok(())
+    }
+
     fn scripts_unguarded(&mut self, items: &mut Vec<Node>) -> R<()> {
         // x_1_2_3…: each double script starts over on an empty base, in a loop (not by recursion)
         'index: loop {
@@ -648,6 +664,7 @@ impl Reader<'_> {
                     }
                     Some('^') if sup.is_none() || only_primes(&sup) => {
                         self.pos += 1;
+                        self.script_mark_as_argument('^')?;
                         let arg = self.argument()?;
                         sup = Some(match sup {
                             None => arg,
@@ -656,6 +673,7 @@ impl Reader<'_> {
                     }
                     Some('_') if sub.is_none() => {
                         self.pos += 1;
+                        self.script_mark_as_argument('_')?;
                         sub = Some(self.argument()?);
                     }
                     Some(c @ ('^' | '_')) => {

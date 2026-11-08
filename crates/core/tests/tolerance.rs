@@ -144,6 +144,34 @@ fn e_rec_10_unknown_mathml() {
 }
 
 #[test]
+fn e_rec_9_stray_dollar_in_the_middle() {
+    assert_eq!(tolerant(r"a + b $ = c").text, "a + b = c");
+    assert_eq!(warning_rules(r"a + b $ = c"), vec!["E-REC-9"]);
+    assert!(strict(r"a + b $ = c").is_err());
+    // the outer delimiters are L-ENT-2, not a stray dollar
+    for tex in [r"$a + b = c$", r"$$a + b = c$$"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert_eq!(strict(tex).unwrap().text, "a + b = c");
+    }
+}
+
+#[test]
+fn e_rec_3_script_mark_as_the_argument_of_a_script() {
+    // TeX: "Missing { inserted"
+    for tex in [r"y__k", r"x^^2", r"x_^2", r"x^ _2"] {
+        assert_eq!(warning_rules(tex), vec!["E-REC-3"], "{tex}");
+        assert!(strict(tex).is_err(), "{tex}");
+    }
+    // the drawing is the one from before: the mark is the script
+    assert_eq!(tolerant(r"y__k").text, "y__k");
+    // what was valid stays valid
+    for tex in [r"y_{_k}", r"x_1^2", r"x^2_1", r"{}_a^b"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert!(strict(tex).is_ok(), "{tex}");
+    }
+}
+
+#[test]
 fn e_rec_9_percent_starts_a_comment() {
     // TeX: '%' drops the rest of the line, the line break and the next line's leading spaces
     assert_eq!(strict(r"p = 15% \cdot q").unwrap().text, "p = 15");
