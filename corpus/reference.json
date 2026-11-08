@@ -1377,6 +1377,18 @@
     },
     {
      "tex": "\\ce{A <-->[k_1][k_{-1}] B}"
+    },
+    {
+     "tex": "\\ce{sodium chloride -> sodium + chlorine}"
+    },
+    {
+     "tex": "\\ce{A ->[{text above}][{text below}] B}"
+    },
+    {
+     "tex": "\\ce{A\\bond{~}B\\bond{~-}C\\bond{~=}D\\bond{-~-}E\\bond{....}F}"
+    },
+    {
+     "tex": "\\begin{aligned} \\ce{RNO2 &<=>[+e] RNO2^{-.} \\\\ RNO2^{-.} &<=>[+e] RNO2^2-} \\end{aligned}"
     }
    ]
   },
@@ -1407,6 +1419,12 @@
     },
     {
      "tex": "\\SI{1}{\\angstrom}"
+    },
+    {
+     "tex": "Z = \\complexqty{3+4i}{\\ohm}"
+    },
+    {
+     "tex": "\\DeclareSIUnit{\\parsec}{pc} d = \\qty{1.3}{\\parsec}"
     }
    ]
   },
@@ -1452,6 +1470,18 @@
     },
     {
      "tex": "\\tensor{T}{^\\mu_\\nu}"
+    },
+    {
+     "tex": "\\pmqty{0 & 1 \\\\ 1 & 0} \\quad \\vmqty{a & b \\\\ c & d}"
+    },
+    {
+     "tex": "\\left( i \\slashed{\\partial} - m \\right) \\psi = 0"
+    },
+    {
+     "tex": "\\theta \\approx 0 \\qq{for} \\abs*{\\frac{x}{L}} \\ll 1"
+    },
+    {
+     "tex": "\\sin[2](x) + \\cos[2](x) = 1"
     }
    ]
   },
@@ -1482,6 +1512,12 @@
     },
     {
      "tex": "\\schemestart \\chemfig{**6(------)} \\+ \\ce{Br2} \\arrow{->[\\ce{FeBr3}]} \\chemfig{**6(---(-Br)---)} \\+ \\ce{HBr} \\schemestop"
+    },
+    {
+     "tex": "\\chemfig{H-\\charge{90=\\|,-90=\\|}{O}-H}"
+    },
+    {
+     "tex": "\\schemestart A\\arrow{<=>}[90]B\\merge(c1)(c2)--()C\\schemestop"
     }
    ]
   },
@@ -1512,6 +1548,12 @@
     },
     {
      "tex": "\\xymatrix{ A \\ar@{^{(}->}[r] \\ar@/^/[rr]^{\\phi} & B \\ar@{->>}[r] & C }"
+    },
+    {
+     "tex": "\\xymatrix{ A \\rtwocell^{f}_{g}{\\alpha} & B }"
+    },
+    {
+     "tex": "\\xymatrix{ A \\ar@(ul,ur)[]^{f} \\ar[r] & B }"
     }
    ]
   },
@@ -1585,6 +1627,14 @@
     {
      "mml": "<math><mmultiscripts><mi>C</mi><mprescripts/><mn>6</mn><mn>14</mn></mmultiscripts></math>",
      "tex": "{}^{14}_{6}C"
+    },
+    {
+     "mml": "<math><apply><plus/><apply><power/><ci>x</ci><cn>2</cn></apply><cn>1</cn></apply></math>",
+     "tex": "x^2 + 1"
+    },
+    {
+     "mml": "<math><apply><eq/><apply><sin/><ci>x</ci></apply><cn>0</cn></apply></math>",
+     "tex": "\\sin x = 0"
     }
    ]
   }
