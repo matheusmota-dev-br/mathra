@@ -1,4 +1,6 @@
-//! #176: the stmaryrd and mathabx symbols that Unicode has no character for, drawn by composition.
+//! #176: the stmaryrd and mathabx symbols that Unicode has no character for, drawn by composition;
+//! #267: mhchem's dashed bond and its bonds of more than one kind of line (`\bond{~}`, `\bond{~-}`,
+//! `\bond{~=}`, `\bond{-~-}`) and of four dots (`\bond{....}`), which are not characters either.
 //!
 //! The tree keeps each one as an ordinary symbol node (`Operator`, `LargeOperator`, a delimiter of
 //! `Delimited`) whose character is a marker from the Supplementary Private Use Area-A (U+F0B00 on):
@@ -58,6 +60,11 @@ pub const BIGCURLYWEDGE: char = '\u{F0B19}';
 pub const BIGBOXPLUS: char = '\u{F0B1A}';
 pub const BIGOMINUS: char = '\u{F0B1B}';
 pub const BIGOSLASH: char = '\u{F0B1C}';
+pub const BOND_DASHED_OVER_SINGLE: char = '\u{F0B1D}';
+pub const BOND_DASHED_OVER_DOUBLE: char = '\u{F0B1E}';
+pub const BOND_DASHED_BETWEEN: char = '\u{F0B1F}';
+pub const BOND_FOUR_DOTS: char = '\u{F0B20}';
+pub const BOND_DASHED: char = '\u{F0B21}';
 
 const fn c(symbol: char, command: &'static str, class: Class, text: &'static str, meaning: Option<char>) -> Composite {
     Composite { symbol, command, class, text, meaning }
@@ -103,6 +110,13 @@ pub const ALL: &[Composite] = {
         c(BIGBOXPLUS, "bigboxplus", Op, "⊞", None),
         c(BIGOMINUS, "bigominus", Op, "⊖", None),
         c(BIGOSLASH, "bigoslash", Op, "⊘", None),
+        // mhchem's bonds (mhchem.sty's \mhchem@bond table), written in \ce as \bond{…}: the command
+        // is that, the text the closest Unicode drawing, and the speech says what the lines are
+        c(BOND_DASHED_OVER_SINGLE, "bond{~-}", Ord, "≃", None),
+        c(BOND_DASHED_OVER_DOUBLE, "bond{~=}", Ord, "≅", None),
+        c(BOND_DASHED_BETWEEN, "bond{-~-}", Ord, "≋", None),
+        c(BOND_FOUR_DOTS, "bond{....}", Ord, "····", None),
+        c(BOND_DASHED, "bond{~}", Ord, "┄", None),
     ]
 };
 
@@ -120,6 +134,27 @@ pub fn is(symbol: char) -> bool {
 /// The marker of a command (`llceil`), as a symbol.
 pub fn command(name: &str) -> Option<&'static Composite> {
     ALL.iter().find(|k| k.command == name)
+}
+
+/// The source that reads as a symbol: `\llceil`, or for a bond `\ce{\bond{~-}}`.
+pub fn source(k: &Composite) -> String {
+    if k.command.starts_with("bond{") {
+        format!("\\ce{{\\{}}}", k.command)
+    } else {
+        format!("\\{}", k.command)
+    }
+}
+
+/// The phrase a symbol is read with, when it has its own (the bonds): a key of the locales.
+pub fn speech_key(symbol: char) -> Option<&'static str> {
+    Some(match symbol {
+        BOND_DASHED_OVER_SINGLE => "chem.bond_dashed_over_single",
+        BOND_DASHED_OVER_DOUBLE => "chem.bond_dashed_over_double",
+        BOND_DASHED_BETWEEN => "chem.bond_dashed_between",
+        BOND_FOUR_DOTS => "chem.bond_four_dots",
+        BOND_DASHED => "chem.bond_dashed",
+        _ => return None,
+    })
 }
 
 /// The two characters stmaryrd overlaps for a doubled ceiling or floor.

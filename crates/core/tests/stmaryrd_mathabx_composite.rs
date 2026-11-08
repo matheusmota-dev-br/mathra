@@ -80,7 +80,7 @@ fn close(a: f32, b: f32, tolerance: f32) -> bool {
 #[test]
 fn every_symbol_reads_in_its_class_in_strict_mode() {
     for k in composite::ALL {
-        let tex = format!("\\{}", k.command);
+        let tex = composite::source(k);
         let out = convert(&tex, &strict()).unwrap_or_else(|e| panic!("{tex}: {e}"));
         let expected = match k.class {
             Class::Op => Node::LargeOperator { symbol: k.symbol, limits: None },
@@ -426,7 +426,7 @@ fn the_tree_names_the_symbol_by_its_command() {
     assert!(!private(&json), "{json}");
     // every composite symbol, and the others still their character
     for k in composite::ALL {
-        let json = convert(&format!(r"\{}", k.command), &strict()).unwrap().tree.to_json();
+        let json = convert(&composite::source(k), &strict()).unwrap().tree.to_json();
         assert!(json.contains(&format!(r#""symbol":"\\{}""#, k.command)), "{json}");
     }
     assert!(convert(r"\lceil x \rceil", &strict()).unwrap().tree.to_json().contains(r#""symbol":"⌈""#));

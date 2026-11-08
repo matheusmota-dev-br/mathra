@@ -138,6 +138,13 @@ A curved arrow goes from one hooked atom to another, as a cubic Bézier: it leav
 
 mathra reads a token of `\ce` (up to a space) as a word when it is made of two or more letters, either all lowercase (`heat`, `sodium`) or a capital followed by lowercase letters that is not an element symbol (`Water`, `Hydrogen`, `Água`; `Co`, `He` and `Na` are elements). A word is one text node: drawn upright, read as the word it is (not spelled, not read as elements), written as is in the linear text and in braille. Two formulas or words written apart get a word space of 0.333 em (`sodium chloride`, `NaCl solution`, `Iron(III) oxide`); a coefficient keeps its small space, and operators, arrows, bonds and states their own. A run of capitals (`DNA`) is still a formula: mhchem draws it the same, and nothing in it tells an acronym from elements.
 
+More of mhchem, read from its parser and mhchem.sty:
+
+- **The dashed bond and the bonds of more than one kind of line** (#267). mhchem.sty's `\mhchem@bond` table builds them from overlapped lines: `\bond{~}` is its `\tripledash` alone, three dashes on the middle line (it was ∼ before), `\bond{~-}` a dashed line 0.1 em over a line 0.1 em under, `\bond{~=}` and its spelling `\bond{~--}` a dashed line over two, `\bond{-~-}` a dashed line between two (three lines 0.2 em apart), each dashed line its `\tripledash`, three dashes. `\bond{....}` is four `\cdot`. Unicode has no character for these, so they are symbols drawn by composition (`crate::composite`): the lines at the width and thickness of the font's −, the dots the font's ⋅. The speech says what is drawn ("bond of a dashed line over a line"); the linear text writes the closest character (┄, ≃, ≅, ≋, ····); the tree's JSON names each by its `\bond{…}`.
+- **An arrow label between braces is text** (#268): `->[{text above}][{text below}]` puts the words over and under the arrow as written, spaces and all, with any `$…$` in them as math. Without braces, the label is read as `\ce`.
+- **`$…$` in a subscript or a superscript is math** (#269), mhchem's escape to math as anywhere else in `\ce`: `Fe(CN)_{$\frac{6}{2}$}`, `X^{$n+$}`.
+- **`&` and `\\` belong to the alignment around `\ce`** (#270), as mhchem passes them on: `\ce{A &<=> B \\ B &<=> C}` in `align` is two rows, each cell a `\ce` of its own. An `&` outside braces and `$…$` counts; `\&` is a character.
+
 ## Not yet
 
 - SMILES input, with automatic 2D coordinates (rings first, then chains), so structures can come from databases

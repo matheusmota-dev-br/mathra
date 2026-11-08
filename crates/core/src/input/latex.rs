@@ -1592,10 +1592,10 @@ impl Reader<'_> {
                 }
                 Node::row(children)
             }
-            "ce" => {
-                let raw = self.raw_text()?;
-                self.chemistry(&raw, col)?
-            }
+            "ce" => match self.chemistry_command(start, col)? {
+                Some(node) => node,
+                None => return Ok(Some(None)),
+            },
             "pu" => {
                 // mhchem's physical units: a number, then the unit with ^ exponents and . or * between units
                 let raw = self.raw_text()?;
@@ -3125,6 +3125,24 @@ impl Reader<'_> {
         Ok(Node::Quantity { value: text_value.filter(|v| !v.is_empty()), unit: Box::new(Node::row(children)) })
     }
 
+    /// `\ce{…}`, its backslash at `start`. An `&` or `\\` in it belongs to the alignment around it, as
+    /// mhchem passes them on (#270): `\ce{A &-> B \\ C}` is read again as `\ce{A }&\ce{-> B }\\\ce{C}`, and
+    /// nothing is returned this time.
+    #[inline(never)]
+    fn chemistry_command(&mut self, start: usize, col: usize) -> R<Option<Node>> {
+        let raw = self.raw_text()?;
+        let pieces = chemical_alignment_pieces(&raw);
+        if pieces.len() == 1 {
+            return self.chemistry(&raw, col).map(Some);
+        }
+        let mut text = String::new();
+        for (piece, separator) in pieces {
+            text.push_str(&format!("\\ce{{{piece}}}{separator}"));
+        }
+        self.inject(start, &text, col)?;
+        Ok(None)
+    }
+
     /// L-CHE-1: mhchem subset. Formulas with automatic subscripts, charges, isotopes, hydrates, bonds and
     /// coefficients (integer, decimal, fraction or `$…$`), arrows with labels, `\frac` and math commands.
     fn chemistry(&mut self, raw: &str, col: usize) -> R<Node> {
@@ -3166,6 +3184,19 @@ impl Reader<'_> {
                 }
                 let label = |t: Option<String>, this: &mut Self| -> R<Option<Box<Node>>> {
                     match t.filter(|t| !t.trim().is_empty()) {
+                        // a label between braces is text, spaces and all (#268): ->[{text above}]
+                        Some(t) if braced_whole(t.trim()).is_some() => {
+                            let text = braced_whole(t.trim()).unwrap_or_default();
+                            let mut parts = Vec::new();
+                            for (k, piece) in text.trim().split('$').enumerate() {
+                                if k % 2 == 1 {
+                                    parts.push(TextPart::Math(this.sub_reader(piece, Variant::Italic)?));
+                                } else if !piece.is_empty() {
+                                    parts.push(TextPart::Text(piece.to_string()));
+                                }
+                            }
+                            Ok(Some(Box::new(Node::Text { parts })))
+                        }
                         Some(t) => Ok(Some(Box::new(this.chemistry(&t, col)?.simplify()))),
                         None => Ok(None),
                     }
@@ -3247,7 +3278,10 @@ impl Reader<'_> {
                     }
                     p
                 };
-                let node = if ch != '^' {
+                let node = if payload.contains('$') {
+                    // mhchem's escape to math (#269): _{$\frac{6}{2}$}, ^{$n+$}
+                    self.sub_reader(&payload.replace('$', ""), Variant::Italic)?
+                } else if ch != '^' {
                     self.chemical_subscript(&payload)?
                 } else if payload.contains('\\') {
                     self.chemical_superscript(&payload)?
@@ -3376,11 +3410,22 @@ impl Reader<'_> {
         }
         match (name.as_str(), arguments.as_slice()) {
             ("bond", [b, ..]) => {
+                // #267: the dashed bond, the bonds with more than one kind of line and of four dots are drawn by composition
+                let composite = match b.trim() {
+                    "~" => Some(crate::composite::BOND_DASHED),
+                    "~-" => Some(crate::composite::BOND_DASHED_OVER_SINGLE),
+                    "~=" | "~--" => Some(crate::composite::BOND_DASHED_OVER_DOUBLE),
+                    "-~-" => Some(crate::composite::BOND_DASHED_BETWEEN),
+                    "...." => Some(crate::composite::BOND_FOUR_DOTS),
+                    _ => None,
+                };
+                if let Some(symbol) = composite {
+                    return Ok(Node::Operator { symbol, class: Class::Ord });
+                }
                 let symbol = match b.trim() {
                     "-" | "1" => '−',
                     "=" | "2" => '=',
                     "#" | "3" => '≡',
-                    "~" => '∼',
                     "..." => '⋯',
                     "->" => '→',
                     "<-" => '←',
@@ -3402,6 +3447,53 @@ impl Reader<'_> {
             }
         }
     }
+}
+
+/// The pieces of a `\ce` argument between the `&` and `\\` that belong to the alignment around it (#270),
+/// each with the separator after it (the last one has none): outside braces and `$…$`; `\&` is a
+/// character. Without them, one piece, the whole argument.
+fn chemical_alignment_pieces(raw: &str) -> Vec<(String, String)> {
+    let c: Vec<char> = raw.chars().collect();
+    let mut pieces = Vec::new();
+    let mut piece = String::new();
+    let (mut level, mut math) = (0i32, false);
+    let mut i = 0;
+    while i < c.len() {
+        let ch = c[i];
+        let top = level == 0 && !math;
+        match ch {
+            '\\' if top && c.get(i + 1) == Some(&'\\') => {
+                pieces.push((std::mem::take(&mut piece), "\\\\".to_string()));
+                i += 2;
+                continue;
+            }
+            '\\' => {
+                // a control sequence or an escaped character stays whole: \&, \{, \bond
+                piece.push(ch);
+                if let Some(&next) = c.get(i + 1) {
+                    piece.push(next);
+                    i += 1;
+                }
+            }
+            '&' if top => pieces.push((std::mem::take(&mut piece), "&".to_string())),
+            '{' => {
+                level += 1;
+                piece.push(ch);
+            }
+            '}' => {
+                level -= 1;
+                piece.push(ch);
+            }
+            '$' => {
+                math = !math;
+                piece.push(ch);
+            }
+            _ => piece.push(ch),
+        }
+        i += 1;
+    }
+    pieces.push((piece, String::new()));
+    pieces
 }
 
 /// The space mhchem puts between two formulas or words written apart: its `entitySkip`, a `~`.
@@ -3490,6 +3582,17 @@ fn bracketed(c: &[char], i: &mut usize) -> Option<String> {
         k += 1;
     }
     None
+}
+
+/// The content of `t` when one pair of braces holds all of it (`{text above}`), else `None`.
+fn braced_whole(t: &str) -> Option<String> {
+    let c: Vec<char> = t.chars().collect();
+    if c.first() != Some(&'{') {
+        return None;
+    }
+    let mut i = 0;
+    let inner = braced(&c, &mut i);
+    (i == c.len() && c.last() == Some(&'}')).then_some(inner)
 }
 
 /// Content of `{…}` starting at `c[*i] == '{'`, without the outer braces.

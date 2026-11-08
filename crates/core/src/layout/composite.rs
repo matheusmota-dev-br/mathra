@@ -15,7 +15,7 @@ use crate::composite::{self, *};
 use crate::font::Font;
 use crate::Error;
 
-use super::{glyph, k, large_operator, stretch, Item, Level, MathBox, Style};
+use super::{em, glyph, k, large_operator, stretch, Item, Level, MathBox, Style};
 
 type R<T> = Result<T, Error>;
 
@@ -75,9 +75,54 @@ pub(super) fn symbol(c: char, e: Style) -> R<MathBox> {
         MAPSFROMCHAR => maps_from_char(e)?,
         TRIANGLELEFTEQSLANT => triangle_eq_slant(e)?,
         INPLUS => in_plus(e)?,
+        BOND_DASHED | BOND_DASHED_OVER_SINGLE | BOND_DASHED_OVER_DOUBLE | BOND_DASHED_BETWEEN => bond_lines(c, e)?,
+        BOND_FOUR_DOTS => four_dots(e)?,
         _ => return Err(Error::MissingGlyph { character: c }),
     };
     Ok(finish(b))
+}
+
+/// #267: mhchem's bonds of lines (mhchem.sty's `\mhchem@bond` table): the font's − as wide and as thick
+/// as it is, one dashed line on its middle (`~`), or raised and lowered 0.1 em for two lines (`~-`: `\raisebox{.1em}` the dashed one,
+/// `\raisebox{-.1em}` the other) and 0.2 em for three (`~=`, `-~-`). A dashed line is mhchem's
+/// `\tripledash`: three dashes, each a quarter of the line, with equal gaps between them.
+fn bond_lines(c: char, e: Style) -> R<MathBox> {
+    let minus = glyph('−', e)?;
+    let (x0, y0, x1, y1) = ink(&minus, e);
+    let (t, middle, length) = (y1 - y0, (y0 + y1) / 2.0, x1 - x0);
+    // (raise in em, dashed)
+    let rows: &[(f32, bool)] = match c {
+        BOND_DASHED => &[(0.0, true)],
+        BOND_DASHED_OVER_SINGLE => &[(0.1, true), (-0.1, false)],
+        BOND_DASHED_OVER_DOUBLE => &[(0.2, true), (0.0, false), (-0.2, false)],
+        _ => &[(0.2, false), (0.0, true), (-0.2, false)],
+    };
+    let mut b = MathBox { width: minus.width, ..MathBox::default() };
+    for &(raise, dashed) in rows {
+        let y = middle + em(e, raise) - t / 2.0;
+        b.height = b.height.max(y + t);
+        b.depth = b.depth.max(-y);
+        if dashed {
+            let dash = length / 4.0;
+            let gap = (length - 3.0 * dash) / 2.0;
+            for k in 0..3 {
+                b.items.push(Item::Rule { x: x0 + k as f32 * (dash + gap), y, width: dash, height: t, color: None });
+            }
+        } else {
+            b.items.push(Item::Rule { x: x0, y, width: length, height: t, color: None });
+        }
+    }
+    Ok(b)
+}
+
+/// #267: mhchem's `\bond{....}`, `{\cdot}{\cdot}{\cdot}{\cdot}`: four of the font's ⋅ side by side.
+fn four_dots(e: Style) -> R<MathBox> {
+    let dot = glyph('⋅', e)?;
+    let mut b = MathBox { width: 4.0 * dot.width, height: dot.height, depth: dot.depth, ..MathBox::default() };
+    for k in 0..4 {
+        b.place(&dot, k as f32 * dot.width, 0.0);
+    }
+    Ok(b)
 }
 
 /// A doubled ceiling or floor as a delimiter, `target` tall: the single one grown, twice.
