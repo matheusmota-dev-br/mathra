@@ -1389,7 +1389,7 @@ fn unknown_commands_starting_with_n_r_t_are_not_json() {
     // (\real, \rArr, \reals, \th, \rowcolor, \newcolumntype and \refeq, the first examples, are read
     // since the enhancements of 2026-11b, and \rrceil since #176: unknown names of the same shapes take
     // their place)
-    for name in ["raisetag", "rrhook", "rescale", "nonscript", "rowsep", "nobreak", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
+    for name in ["raisetag", "rrhook", "rescale", "nonscript", "rowsep", "nointerlineskip", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
         let tex = format!(r"x \{name}");
         let (_, warnings) = tolerant(&tex);
         assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");
@@ -1843,6 +1843,14 @@ fn mathtools_colon_equals_and_centernot() {
     assert_eq!(tree(r"a \centernot= b"), tree(r"a \not= b"));
     // without a negated symbol, \not crosses the arrow out and \centernot sets its slash over the middle (#164)
     assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b").replace("shape: Bar", "shape: CenterNot"));
+}
+
+#[test]
+fn nobreak_and_allowbreak_are_read_and_ignored() {
+    // #255: KaTeX's line break hints, with no warning in both modes; the tree has no node for them
+    assert_eq!(tree(r"a \nobreak b \allowbreak c"), tree(r"a b c"));
+    assert_eq!(tree(r"B_{i}=\nobreak\bigl(B^{\dagger}_{i}\bigr)^{\dagger}"), tree(r"B_{i}=\bigl(B^{\dagger}_{i}\bigr)^{\dagger}"));
+    assert_eq!(tree(r"\{N,\allowbreak N^i,\allowbreak A\}"), tree(r"\{N, N^i, A\}"));
 }
 
 #[test]

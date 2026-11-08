@@ -1154,7 +1154,11 @@ impl Reader<'_> {
                 let keys = self.raw_text()?;
                 Node::Text { parts: vec![TextPart::Text(self.citation(&keys, note.as_deref(), col)?)] }
             }
-            "nonumber" | "notag" | "nolinebreak" | "allowbreak" | "displaybreak" | "protect" | "relax" | "noindent" | "centering" | "ensuremath" => return Ok(Some(None)),
+            // #255: \nobreak and \allowbreak (KaTeX's line break hints) are read and ignored: the tree has no
+            // node for a break hint, so the line breaking of --max-width (L-BRK-1) does not see them
+            "nonumber" | "notag" | "nolinebreak" | "nobreak" | "allowbreak" | "displaybreak" | "protect" | "relax" | "noindent" | "centering" | "ensuremath" => {
+                return Ok(Some(None))
+            }
             "strut" | "mathstrut" => Node::Phantom { base: Box::new(Node::Operator { symbol: '(', class: Class::Open }), width: false, height: true },
             "tag" => {
                 let label = self.raw_text()?;
