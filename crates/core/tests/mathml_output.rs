@@ -58,6 +58,7 @@ const KNOWN: &[(&str, &str)] = &[
     (r##"\numlist{1;2;3}"##, "siunitx group flag"),
     (r##"\begin{array}{c} \tablenum{1.2} \\ \tablenum{-12.345} \end{array}"##, "siunitx group flag"),
     (r##"\SI{1}{\angstrom}"##, "siunitx quantity"),
+    (r##"\DeclareSIUnit{\parsec}{pc} d = \qty{1.3}{\parsec}"##, "siunitx quantity"),
     (r##"Z = \complexqty{3+4i}{\ohm}"##, "siunitx quantity"),
     (
         r##"B_\lambda(\lambda, T) = \frac{2 h c^2}{\lambda^5} \frac{1}{e^{h c / \lambda k_\mathrm{B} T} - 1}, \qquad h = \qty{6.62607015e-34}{\joule\second}, \quad k_\mathrm{B} = \qty{1.380649e-23}{\joule\per\kelvin}"##,
@@ -85,6 +86,7 @@ const KNOWN: &[(&str, &str)] = &[
     (r##"\intop_0^1 f(x)\,dx"##, "forced class"),
     (r##"a \coloneqq b \quad c \eqqcolon d \quad e \Coloneq f \quad g \colonapprox h \quad i \dblcolon j"##, "forced class"),
     (r##"\int f \dd x"##, "forced class"),
+    (r##"\sin[2](x) + \cos[2](x) = 1"##, "forced class: physics \\sin[2]"),
     (
         r##"\expval{\hat{x}} = \mel{\psi}{\hat{x}}{\psi} = \int_{-\infty}^{\infty} \psi^*(x)\, x\, \psi(x) \dd{x}, \qquad \dv{t} \expval{\hat{p}} = -\expval{\pdv{V}{x}}"##,
         "forced class: physics \\dd",
