@@ -56,6 +56,7 @@ const KNOWN: &[(&str, &str)] = &[
     (r##"\numlist{1;2;3}"##, "siunitx group flag"),
     (r##"\begin{array}{c} \tablenum{1.2} \\ \tablenum{-12.345} \end{array}"##, "siunitx group flag"),
     (r##"\SI{1}{\angstrom}"##, "siunitx quantity"),
+    (r##"Z = \complexqty{3+4i}{\ohm}"##, "siunitx quantity"),
     // \mathrel, \mathop…: MathML has no atom class for a group, only spacing on one <mo>
     (r##"\DeclarePairedDelimiter{\abs}{\lvert}{\rvert} \abs{x}"##, "forced class"),
     (r##"\underset{n\to\infty}{\lim} \overset{?}{=}"##, "forced class"),

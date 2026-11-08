@@ -197,7 +197,7 @@
  {
   "id": "science",
   "title": "Science packages",
-  "intro": "mhchem formulas and reactions, siunitx quantities, the physics package.",
+  "intro": "mhchem formulas and reactions, siunitx quantities, the physics package, mathtools' split fractions and stmaryrd's brackets.",
   "rows": [
    {
     "name": "chemistry",
@@ -220,6 +220,48 @@
     "caption": "Quantum mechanics (physics)",
     "locale": "en",
     "tex": "\\expval{H}{\\psi} = \\mel{\\psi}{H}{\\psi},\\quad \\comm{x}{p} = i\\hbar"
+   },
+   {
+    "caption": "Complex quantity (siunitx \\complexqty)",
+    "locale": "en",
+    "tex": "Z = \\complexqty{3+4i}{\\ohm}"
+   },
+   {
+    "caption": "Fraction split over two lines (mathtools \\splitfrac)",
+    "locale": "en",
+    "tex": "\\frac{\\splitfrac{a_1 + a_2 + a_3 + a_4}{+ a_5 + a_6 + a_7}}{n}"
+   },
+   {
+    "caption": "Double ceiling brackets (stmaryrd)",
+    "locale": "en",
+    "tex": "\\llceil x \\rrceil"
+   }
+  ]
+ },
+ {
+  "id": "physics",
+  "title": "Physics",
+  "intro": "The physics and slashed packages: Feynman slashes, Pauli matrices, derivatives and Dirac's bras and kets.",
+  "rows": [
+   {
+    "caption": "Standard Model Lagrangian, with Feynman slashes (slashed)",
+    "locale": "en",
+    "tex": "\\mathcal{L} = -\\frac{1}{4} F_{\\mu\\nu} F^{\\mu\\nu} + i \\bar{\\psi} \\slashed{D} \\psi + \\bar{\\psi}_i y_{ij} \\psi_j \\phi + \\text{h.c.} + \\left| D_\\mu \\phi \\right|^2 - V(\\phi)"
+   },
+   {
+    "caption": "Pauli matrices (physics \\pmqty)",
+    "locale": "en",
+    "tex": "\\sigma_x = \\pmqty{0 & 1 \\\\ 1 & 0}, \\quad \\sigma_y = \\pmqty{0 & -i \\\\ i & 0}, \\quad \\sigma_z = \\pmqty{1 & 0 \\\\ 0 & -1}"
+   },
+   {
+    "caption": "Heat equation (physics \\pdv) and a flat derivative (\\dv*)",
+    "locale": "en",
+    "tex": "\\pdv{u}{t} = \\alpha \\left( \\pdv[2]{u}{x} + \\pdv[2]{u}{y} \\right), \\quad \\dv*{x}{t} = v"
+   },
+   {
+    "caption": "A qubit in bra-ket notation (physics)",
+    "locale": "en",
+    "tex": "\\ket{\\psi} = \\alpha \\ket{0} + \\beta \\ket{1}, \\quad \\braket{\\psi}{\\psi} = \\abs{\\alpha}^2 + \\abs{\\beta}^2 = 1"
    }
   ]
  },
@@ -251,13 +293,23 @@
     "caption": "Esterification and reduction: equilibrium, a reagent drawn over a vertical arrow (pt-BR)",
     "locale": "pt-BR",
     "tex": "\\schemestart \\chemfig{R-C(=[1]O)-[7]OH} \\+ \\chemfig{HO-R'} \\arrow{<=>[H$^+$][$-$H$_2$O]} \\chemfig{R-C(=[1]O)-[7]O-R'} \\arrow{->[\\chemfig{LiAlH_4}][depois H$_2$O]}[-90] \\chemfig{R-CH_2-OH} \\schemestop"
+   },
+   {
+    "caption": "Charges and lone pairs on atoms (chemfig \\charge)",
+    "locale": "en",
+    "tex": "\\chemfig{H-\\charge{90=\\|,-90=\\|}{O}-H} \\quad \\chemfig{\\charge{45=$\\oplus$}{N}(-[2]H)(-[4]H)(-[6]H)-H}"
+   },
+   {
+    "caption": "A reaction in words (mhchem)",
+    "locale": "en",
+    "tex": "\\ce{sodium chloride -> sodium + chlorine}"
    }
   ]
  },
  {
   "id": "diagrams",
   "title": "Commutative diagrams",
-  "intro": "amscd, tikz-cd and xymatrix: arrows in any direction, bent, dashed, hooked.",
+  "intro": "amscd, tikz-cd and xymatrix: arrows in any direction, bent, dashed, hooked, and 2-cells between them.",
   "rows": [
    {
     "name": "diagram",
@@ -276,13 +328,18 @@
     "caption": "Short exact sequence (xymatrix)",
     "locale": "en",
     "tex": "\\xymatrix{ 0 \\ar[r] & A \\ar@{^{(}->}[r]^{\\iota} \\ar[d]_{\\alpha} & B \\ar@{->>}[r]^{\\pi} \\ar[d]^{\\beta} & C \\ar[r] \\ar@{=}[d] & 0 \\\\ 0 \\ar[r] & A' \\ar[r] & B' \\ar[r] & C \\ar[r] & 0 }"
+   },
+   {
+    "caption": "A 2-cell between two arrows (xymatrix \\rtwocell)",
+    "locale": "en",
+    "tex": "\\xymatrix{ A \\rtwocell^{f}_{g}{\\alpha} & B }"
    }
   ]
  },
  {
   "id": "languages",
   "title": "Languages and notations",
-  "intro": "The locale decides the form (pt-BR: sen, decimal comma, divisão armada); AsciiMath and MathML give the same drawing as LaTeX.",
+  "intro": "The locale decides the form (pt-BR: sen, decimal comma, divisão armada); AsciiMath and MathML, presentation or content, give the same drawing as LaTeX.",
   "rows": [
    {
     "name": "ptbr",
@@ -306,6 +363,12 @@
     "caption": "MathML",
     "locale": "en",
     "tex": "<math><mi>x</mi><mo>=</mo><mfrac><mrow><mo>−</mo><mi>b</mi><mo>±</mo><msqrt><msup><mi>b</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn><mi>a</mi><mi>c</mi></msqrt></mrow><mrow><mn>2</mn><mi>a</mi></mrow></mfrac></math>",
+    "input": "mathml"
+   },
+   {
+    "caption": "Content MathML: an integral, by meaning",
+    "locale": "en",
+    "tex": "<math><apply><eq/><apply><int/><bvar><ci>x</ci></bvar><lowlimit><cn>0</cn></lowlimit><uplimit><cn>1</cn></uplimit><apply><power/><ci>x</ci><cn>2</cn></apply></apply><apply><divide/><cn>1</cn><cn>3</cn></apply></apply></math>",
     "input": "mathml"
    }
   ]
