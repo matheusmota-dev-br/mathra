@@ -130,6 +130,15 @@ $ mathra 'x^2 + 1' --braille --braille-code cmu                  # ⠭⠡⠼⠃�
 
 Besides the outlines, every SVG follows the contract in `spec/svg.md`: speech for screen readers, the source equation, the tree and the braille in `<metadata>`, color inherited from the page, reused glyphs, a text layer for selection and unique ids per equation. The same input always produces the same bytes.
 
+### MathML
+
+Every conversion also gives the equation as presentation MathML (`--mathml`, `result.mathml` in JavaScript, `result["mathml"]` in Python, `Output::mathml` in Rust), for Word, LibreOffice and Google Docs, which paste it as an editable equation, and for browsers, which draw it with no wasm. It uses only the elements of MathML Core, with an `intent` where the tree knows what the drawing does not say (in pt-BR, `sen` is `intent="sine"` and `]a, b[` an `open-interval`); what MathML cannot draw (chemfig, commutative diagrams, `\cancel`, `\boxed`) becomes a `<semantics>` with the source as an annotation. Read back with `--from mathml`, it gives the same tree. The details are in [`spec/mathml.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/mathml.md).
+
+```console
+$ mathra '\frac{-b \pm \sqrt{b^2-4ac}}{2a}' --mathml
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mfrac><mrow><mo>−</mo><mi>b</mi>…</mfrac></math>
+```
+
 ### The equation writes itself
 
 With `--animate` (`{ animate: true }` in JavaScript, `animate=True` in Python, `animate: true` in Rust) the SVG writes itself in the browser, with CSS alone: each glyph fades in, each rule grows along its length and each line is drawn, in the order the layout set them, in about three seconds. `--steps` numbers each element (`data-step`) with no CSS, for a page that walks through the equation; nothing moves with `prefers-reduced-motion`, and without either option the SVG is unchanged byte for byte (S-SVG-10). The [playground](https://matheusmota-dev-br.github.io/mathra/) walks through an equation step by step and downloads the animation as a GIF, a video or an animated SVG with its own play bar; every equation of the [gallery](https://matheusmota-dev-br.github.io/mathra/gallery.html) animates too.
@@ -181,6 +190,7 @@ const svg = texToSvg("3,14", { locale: "pt-BR" });
 const { speech, warnings } = render(String.raw`\frac{3}{4}`, { locale: "fr" });   // "trois quarts"
 render("sqrt(x)/2", { input: "asciimath" });                     // also "mathml"
 render("x^2", { locale: "pt-BR" }).braille;                      // "⠭⠡⠼⠃" (CMU); { braille: "nemeth" } forces the code
+render(String.raw`\sqrt{x}`).mathml;                             // "<math …><msqrt><mi>x</mi></msqrt></math>"
 ```
 
 ### Python
@@ -189,7 +199,7 @@ render("x^2", { locale: "pt-BR" }).braille;                      // "⠭⠡⠼�
 import mathra
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")                 # <title>…sine of x equals 0.5</title>
-r = mathra.render(r"\frac{3}{4}", locale="fr")            # dict: svg, speech, text, braille, braille_code, tree, applied, warnings
+r = mathra.render(r"\frac{3}{4}", locale="fr")            # dict: svg, speech, text, braille, braille_code, mathml, tree, applied, warnings
 r["speech"]                                               # 'trois quarts'
 mathra.tex_to_svg(r"\vertA\vert", strict=True)            # ValueError, like TeX
 mathra.render("sqrt(x)/2", input="asciimath")             # also input="mathml"
@@ -209,6 +219,7 @@ $ mathra 'x = -1' --speech        # x equals negative 1
 $ echo 'a + b' | mathra --tree
 $ mathra 'a/b + sqrt(c)' --from asciimath
 $ mathra '\frac{3}{4}' --locale pt-BR --braille   # ⠼⠒⠙
+$ mathra '\sqrt{x}' --mathml                      # <math …><msqrt><mi>x</mi></msqrt></math>
 $ mathra --batch -o out/ < equations.txt
 ```
 
@@ -274,7 +285,7 @@ In each package: `--fallback-font file.otf` (repeatable) in the terminal, `loadF
 - commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: MathML output (MathML input is supported).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`).
 
 ## Benchmark
 
@@ -311,7 +322,7 @@ KaTeX is faster and lighter to ship, but its output is HTML that needs its style
 ```
 crates/core          tree, rules, layout, embedded fonts, outputs
 crates/core/src/input     readers: LaTeX, MathML, AsciiMath (spec/input.md)
-crates/core/src/output    SVG, speech, text, braille (CMU and Nemeth, spec/braille.md) and PNG (`png` feature)
+crates/core/src/output    SVG, speech, text, braille (CMU and Nemeth, spec/braille.md), MathML (spec/mathml.md) and PNG (`png` feature)
 crates/core/src/locales   the 16 languages, one JSON file each (spec/locales.md)
 crates/core/src/chem      structural chemistry: chemfig, schemes, mechanisms (spec/chemistry.md, `chem` feature)
 crates/core/examples bench (the benchmark above) and banner (the image above)
@@ -321,7 +332,7 @@ crates/wasm          WebAssembly bindings (wasm-bindgen), used by npm/ and site/
 npm/                 the npm package: JavaScript API, types, build and tests
 site/                the playground and docs on GitHub Pages
 bench/               mathra next to KaTeX and MathJax
-spec/                numbered rules (rules.md), the SVG contract (svg.md), inputs, braille, languages
+spec/                numbered rules (rules.md), the SVG contract (svg.md), inputs, braille, MathML output, languages
 corpus/              hand-written constructions used by the benchmark and the reference page
 tools/braille-compare  mathra's braille next to MathCAT's (docs/braille-review.md)
 tools/fonts          the original fonts and subset.sh, which writes the embedded ones in crates/core/fonts

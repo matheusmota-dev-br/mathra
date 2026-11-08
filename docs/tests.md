@@ -49,7 +49,8 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/chemfig.rs` | 9 | Structural chemistry (L-CHE-2, `chem` feature): molecular formulas of known molecules (C-FOR-1), fused rings sharing atoms and bonds, bond kinds and angles, branches, label pieces, distant bonds, Lewis marks and hooks, schemes and every arrow kind, speech in English and pt-BR, text and braille, mechanism arrows, chemistry inside an equation and in a subscript, recoveries. |
 | `crates/core/tests/chemistry.rs` | 17 | mhchem (L-CHE-1): arrows with labels, hydrates, coefficients, bonds, isotopes, charges and radicals, `\frac` inside `\ce`, `\pu`, both inside text. |
 | `crates/core/tests/tolerance.rs` | 15 | Tolerant versus strict mode (`spec/tolerance.md`). |
-| `crates/core/tests/mathml.rs` | 15 | MathML input (`spec/input.md`): the same speech and text as the LaTeX of each equation, every element, fences around tables, decorations, entities and namespaces, MathJax's conventions, L-ENT-4, E-REC-10 and invalid XML. |
+| `crates/core/tests/mathml.rs` | 16 | MathML input (`spec/input.md`): the same speech and text as the LaTeX of each equation, every element, fences around tables, decorations, entities and namespaces, MathJax's conventions, MathML Core's and mathra's own output conventions, L-ENT-4, E-REC-10 and invalid XML. |
+| `crates/core/tests/mathml_output.rs` | 12 | MathML output (`spec/mathml.md`): the round trip over the whole corpus (the known differences listed with their reason), only MathML Core elements, intent, the S-MML-1 fallback, letters in their variant, hostile text, deep trees and the size of `Node`. |
 | `crates/core/tests/asciimath.rs` | 8 | AsciiMath input (`spec/input.md`): the same speech and text as the LaTeX of each equation, brackets removed from fractions and scripts, intervals, matrices and cases, commands, unpaired brackets (E-REC-5). |
 | `crates/core/tests/braille.rs` | 17 | Braille (`spec/braille.md`): the examples of the Nemeth code (BANA 2022) and of the CMU (MEC 2006), each cited by section or example number; the code chosen by the locale; braille in the SVG and the JSON; S-BRL-1; the whole corpus in both codes; the signs settled by the review against MathCAT (`docs/braille-review.md`). |
 | `crates/core/tests/reference.rs` | 5 | The reference page (`site/reference.html`, data in `corpus/reference.json`): every row converts in strict mode with no warning, each AsciiMath and MathML row has the same speech as its LaTeX column, every row has braille in both codes. |
@@ -61,11 +62,11 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/src/chem/chemfig.rs` (unit) | 3 | The chemfig reader on its own: labels split into atoms, angle syntax, Lewis marks. |
 | `crates/core/src/chem/formula.rs` (unit) | 2 | Molecular formulas: atoms counted in labels, Hill order without carbon. |
 | `crates/core/src/font.rs` (unit) | 2 | A glyph without an outline and a quadratic curve, which the embedded font does not have. |
-| `crates/cli/tests/cli.rs` | 22 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes; PNG by extension and by `--png`, `--dpi`, colors, `--batch --png`. Built without the `png` feature (20 tests), the refusal of `.png`. |
+| `crates/cli/tests/cli.rs` | 22 | The binary run as a process: arguments, `--from`, `--braille`, `--mathml`, stdin, `--batch`, writing files, exit codes; PNG by extension and by `--png`, `--dpi`, colors, `--batch --png`. Built without the `png` feature (20 tests), the refusal of `.png`. |
 | `crates/wasm/tests/native.rs` | 7 | Exported functions outside the browser, and the errors before they become a `JsError`. |
 | `crates/wasm/tests/web.rs` | 2 | The same functions inside wasm, on Node, including the `JsError`. |
 | `npm/test/*.test.*` | 10 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales, input notations, braille. Run with `npm/build.sh && npm/test/run.sh`. |
-| `crates/python/tests/test_mathra.py` | 17 | The installed Python package: SVG, PNG (`tex_to_png`), tree, `render`, `locales`, `display`, `strict`, `input` and `braille`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
+| `crates/python/tests/test_mathra.py` | 17 | The installed Python package: SVG, PNG (`tex_to_png`), tree, `render`, `locales`, `display`, `strict`, `input`, `braille` and `mathml`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
 
 ## Coverage
 

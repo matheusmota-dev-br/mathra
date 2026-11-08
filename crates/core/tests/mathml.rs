@@ -390,3 +390,40 @@ fn e_rec_10_content_mathml_outside_the_subset() {
     assert!(convert("<math><apply><divide/><cn>1</cn></apply></math>", &options(true)).is_err());
     assert!(convert("<math><bind><csymbol>forall</csymbol></bind></math>", &options(true)).unwrap_err().to_string().contains("content MathML <bind>"));
 }
+
+/// What MathML Core writes, and mathra's own MathML output (spec/mathml.md), read to the tree it came from.
+#[test]
+fn mathml_core_conventions() {
+    // Unicode's mathematical letters are a letter in a variant
+    assert_eq!(first("<mi>𝐱</mi>"), Node::Identifier { name: "x".into(), variant: Variant::Bold });
+    assert_eq!(first("<mi>ℝ</mi>"), Node::Identifier { name: "R".into(), variant: Variant::DoubleStruck });
+    assert_eq!(first("<mi>𝛤</mi>"), Node::Identifier { name: "Γ".into(), variant: Variant::Italic });
+    // stretchy="false" keeps a parenthesis plain; a stretchy one inside is \middle; an empty fence is \left.
+    assert!(matches!(first(r#"<mrow><mo stretchy="false">(</mo><mi>x</mi><mo stretchy="false">)</mo></mrow>"#), Node::Operator { symbol: '(', .. }));
+    let n = first(r#"<mrow><mo>⟨</mo><mi>a</mi><mo stretchy="true">|</mo><mi>b</mi><mo>⟩</mo></mrow>"#);
+    assert!(matches!(&n, Node::Delimited { parts, middles, .. } if parts.len() == 2 && middles == &['|']), "{n:?}");
+    let n = first(r#"<mrow><mo fence="true" form="prefix"></mo><mi>x</mi><mo>|</mo></mrow>"#);
+    assert!(matches!(n, Node::Delimited { open: None, close: Some('|'), .. }), "{n:?}");
+    // an <mrow> around one element is a group, as TeX's braces
+    assert!(matches!(first("<msup><mrow><mi>x</mi></mrow><mn>2</mn></msup>"), Node::Scripts { base, .. } if matches!(*base, Node::Row { .. })));
+    // the same minsize and maxsize: \big; lspace and rspace: a class
+    assert!(matches!(first(r#"<mo minsize="1.8em" maxsize="1.8em">(</mo>"#), Node::FixedDelimiter { size: 2, .. }));
+    assert!(matches!(first(r#"<mo lspace="0em" rspace="0em">,</mo>"#), Node::Operator { class: mathra::Class::Ord, .. }));
+    // ∑ under munderover is left to the style (movablelimits); at the side it is \nolimits
+    assert!(matches!(first("<munderover><mo>∑</mo><mi>i</mi><mi>n</mi></munderover>"), Node::Scripts { base, .. } if matches!(*base, Node::LargeOperator { limits: None, .. })));
+    assert!(
+        matches!(first(r#"<munder><mo movablelimits="false">∑</mo><mi>i</mi></munder>"#), Node::Scripts { base, .. } if matches!(*base, Node::LargeOperator { limits: Some(true), .. }))
+    );
+    assert!(matches!(first("<msub><mo>∑</mo><mi>i</mi></msub>"), Node::Scripts { base, .. } if matches!(*base, Node::LargeOperator { limits: Some(false), .. })));
+    // mpadded: \hphantom, \smash, \mathrlap; mtd columnspan: \multicolumn; mfrac's displaystyle: \dfrac
+    assert!(matches!(first(r#"<mpadded height="0em" depth="0em"><mphantom><mi>x</mi></mphantom></mpadded>"#), Node::Phantom { width: true, height: false, .. }));
+    assert!(matches!(first(r#"<mpadded height="0em" depth="0em"><mi>x</mi></mpadded>"#), Node::Smashed { height: true, depth: true, .. }));
+    assert!(matches!(first(r#"<mpadded width="0em"><mi>x</mi></mpadded>"#), Node::Overlapped { side: 'r', .. }));
+    let n = first(r#"<mtable><mtr><mtd columnspan="2"><mi>x</mi></mtd></mtr></mtable>"#);
+    assert!(matches!(&n, Node::Table { rows, .. } if matches!(rows[0][0], Node::Multicolumn { columns: 2, .. })), "{n:?}");
+    assert!(matches!(first(r#"<mfrac displaystyle="true"><mn>1</mn><mn>2</mn></mfrac>"#), Node::Fraction { style: mathra::tree::FractionStyle::Display, .. }));
+    // no-break spaces keep the spaces at the ends of the text
+    assert_eq!(first("<mtext>\u{A0}if\u{A0}</mtext>"), Node::Text { parts: vec![mathra::tree::TextPart::Text(" if ".into())] });
+    // a stretchy arrow with text over it: \xrightarrow
+    assert!(matches!(first(r#"<mover><mo stretchy="true">→</mo><mi>f</mi></mover>"#), Node::Arrow { symbol: '→', .. }));
+}

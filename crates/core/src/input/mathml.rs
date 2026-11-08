@@ -83,6 +83,7 @@ impl Reader<'_> {
     /// The children of an element as a row (`<mrow>`, and every element with an inferred mrow).
     fn row(&mut self, node: Xml, variant: Variant) -> R<Node> {
         let mut children = Vec::new();
+        let mut marks = Vec::new();
         let elements = Self::elements(node);
         for (i, child) in elements.iter().enumerate() {
             // <mi>rank</mi><mo>&ApplyFunction;</mo>: a function name, even one mathra does not know
@@ -91,12 +92,27 @@ impl Reader<'_> {
                 Node::Identifier { name, .. } if applied && name.chars().count() > 1 => Node::Function { name, limits: false },
                 other => other,
             };
+            let mark = fence_mark(*child, i, elements.len());
             match node {
+                // the null delimiter of \left. or \right.
+                Node::Row { children: c } if c.is_empty() && mark == Mark::Null => {
+                    children.push(Node::row(vec![]));
+                    marks.push(mark);
+                }
                 Node::Row { children: c } if c.is_empty() => {}
-                other => children.push(other),
+                // a grouping that only carries an intent (an interval, the argument of one): its children
+                Node::Row { children: c } if grouping_for_intent(*child) => {
+                    marks.extend(c.iter().map(|_| Mark::Plain));
+                    children.extend(c);
+                }
+                other => {
+                    children.push(other);
+                    marks.push(mark);
+                }
             }
         }
-        Ok(fences(children))
+        let bare = node.attribute("intent").is_some_and(|i| i.starts_with("binomial-coefficient"));
+        Ok(fences(children, &marks, bare))
     }
 
     /// Exactly `n` element children, as nodes. A missing one is left empty (E-REC-10).
@@ -130,12 +146,18 @@ impl Reader<'_> {
         let variant = node.attribute("mathvariant").and_then(parse_variant).unwrap_or(inherited);
         let name = node.tag_name().name();
         let node_out = match name {
-            "math" | "mrow" | "mpadded" | "mtd" => self.row(node, variant)?,
+            // an <mrow> around a single element is a group, as TeX's braces: {x}^2, {=}
+            "mrow" if Self::elements(node).len() == 1 && node.attributes().all(|a| a.name() == "arg") => Node::row(vec![self.element(Self::elements(node)[0], variant)?]),
+            "math" | "mrow" => self.row(node, variant)?,
+            "mtd" => self.cell(node, variant)?,
+            "mpadded" => padded(node, self.row(node, variant)?),
             "mstyle" => {
                 let base = self.row(node, variant)?;
-                let base = match node.attribute("displaystyle") {
-                    Some("true") => Node::Style { level: 0, base: Box::new(base) },
-                    Some("false") => Node::Style { level: 1, base: Box::new(base) },
+                let base = match (node.attribute("displaystyle"), node.attribute("scriptlevel")) {
+                    (_, Some("1")) => Node::Style { level: 2, base: Box::new(base) },
+                    (_, Some("2")) => Node::Style { level: 3, base: Box::new(base) },
+                    (Some("true"), _) => Node::Style { level: 0, base: Box::new(base) },
+                    (Some("false"), _) => Node::Style { level: 1, base: Box::new(base) },
                     _ => base,
                 };
                 self.paint(node, base)
@@ -154,8 +176,13 @@ impl Reader<'_> {
             "mphantom" => Node::Phantom { base: Box::new(self.row(node, variant)?), width: true, height: true },
             "mi" => self.identifier(node, variant),
             "mn" => self.number(node),
-            "mo" => operator(&text_of(node)),
-            "mtext" => Node::Text { parts: vec![TextPart::Text(text_of(node))] },
+            "mo" => match spaced(node, operator(&text_of(node))) {
+                // a word with limits that move aside in inline style: \operatorname*{argmax}
+                Node::Function { name, .. } if node.attribute("movablelimits") == Some("true") => Node::Function { name, limits: true },
+                other => other,
+            },
+            // the no-break spaces of mathra's output keep the spaces at the ends of the text
+            "mtext" => Node::Text { parts: vec![TextPart::Text(text_of(node).replace('\u{A0}', " "))] },
             "ms" => {
                 let (l, r) = (node.attribute("lquote").unwrap_or("\""), node.attribute("rquote").unwrap_or("\""));
                 Node::Text { parts: vec![TextPart::Text(format!("{l}{}{r}", text_of(node)))] }
@@ -163,8 +190,16 @@ impl Reader<'_> {
             "mspace" => Node::Space { em: node.attribute("width").and_then(measure_em).unwrap_or(0.0) },
             "mfrac" => {
                 let [num, den]: [Node; 2] = self.arguments(node, 2, variant)?.try_into().expect("two arguments");
-                let rule = !node.attribute("linethickness").is_some_and(|t| t.trim().trim_end_matches(char::is_alphabetic).trim().parse::<f32>() == Ok(0.0));
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness: None }
+                let given = node.attribute("linethickness");
+                let rule = !given.is_some_and(|t| t.trim().trim_end_matches(char::is_alphabetic).trim().parse::<f32>() == Ok(0.0));
+                // a thickness in em, as mathra writes \genfrac and \above; the named ones are the font's
+                let thickness = given.filter(|t| t.trim().ends_with("em")).and_then(measure_em).filter(|t| *t != 0.0);
+                let style = match node.attribute("displaystyle") {
+                    Some("true") => FractionStyle::Display,
+                    Some("false") => FractionStyle::Row,
+                    _ => FractionStyle::Auto,
+                };
+                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule, thickness }
             }
             "msqrt" => Node::Root { radicand: Box::new(self.row(node, variant)?), index: None },
             "mroot" => {
@@ -174,11 +209,11 @@ impl Reader<'_> {
             "msub" | "msup" => {
                 let [base, script]: [Node; 2] = self.arguments(node, 2, variant)?.try_into().expect("two arguments");
                 let (sup, sub) = if name == "msup" { (Some(script), None) } else { (None, Some(script)) };
-                scripts(base, sup, sub)
+                scripts(beside(base), sup, sub)
             }
             "msubsup" => {
                 let [base, sub, sup]: [Node; 3] = self.arguments(node, 3, variant)?.try_into().expect("three arguments");
-                scripts(base, Some(sup), Some(sub))
+                scripts(beside(base), Some(sup), Some(sub))
             }
             "munder" | "mover" | "munderover" => self.under_over(node, variant)?,
             "mmultiscripts" => self.multiscripts(node, variant)?,
@@ -218,8 +253,9 @@ impl Reader<'_> {
         Ok(if matches!(inner, Node::Table { .. }) {
             // a table between the fences: a matrix or cases, as in an mrow
             let fence = |c: Option<char>| c.map_or(Node::row(vec![]), |c| operator(&c.to_string()));
-            let children = [fence(open), inner, fence(close)].into_iter().filter(|n| *n != Node::row(vec![])).collect();
-            fences(children)
+            let children: Vec<Node> = [fence(open), inner, fence(close)].into_iter().filter(|n| *n != Node::row(vec![])).collect();
+            let marks = vec![Mark::Plain; children.len()];
+            fences(children, &marks, false)
         } else {
             Node::Delimited { open, close, parts: vec![inner], middles: vec![] }
         })
@@ -262,8 +298,13 @@ impl Reader<'_> {
     }
 
     fn identifier(&mut self, node: Xml, variant: Variant) -> Node {
-        let t = text_of(node);
-        let explicit = node.attribute("mathvariant").and_then(parse_variant);
+        let mut t = text_of(node);
+        let mut explicit = node.attribute("mathvariant").and_then(parse_variant);
+        // Unicode's mathematical letters (𝐱, ℝ), as MathML Core writes a variant: the letter and its variant
+        if let Some((plain, v)) = math_letters(&t) {
+            t = plain;
+            explicit = Some(v);
+        }
         let mut chars = t.chars();
         match (chars.next(), chars.next()) {
             (None, _) => Node::row(vec![]),
@@ -271,7 +312,7 @@ impl Reader<'_> {
                 // a single letter is italic, except uppercase Greek, as in TeX; mathvariant decides otherwise
                 let natural = if c.is_ascii_alphabetic() || ('α'..='ω').contains(&c) || c == 'ı' || c == 'ȷ' { Variant::Italic } else { Variant::Upright };
                 let variant = explicit.unwrap_or(if variant == Variant::Italic { natural } else { variant });
-                if c.is_alphabetic() {
+                if c.is_alphabetic() || explicit.is_some_and(|v| v != Variant::Upright) {
                     Node::Identifier { name: c.to_string(), variant }
                 } else {
                     operator(&t)
@@ -288,13 +329,16 @@ impl Reader<'_> {
     }
 
     fn number(&mut self, node: Xml) -> Node {
-        let t: String = text_of(node).chars().filter(|c| !c.is_whitespace()).collect();
+        let raw = text_of(node);
+        // digits grouped with thin spaces, as siunitx's \num writes them (L-UNI-1)
+        let group = raw.contains(['\u{2009}', '\u{202F}']);
+        let t: String = raw.chars().filter(|c| !c.is_whitespace() && *c != '\u{202F}').collect();
         match number_value(&t, self.locale) {
             Some((value, thousands)) => {
                 if t.contains(',') && thousands.is_none() {
                     self.registry.note(rules::L_NUM_1, format!("'{t}': comma between digits read as decimal separator ({value})"));
                 }
-                Node::Number { value, group: false, thousands }
+                Node::Number { value, group, thousands }
             }
             None => Node::Text { parts: vec![TextPart::Text(t)] },
         }
@@ -314,10 +358,19 @@ impl Reader<'_> {
             }
         };
         let accent_attr = |a: &str| node.attribute(a) == Some("true");
-        // a large operator or lim: limits; integrals keep TeX's side limits unless MathML stacks them
+        let base_element = Self::elements(node).into_iter().next();
+        // a stretchy arrow with text over or under it: \xrightarrow
+        if let (Node::Operator { symbol, .. }, Some(b)) = (&base, base_element) {
+            if b.tag_name().name() == "mo" && b.attribute("stretchy") == Some("true") {
+                return Ok(Node::Arrow { symbol: *symbol, above: over.map(Box::new), below: under.map(Box::new) });
+            }
+        }
+        // a large operator or lim: limits. Those that take them by default (∑) are left to the style, as
+        // movablelimits does; integrals keep TeX's side limits unless MathML stacks them
         if matches!(base, Node::LargeOperator { .. } | Node::Function { .. }) {
+            let fixed = base_element.is_some_and(|b| b.attribute("movablelimits") == Some("false"));
             let base = match base {
-                Node::LargeOperator { symbol, .. } => Node::LargeOperator { symbol, limits: Some(true) },
+                Node::LargeOperator { symbol, .. } => Node::LargeOperator { symbol, limits: if symbols::limits_by_default(symbol) && !fixed { None } else { Some(true) } },
                 other => other,
             };
             return Ok(scripts(base, over, under));
@@ -334,14 +387,25 @@ impl Reader<'_> {
         let mut above_left = None;
         let mut below_left = None;
         let narrow = matches!(out, Node::Identifier { .. } | Node::Number { .. });
+        // an accent="false" written out wins over the narrow base
+        let accent = node.attribute("accent").map_or(narrow, |a| a == "true");
+        // any other mark said to be an accent (accent="true"): an accent of that character, stretchy if
+        // its <mo> says so (\overleftharpoon, \utilde)
+        let elements = Self::elements(node);
+        let other_accent = |mark: &Node, said: bool, at: usize, below: bool| -> Option<Decoration> {
+            let Node::Operator { symbol, .. } = mark else { return None };
+            let stretchy = elements.get(at).is_some_and(|e| e.attribute("stretchy") == Some("true"));
+            said.then_some(Decoration::Accent(*symbol, stretchy, below))
+        };
         if let Some(o) = over {
-            match decoration(&o, true, accent_attr("accent") || narrow) {
+            let said = node.attribute("accent") == Some("true");
+            match decoration(&o, true, accent).or_else(|| other_accent(&o, said, if name == "munderover" { 2 } else { 1 }, false)) {
                 Some(d) => out = d.apply(out),
                 None => above_left = Some(o),
             }
         }
         if let Some(u) = under {
-            match decoration(&u, false, accent_attr("accentunder")) {
+            match decoration(&u, false, accent_attr("accentunder")).or_else(|| other_accent(&u, accent_attr("accentunder"), 1, true)) {
                 Some(d) => out = d.apply(out),
                 None => below_left = Some(u),
             }
@@ -454,9 +518,146 @@ impl Reader<'_> {
         };
         let verticals = lines(node.attribute("columnlines"), ncol);
         let horizontals = lines(node.attribute("rowlines"), rows.len()).into_iter().map(|r| TableRule { row: r, from: 0, to: usize::MAX, dashed: false }).collect();
-        let shape = if columns.is_empty() && verticals.is_empty() { TableKind::Matrix } else { TableKind::Array };
+        // mathra's own environments: aligned columns alternate right and left with no space between a
+        // pair, gather is a centered display, smallmatrix one script level down, \substack in text style
+        let aligned = node.attribute("columnalign").is_some_and(|a| a.split_whitespace().enumerate().all(|(j, c)| c == if j.is_multiple_of(2) { "right" } else { "left" }))
+            && node.attribute("columnspacing").is_some_and(|a| a.split_whitespace().next() == Some("0em"));
+        let (shape, columns) = match (node.attribute("displaystyle"), node.attribute("scriptlevel")) {
+            (Some("true"), _) if aligned => (TableKind::Aligned, vec![]),
+            (Some("true"), _) if columns.is_empty() => (TableKind::Centered, columns),
+            (Some("false"), _) if columns.is_empty() => (TableKind::Substack, columns),
+            (_, Some("1")) if columns.is_empty() => (TableKind::SmallMatrix, columns),
+            _ if columns.is_empty() && verticals.is_empty() => (TableKind::Matrix, columns),
+            _ => (TableKind::Array, columns),
+        };
         Ok(Node::Table { shape, rows, columns, verticals, dashed: vec![], horizontals, between: vec![], intertexts: vec![], stretch: 1.0 })
     }
+}
+
+/// A cell; `columnspan` makes it a `\multicolumn`.
+impl Reader<'_> {
+    fn cell(&mut self, node: Xml, variant: Variant) -> R<Node> {
+        let base = self.row(node, variant)?;
+        let span = node.attribute("columnspan").and_then(|s| s.trim().parse::<usize>().ok()).filter(|n| *n > 1);
+        Ok(match span {
+            Some(columns) => {
+                let alignment = match node.attribute("columnalign") {
+                    Some("left") => 'l',
+                    Some("right") => 'r',
+                    _ => 'c',
+                };
+                Node::Multicolumn { columns, alignment, base: Box::new(base) }
+            }
+            None => base,
+        })
+    }
+}
+
+/// `<mpadded>` as mathra writes it: no height and depth around a phantom is `\hphantom`, no width
+/// `\vphantom`; otherwise no height or depth is `\smash`, no width a lap (`\mathrlap`, and with a
+/// negative lspace `\mathllap` or `\mathclap`), a voffset a `\raisebox`. Other padding is ignored.
+fn padded(node: Xml, base: Node) -> Node {
+    let zero = |a: &str| node.attribute(a).is_some_and(|v| measure_em(v) == Some(0.0));
+    let (w, h, d) = (zero("width"), zero("height"), zero("depth"));
+    match base {
+        Node::Phantom { base, width: true, height: true } if h && d && !w => Node::Phantom { base, width: true, height: false },
+        Node::Phantom { base, width: true, height: true } if w && !h && !d => Node::Phantom { base, width: false, height: true },
+        base if w && !h && !d => {
+            let side = match node.attribute("lspace").map(str::trim) {
+                Some("-100%") => 'l',
+                Some("-50%") => 'c',
+                _ => 'r',
+            };
+            Node::Overlapped { base: Box::new(base), side }
+        }
+        base if (h || d) && !w => Node::Smashed { base: Box::new(base), height: h, depth: d },
+        base => match node.attribute("voffset").and_then(measure_em) {
+            Some(em) if em != 0.0 => Node::Raised { em, height: None, depth: None, base: Box::new(base) },
+            _ => base,
+        },
+    }
+}
+
+/// An `<mo>` with its spacing written out (`lspace` and `rspace`, as mathra writes a class that is not
+/// the character's own): that class.
+fn spaced(node: Xml, op: Node) -> Node {
+    let (Some(l), Some(r)) = (node.attribute("lspace").and_then(measure_em), node.attribute("rspace").and_then(measure_em)) else {
+        return fixed(node, op);
+    };
+    let near = |a: f32, b: f32| (a - b).abs() < 0.01;
+    let class = match (node.attribute("form"), l, r) {
+        (Some("prefix"), _, _) if near(l, 0.0) && near(r, 0.0) => Class::Open,
+        (Some("postfix"), _, _) if near(l, 0.0) && near(r, 0.0) => Class::Close,
+        (Some("infix"), _, _) if near(l, 1.0 / 6.0) && near(r, 1.0 / 6.0) => Class::Inner,
+        _ if near(l, 0.0) && near(r, 0.0) => Class::Ord,
+        _ if near(l, 0.0) && near(r, 1.0 / 6.0) => Class::Punct,
+        _ if near(l, 1.0 / 6.0) && near(r, 1.0 / 6.0) => Class::Op,
+        _ if near(l, 2.0 / 9.0) && near(r, 2.0 / 9.0) => Class::Bin,
+        _ if near(l, 5.0 / 18.0) && near(r, 5.0 / 18.0) => Class::Rel,
+        _ => return fixed(node, op),
+    };
+    match fixed(node, op) {
+        Node::Operator { symbol, .. } => Node::Operator { symbol, class },
+        Node::FixedDelimiter { symbol, size, .. } => Node::FixedDelimiter { symbol, class, size },
+        other => other,
+    }
+}
+
+/// An `<mo>` with the same `minsize` and `maxsize`: a delimiter of fixed size (`\big(`, 1 to 4).
+fn fixed(node: Xml, op: Node) -> Node {
+    let (Some(min), Some(max)) = (node.attribute("minsize").and_then(measure_em), node.attribute("maxsize").and_then(measure_em)) else {
+        return op;
+    };
+    match op {
+        Node::Operator { symbol, class } if (min - max).abs() < 0.01 => {
+            let size = [1.2f32, 1.8, 2.4, 3.0].iter().enumerate().min_by(|a, b| (a.1 - min).abs().total_cmp(&(b.1 - min).abs())).map_or(1, |(i, _)| i as u8 + 1);
+            Node::FixedDelimiter { symbol, class, size }
+        }
+        other => other,
+    }
+}
+
+/// A large operator with its limits at the side (`<msubsup>`): the ones that take them below by default
+/// (∑) are then `\nolimits`.
+fn beside(base: Node) -> Node {
+    match base {
+        Node::LargeOperator { symbol, limits: None } if symbols::limits_by_default(symbol) => Node::LargeOperator { symbol, limits: Some(false) },
+        other => other,
+    }
+}
+
+/// Text in Unicode's mathematical letters (𝐱𝐲, ℝ): the plain letters and their variant, when every
+/// character is one of them, in the same variant.
+fn math_letters(t: &str) -> Option<(String, Variant)> {
+    let mut variant = None;
+    let mut plain = String::new();
+    for c in t.chars() {
+        let (p, v) = math_letter(c)?;
+        if variant.is_some_and(|x| x != v) {
+            return None;
+        }
+        variant = Some(v);
+        plain.push(p);
+    }
+    variant.map(|v| (plain, v))
+}
+
+fn math_letter(c: char) -> Option<(char, Variant)> {
+    use crate::layout::alphabet::character;
+    let letterlike = "ℎℬℰℱℋℐℒℳℛℯℊℴℭℌℑℜℨℂℍℕℙℚℝℤ";
+    if !(('\u{1D400}'..='\u{1D7FF}').contains(&c) || letterlike.contains(c)) {
+        return None;
+    }
+    let variants = [Variant::Italic, Variant::Bold, Variant::BoldItalic, Variant::Calligraphic, Variant::Fraktur, Variant::DoubleStruck, Variant::SansSerif, Variant::Monospace];
+    let plain = ('A'..='Z').chain('a'..='z').chain('0'..='9').chain('Α'..='Ω').chain('α'..='ω').chain("ϵϑϰϕϱϖıȷ".chars());
+    for p in plain {
+        for v in variants {
+            if character(p, v) == c {
+                return Some((p, v));
+            }
+        }
+    }
+    None
 }
 
 /// Text of an element, with the white space MathML ignores (around and repeated) removed.
@@ -620,6 +821,8 @@ fn decoration(mark: &Node, above: bool, accent: bool) -> Option<Decoration> {
         ('⏟' | '︸', false) => Decoration::Brace(false, false),
         ('⎴', true) => Decoration::Brace(true, true),
         ('⎵', false) => Decoration::Brace(false, true),
+        // \bar is the macron as an accent; \overline the line over the whole base
+        ('¯' | '\u{0304}', true) if accent => Decoration::Accent('\u{0304}', false, false),
         ('¯' | '‾' | '_' | '―' | '−' | '\u{0332}' | '\u{0305}', _) => Decoration::Bar(above),
         ('→' | '⟶' | '\u{20D7}', true) if !accent => Decoration::Accent('→', true, false),
         ('→' | '⟶' | '\u{20D7}', true) => Decoration::Accent('\u{20D7}', false, false),
@@ -644,34 +847,74 @@ fn decoration(mark: &Node, above: bool, accent: bool) -> Option<Decoration> {
     })
 }
 
+/// How an `<mo>` in a row takes part in fences: MathML stretches fences in an `<mrow>` on its own, so
+/// `stretchy="false"` keeps a parenthesis plain, `stretchy="true"` inside is `\middle`, and an empty
+/// `<mo fence="true">` is the null delimiter `.`.
+#[derive(Clone, Copy, PartialEq)]
+enum Mark {
+    Plain,
+    NotFence,
+    Fence,
+    Null,
+    Middle,
+}
+
+fn fence_mark(node: Xml, i: usize, n: usize) -> Mark {
+    if node.tag_name().name() != "mo" {
+        return Mark::Plain;
+    }
+    let end = i == 0 || i + 1 == n;
+    match node.attribute("stretchy") {
+        Some("false") => return Mark::NotFence,
+        Some("true") if !end && node.attribute("minsize").is_none() => return Mark::Middle,
+        _ => {}
+    }
+    if end && node.attribute("fence") == Some("true") {
+        return if text_of(node).is_empty() { Mark::Null } else { Mark::Fence };
+    }
+    Mark::Plain
+}
+
+/// An `<mrow>` that groups only for an `intent`: an interval of L-INT-1, or the argument of an intent.
+fn grouping_for_intent(node: Xml) -> bool {
+    node.tag_name().name() == "mrow" && (node.attribute("arg").is_some() || node.attribute("intent").is_some_and(|i| i.contains("-interval(")))
+}
+
 /// `<mrow>` with fences at its ends: `(`…`)` stretch with the content (like `\left…\right`), and a table
-/// between fences is a matrix (`(`, `[`, `|`, `‖`, `{…}`) or `cases` (`{` alone).
-fn fences(children: Vec<Node>) -> Node {
-    let fence = |n: &Node, class: Class| -> Option<char> {
-        match n {
+/// between fences is a matrix (`(`, `[`, `|`, `‖`, `{…}`) or `cases` (`{` alone). `bare`: the content
+/// between the fences is not a row of its own (a binomial coefficient).
+fn fences(children: Vec<Node>, marks: &[Mark], bare: bool) -> Node {
+    // Some(None): the null delimiter
+    let fence = |i: usize, class: Class| -> Option<Option<char>> {
+        match (marks[i], &children[i]) {
+            (Mark::NotFence | Mark::Middle, _) => None,
+            (Mark::Null, _) => Some(None),
+            (Mark::Fence, Node::Operator { symbol, .. }) => Some(Some(*symbol)),
             // bars are fences on either side, whatever their class; MathJax writes \\| as ∥ (U+2225), the
             // parallel sign, where a norm is meant
-            Node::Operator { symbol: '∥', .. } => Some('‖'),
-            Node::Operator { symbol, class: c } if *c == class || matches!(symbol, '|' | '‖') => Some(*symbol),
+            (_, Node::Operator { symbol: '∥', .. }) => Some(Some('‖')),
+            (_, Node::Operator { symbol, class: c }) if *c == class || matches!(symbol, '|' | '‖') => Some(Some(*symbol)),
             _ => None,
         }
     };
     let n = children.len();
     if n >= 2 {
-        let open = fence(&children[0], Class::Open);
-        let close = fence(&children[n - 1], Class::Close);
-        // a table between fences
+        let open = fence(0, Class::Open);
+        let close = fence(n - 1, Class::Close);
         // a table between fences, with or without column alignments (MathJax writes columnalign on cases)
-        let inner_table = |range: std::ops::Range<usize>| -> Option<(TableKind, Vec<Vec<Node>>)> {
+        // a table with rules between its cells is an array between \left and \right (an augmented matrix)
+        let inner_table = |range: std::ops::Range<usize>| -> Option<(Vec<char>, Vec<Vec<Node>>)> {
             match &children[range] {
-                [Node::Table { shape: TableKind::Matrix | TableKind::Array, rows, .. }] => Some((TableKind::Matrix, rows.clone())),
+                [Node::Table { shape: TableKind::Matrix | TableKind::Array, rows, columns, verticals, horizontals, .. }] if verticals.is_empty() && horizontals.is_empty() => {
+                    Some((columns.clone(), rows.clone()))
+                }
                 _ => None,
             }
         };
-        let table = |shape: TableKind, rows: Vec<Vec<Node>>| Node::Table {
+        let table = |shape: TableKind, (columns, rows): (Vec<char>, Vec<Vec<Node>>)| Node::Table {
             shape,
             rows,
-            columns: vec![],
+            columns: if matches!(shape, TableKind::Cases | TableKind::RCases) && columns.iter().all(|c| *c == 'l') { vec![] } else { columns },
             verticals: vec![],
             dashed: vec![],
             horizontals: vec![],
@@ -679,8 +922,8 @@ fn fences(children: Vec<Node>) -> Node {
             intertexts: vec![],
             stretch: 1.0,
         };
-        if let (Some(o), Some(c)) = (open, close) {
-            if let Some((_, rows)) = inner_table(1..n - 1) {
+        if let (Some(Some(o)), Some(Some(c))) = (open, close) {
+            if let Some(inner) = inner_table(1..n - 1) {
                 let shape = match (o, c) {
                     ('(', ')') => Some(TableKind::PMatrix),
                     ('[', ']') => Some(TableKind::BMatrix),
@@ -690,28 +933,49 @@ fn fences(children: Vec<Node>) -> Node {
                     _ => None,
                 };
                 if let Some(shape) = shape {
-                    return table(shape, rows);
+                    return table(shape, inner);
                 }
             }
         }
-        if open == Some('{') && n == 2 {
-            if let Some((_, rows)) = inner_table(1..2) {
-                return table(TableKind::Cases, rows);
+        if open == Some(Some('{')) && n == 2 {
+            if let Some(inner) = inner_table(1..2) {
+                return table(TableKind::Cases, inner);
             }
         }
-        if close == Some('}') && n == 2 {
-            if let Some((_, rows)) = inner_table(0..1) {
-                return table(TableKind::RCases, rows);
+        if close == Some(Some('}')) && n == 2 {
+            if let Some(inner) = inner_table(0..1) {
+                return table(TableKind::RCases, inner);
             }
         }
         if let (Some(o), Some(c)) = (open, close) {
             let middle = &children[1..n - 1];
-            if balanced(middle) && (n > 2 || !matches!(o, '|' | '‖')) {
-                return Node::Delimited { open: Some(o), close: Some(c), parts: vec![Node::row(middle.to_vec())], middles: vec![] };
+            let both_null = o.is_none() && c.is_none();
+            if !both_null && balanced(middle) && (n > 2 || !matches!(o, Some('|' | '‖'))) {
+                let mut parts = vec![];
+                let mut middles = vec![];
+                let mut part = vec![];
+                for (child, mark) in middle.iter().zip(&marks[1..n - 1]) {
+                    match (mark, child) {
+                        (Mark::Middle, Node::Operator { symbol, .. }) => {
+                            middles.push(*symbol);
+                            parts.push(Node::row(std::mem::take(&mut part)));
+                        }
+                        _ => part.push(child.clone()),
+                    }
+                }
+                let last = if bare && parts.is_empty() && part.len() == 1 { part.pop().expect("one node") } else { Node::row(part) };
+                parts.push(last);
+                return Node::Delimited { open: o, close: c, parts, middles };
             }
         }
     }
-    Node::row(children).simplify()
+    let mut kept: Vec<Node> = children.into_iter().zip(marks).filter(|(_, m)| **m != Mark::Null).map(|(c, _)| c).collect();
+    // one element: itself (a group inside it, an <mrow> of its own, stays)
+    if kept.len() == 1 {
+        kept.pop().expect("one node")
+    } else {
+        Node::row(kept)
+    }
 }
 
 /// The opening and closing operators inside never close more than they open.

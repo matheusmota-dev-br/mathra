@@ -52,6 +52,14 @@ fn braille_in_render() {
 }
 
 #[test]
+fn mathml_in_render() {
+    let json: serde_json::Value = serde_json::from_str(&mathra_wasm::render_json(r"\sen x", Some("pt-BR"), false, false, None, None, false, false).unwrap()).unwrap();
+    let mathml = json["mathml"].as_str().unwrap();
+    assert!(mathml.starts_with(r#"<math xmlns="http://www.w3.org/1998/Math/MathML" display="inline">"#), "{mathml}");
+    assert!(mathml.contains(r#"<mi intent="sine">sen</mi>"#), "{mathml}");
+}
+
+#[test]
 fn animate_and_steps() {
     let plain = tex_to_svg("x+1", None, None, None, None, None, None, None, None, None, None).unwrap();
     let animated = tex_to_svg("x+1", None, None, None, None, None, Some(true), None, None, None, None).unwrap();

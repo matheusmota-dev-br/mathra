@@ -42,6 +42,7 @@ OPTIONS
       --speech            print only the screen reader phrase
       --text              print only the linear text
       --braille           print only the braille (Unicode cells)
+      --mathml            print only the MathML (MathML Core, with intent where it adds meaning)
       --braille-code <c>  cmu or nemeth; the default follows the locale
                           (CMU in pt-BR and es, Nemeth elsewhere)
       --batch             read one equation per input line; with --output <folder>,
@@ -60,6 +61,7 @@ EXAMPLES
   mathra '<math><msqrt><mi>x</mi></msqrt></math>' --speech
   mathra '\\frac{3}{4}' --locale pt-BR --braille
   mathra 'f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3' --max-width 12em -o long.svg
+  mathra '\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}' --mathml
   mathra 'e^{i\\pi} + 1 = 0' --font LibertinusMath-Regular.otf -o euler.svg
 ";
 
@@ -71,6 +73,7 @@ enum Mode {
     Speech,
     Text,
     Braille,
+    MathMl,
 }
 
 struct Args {
@@ -206,6 +209,7 @@ fn read_args() -> Result<Option<Args>, String> {
             "--speech" => args.mode = Mode::Speech,
             "--text" => args.mode = Mode::Text,
             "--braille" => args.mode = Mode::Braille,
+            "--mathml" => args.mode = Mode::MathMl,
             "--braille-code" => args.braille = Some(it.next().ok_or("missing code after --braille-code")?.parse()?),
             "--batch" => args.mode = Mode::Batch,
             "--png" => args.png = true,
@@ -303,6 +307,13 @@ fn main() -> ExitCode {
         Mode::Tree => result.tree.to_json(),
         Mode::Speech => result.speech,
         Mode::Braille => result.braille,
+        Mode::MathMl => {
+            // not a problem with the input, so not a warning: said here because the MathML is the output asked for
+            for a in result.applied.iter().filter(|a| a.rule == mathra::rules::S_MML_1) {
+                eprintln!("mathra: note {}: {}", a.rule, a.description);
+            }
+            result.mathml
+        }
         Mode::Text => result.text,
         Mode::Explain => {
             let mut s = format!(

@@ -119,6 +119,15 @@ def test_braille():
         mathra.render("x", braille="ueb")
 
 
+def test_mathml():
+    r = mathra.render(r"\frac{1}{2}")
+    assert r["mathml"] == '<math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>'
+    assert 'display="inline"' in mathra.render("x", display=False)["mathml"]
+    assert '<mi intent="sine">sen</mi>' in mathra.render(r"\sen x", locale="pt-BR")["mathml"]
+    # read back, the MathML gives the same tree
+    assert mathra.tex_to_tree(r["mathml"], input="mathml") == mathra.tex_to_tree(r"\frac{1}{2}")
+
+
 def test_animate_and_steps():
     assert "data-step" not in mathra.tex_to_svg("x+1")
     assert "@keyframes mr-f" in mathra.tex_to_svg("x+1", animate=True)

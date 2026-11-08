@@ -41,6 +41,8 @@ class Result(TypedDict):
     """The equation in braille, as Unicode braille cells."""
     braille_code: str
     """The braille code used: "cmu" or "nemeth"."""
+    mathml: str
+    """The equation as presentation MathML (MathML Core, with intent where it adds meaning)."""
     tree: Any
     """The tree of meaning."""
     applied: List[Rule]
@@ -241,7 +243,7 @@ def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: b
 
 
 def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None) -> Result:
-    """Every output at once: svg, speech, text, braille, braille_code, tree, applied and warnings."""
+    """Every output at once: svg, speech, text, braille, braille_code, mathml, tree, applied and warnings."""
     return json.loads(_mathra.render(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts)))
 
 

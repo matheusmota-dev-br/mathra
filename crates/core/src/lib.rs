@@ -2,7 +2,8 @@
 //!
 //! It reads math LaTeX (and MathML and AsciiMath), commutative diagrams (amscd, tikz-cd, xymatrix)
 //! and chemistry (mhchem formulas, chemfig structures, reaction schemes and mechanism arrows), and
-//! writes an SVG that carries its speech in 16 languages, its braille and its source.
+//! writes an SVG that carries its speech in 16 languages, its braille and its source, and the same
+//! equation as MathML (`spec/mathml.md`).
 //!
 //! ```
 //! let svg = mathra::tex_to_svg("3.14").unwrap();
@@ -167,6 +168,9 @@ pub struct Output {
     pub text: String,
     /// The equation in braille (Unicode braille cells), in the code of `braille_code`.
     pub braille: String,
+    /// The equation as presentation MathML, in the elements of MathML Core (spec/mathml.md): a
+    /// `<math>` element, `display="block"` or `"inline"` as [`Options::display`].
+    pub mathml: String,
     pub braille_code: BrailleCode,
     /// Rules that changed something in this equation, in the order they acted.
     pub applied: Vec<Applied>,
@@ -175,7 +179,7 @@ pub struct Output {
 }
 
 impl Output {
-    /// Every output as one JSON object: `svg`, `speech`, `text`, `tree`, `applied` and `warnings`, the
+    /// Every output as one JSON object: `svg`, `speech`, `text`, `braille`, `braille_code`, `mathml`, `tree`, `applied` and `warnings`, the
     /// last two as lists of `{"rule", "description"}`. What the JavaScript and Python packages return.
     pub fn to_json(&self) -> String {
         let rules = |list: &[Applied]| -> Vec<serde_json::Value> { list.iter().map(|a| serde_json::json!({ "rule": a.rule, "description": a.description })).collect() };
@@ -186,6 +190,7 @@ impl Output {
             "text": self.text,
             "braille": self.braille,
             "braille_code": self.braille_code.code(),
+            "mathml": self.mathml,
             "tree": tree,
             "applied": rules(&self.applied),
             "warnings": rules(&self.warnings),
@@ -260,6 +265,7 @@ fn finish(tex: &str, options: &Options, tree: Node, input: Input, style: layout:
     for c in &braille.missing {
         registry.note(rules::S_BRL_1, format!("no {braille_code} braille sign for '{c}' (U+{:04X}): written as the full cell ⠿", *c as u32));
     }
+    let mathml = mathml_output(&tree, options, tex, input, &mut registry);
     let tree_json = tree.to_json();
     registry.dedup();
     let svg = output::svg::generate(&output::svg::Content {
@@ -279,7 +285,18 @@ fn finish(tex: &str, options: &Options, tree: Node, input: Input, style: layout:
         steps: options.steps,
         animate: options.animate,
     });
-    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, applied: registry.applied, warnings: registry.warnings })
+    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, mathml, applied: registry.applied, warnings: registry.warnings })
+}
+
+/// The MathML of [`Output::mathml`], and the note S-MML-1 when it is a fallback. A function of its
+/// own, so its locals stay off the stack while the layout recurses.
+#[inline(never)]
+fn mathml_output(tree: &Node, options: &Options, source: &str, input: Input, registry: &mut rules::Registry) -> String {
+    let mathml = output::mathml::generate(tree, options.locale, options.display, source, input);
+    if let Some(what) = mathml.fallback {
+        registry.note(rules::S_MML_1, format!("{what} has no MathML drawing: the MathML is a <semantics> with the source as an annotation"));
+    }
+    mathml.text
 }
 
 /// The composed box, without generating SVG: for callers that draw the equation inside something
@@ -311,6 +328,12 @@ pub fn pen(tex: &str, options: &Options, pen: &output::pen::Pen) -> Result<Strin
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
     let speech = output::speech::speak(&tree, options.locale);
     Ok(output::pen::generate(&math_box, font, tex, &speech, pen))
+}
+
+/// The tree of meaning as MathML (spec/mathml.md), for a tree built or changed by hand; [`convert`]
+/// already returns it in [`Output::mathml`]. The fallback's annotation, if any, holds `source`.
+pub fn mathml(tree: &Node, locale: Locale, display: bool, source: &str) -> String {
+    output::mathml::generate(tree, locale, display, source, Input::Latex).text
 }
 
 /// Shortcut with the default locale (English).
