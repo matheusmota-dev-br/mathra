@@ -1362,8 +1362,9 @@ fn unknown_negation_of_a_known_relation_reads_as_not() {
 #[test]
 fn unknown_commands_starting_with_n_r_t_are_not_json() {
     // (\real, \rArr, \reals, \th, \rowcolor, \newcolumntype and \refeq, the first examples, are read
-    // since the enhancements of 2026-11b: unknown names of the same shapes take their place)
-    for name in ["raisetag", "rrceil", "rescale", "nonscript", "rowsep", "nobreak", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
+    // since the enhancements of 2026-11b, and \rrceil since #176: unknown names of the same shapes take
+    // their place)
+    for name in ["raisetag", "rrhook", "rescale", "nonscript", "rowsep", "nobreak", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
         let tex = format!(r"x \{name}");
         let (_, warnings) = tolerant(&tex);
         assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");

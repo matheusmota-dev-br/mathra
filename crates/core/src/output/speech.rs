@@ -7,7 +7,8 @@ use crate::tree::*;
 pub fn speak(node: &Node, loc: Locale) -> String {
     let mut f = Speaker { loc, words: Vec::new() };
     f.node(node);
-    let phrase = f.words.join(" ");
+    // #176: a symbol drawn by composition that no phrase read is its closest text
+    let phrase = crate::composite::spell(&f.words.join(" "));
     phrase.split_whitespace().collect::<Vec<_>>().join(" ").replace(" ,", ",").replace(" ;", ";").replace(" :", ":")
 }
 
@@ -607,6 +608,11 @@ fn letter(name: &str, loc: Locale) -> String {
 }
 
 fn operator(symbol: char, class: Class, loc: Locale) -> String {
+    // #176: a symbol drawn by composition is read as the character whose meaning it has (a short arrow
+    // as the arrow), or as its closest text
+    if let Some(k) = crate::composite::get(symbol) {
+        return k.meaning.map_or_else(|| k.text.to_string(), |m| operator(m, class, loc));
+    }
     let key = match symbol {
         '−' if class == Class::Ord => "negative".to_string(),
         // L-INT-1: ]a, b[

@@ -177,6 +177,34 @@ A double-struck capital, written `\mathbb{R}`, `RR` (AsciiMath), `mathvariant="d
 
 `\cdot` (and physics' `\vdot`) between two vectors is the dot product and is spoken "dot" ("escalar" in pt-BR): `\vec{v} \cdot \vec{w}` is "vector v dot vector w". A vector is a letter with an arrow over it (`\vec`, `\overrightarrow`) or a bold letter (`\mathbf`, `\boldsymbol`, `\vb`), also with an index. Anywhere else the dot is "times" (`2 \cdot 3`, `a \cdot b`, `2 \cdot \vec{v}`). The word is in the `optional` section of the language's file (`locales.md`); a language without it keeps "times". The drawing is the same dot.
 
+### Symbols drawn by composition
+
+stmaryrd and mathabx have symbols that Unicode has no character for (neither unicode-math-table.tex nor unimathsymbols.txt lists one). mathra draws each one from the math font's own glyphs, as the package's METAFONT source builds it (stmaryjg.mf and stmaryaj.mf, with cmsy10's parameters; for mathabx, the drawings of its mathtest.pdf), and leaves out what it cannot draw that way rather than draw a look-alike:
+
+| Command | Drawn as |
+|---|---|
+| `\llceil`, `\rrceil`, `\llfloor`, `\rrfloor` | two ⌈ (⌉, ⌊, ⌋) 0.45 x-height apart, stmaryrd's `spread`; after `\left`, `\right` and `\big`, the single one grown, twice (stmaryrd declares them as symbols only, as it does `\Lbag`, which mathra also grows) |
+| `\varocircle`, `\varolessthan`, `\varogreaterthan`, `\varovee`, `\varowedge` | ○ with the strokes stmaryrd draws inside it (a circle at half the radius; <, >, ∨, ∧ from the circle's points), at the font's rule thickness |
+| `\varotimes`, `\varoplus`, `\varominus`, `\varodot`, `\varoslash`, `\varobslash`, `\varobar`, `\varoast`, `\varbigcirc` | ⊗ ⊕ ⊖ ⊙ ⊘ ⦸ ⦶ ⊛ ◯ themselves: the var forms are the circle operators drawn circular and with the rule's pen where Computer Modern's are hairline, and STIX Two Math and Latin Modern Math already draw them so |
+| `\Ydown`, `\Yleft`, `\Yright` | ⅄ (`\Yup`) turned; `\Yleft` and `\Yright` centered on the axis |
+| `\shortrightarrow`, `\shortleftarrow`, `\shortuparrow`, `\shortdownarrow` | the head of → (the part the font assembles long arrows with) on a shaft three quarters as long (12u for 16u); the vertical ones are it turned, centered on the axis |
+| `\nnearrow` | → turned to 7u across and 16u up, centered on the axis |
+| `\arrownot` | no width: a slash 4u across, as tall as the arrow's head, over the middle of the arrow that follows (`\arrownot\rightarrow`) |
+| `\mapsfromchar` | no width: the stem of ↤ at the tail of the arrow before it (`\leftarrow\mapsfromchar`) |
+| `\trianglelefteqslant` | ⊲ with its lower side drawn again 0.45 x-height below, centered on the axis |
+| `\inplus` | ∈ with a bar across its middle |
+| `\bigbox`, `\bigboxplus` | ⨅ and ⨆ over each other, and a plus across |
+| `\bigparallel` | the legs of ⨅, 6u apart where those are 13u (8u and 18u in display) |
+| `\bignplus` | ⨄ upside down |
+| `\bigcurlyvee`, `\bigcurlywedge` | two curved arms in the box of ⋁ (⋏ upside down), as thick as its strokes |
+| `\bigominus`, `\bigoslash` | the circle of ⨁ with a bar across or a slash |
+
+`\curvearrowbotright` is Unicode's ⤻ (BOTTOM ARC ANTICLOCKWISE ARROW), the arc and head mathabx draws.
+
+The large operators take limits under and over in display style and grow there, as `\bigsqcup` does. In the tree each symbol is an ordinary symbol node whose character is a marker from the Supplementary Private Use Area-A (U+F0B00 on, `crate::composite`). The linear text writes the closest Unicode text (`⌈⌈`, `∨⃝`, `-<`); speech reads a symbol that is another one drawn another way as that one (a short arrow as the arrow) and the others as that text; braille writes the short arrows as the arrows and the rest as the full cell ⠿ (S-BRL-1, naming the command); the MathML is the S-MML-1 fallback.
+
+Left out: stmaryrd's `\curlyveedownarrow`, whose arms stop at the base of an arrow head the font has no glyph for (drawing them over the head would not be its drawing); and `\sqcupplus`, which mathabx does not define (its square union with a plus is `\squplus`).
+
 ## Spacing
 
 ### L-ESP-1 · Space between atoms

@@ -4,6 +4,7 @@
 pub mod alphabet;
 mod arithmetic;
 mod breaking;
+mod composite;
 mod diagram;
 pub mod kerning;
 pub mod math_box;
@@ -198,7 +199,8 @@ fn em(e: Style, amount: f32) -> f32 {
 
 pub(crate) fn glyph(c: char, e: Style) -> R<MathBox> {
     let f = e.font();
-    let id = f.glyph(c).or_else(|| equivalent(c).and_then(|x| f.glyph(x))).ok_or(Error::MissingGlyph { character: c })?;
+    // (a stmaryrd or mathabx symbol Unicode has no character for is drawn by composition, #176)
+    let Some(id) = f.glyph(c).or_else(|| equivalent(c).and_then(|x| f.glyph(x))) else { return composite::symbol(c, e) };
     // in a script, the font's form for that size (`ssty`), as TeX draws cmr7 rather than cmr10
     let mut math_box = glyph_id(f.script_form(id, e.script_level()), e.scale(), f);
     // (with the letter's italic correction when that form has none of its own, as cmmi7's has)
@@ -1058,7 +1060,7 @@ fn limits(b: MathBox, above: Option<&Node>, below: Option<&Node>, e: Style, ctx:
 
 fn large_operator(c: char, e: Style) -> R<MathBox> {
     let f = e.font();
-    let id = f.glyph(c).ok_or(Error::MissingGlyph { character: c })?;
+    let Some(id) = f.glyph(c) else { return composite::large(c, e) };
     let mut chosen = id;
     if e.level == Level::Display {
         let minimum = f.display_operator_min_height();

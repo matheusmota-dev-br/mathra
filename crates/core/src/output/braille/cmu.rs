@@ -418,6 +418,8 @@ impl Writer {
     }
 
     fn symbol(&mut self, c: char) {
+        // #176: a symbol drawn by composition that is another one drawn another way (a short arrow)
+        let c = crate::composite::get(c).and_then(|k| k.meaning).unwrap_or(c);
         if self.letter_cells(c).is_some() && !c.is_ascii() {
             let l = self.letter_cells(c).unwrap_or_default();
             self.push(&l);

@@ -458,6 +458,8 @@ impl Writer {
     }
 
     fn symbol(&mut self, c: char, ctx: &Ctx) {
+        // #176: a symbol drawn by composition that is another one drawn another way (a short arrow)
+        let c = crate::composite::get(c).and_then(|k| k.meaning).unwrap_or(c);
         // the degree sign is written at superscript level, even when print does not raise it (§23.10)
         if c == '°' {
             self.put_dots(&ctx.at(format!("{}{SUPERSCRIPT}", ctx.level)), "46 16", Kind::Other);
