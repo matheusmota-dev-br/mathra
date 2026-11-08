@@ -396,3 +396,19 @@ fn fallback_fonts_from_files() {
     let o = mathra(&["x", "--fallback-font", concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")], None);
     assert!(!o.status.success() && stderr(&o).contains("not a font"), "{}", stderr(&o));
 }
+
+/// `--png` draws what the SVG draws: the fallback fonts and the line width apply to it too.
+#[cfg(feature = "png")]
+#[test]
+fn png_with_fallback_fonts_and_max_width() {
+    let a = concat!(env!("CARGO_MANIFEST_DIR"), "/../core/tests/fonts/fallback-a.ttf");
+    let o = mathra(&[r"\text{中}", "--png", "--strict"], None);
+    assert!(!o.status.success() && o.stdout.is_empty(), "{}", stderr(&o));
+    let o = mathra(&[r"\text{中}", "--png", "--strict", "--fallback-font", a], None);
+    assert!(o.status.success() && stderr(&o).is_empty(), "{}", stderr(&o));
+    png_size(&o.stdout);
+    let tex = "f(x) = a_0 + a_1 x + a_2 x^2 + a_3 x^3 + a_4 x^4 + a_5 x^5 + a_6 x^6 + 中";
+    let (w, h) = png_size(&mathra(&[tex, "--png", "--fallback-font", a], None).stdout);
+    let (w2, h2) = png_size(&mathra(&[tex, "--png", "--fallback-font", a, "--max-width", "8"], None).stdout);
+    assert!(w2 < w && h2 > h, "{w}×{h} and {w2}×{h2}");
+}

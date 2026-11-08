@@ -81,7 +81,7 @@ fn tex_to_svg(
 /// The equation as PNG bytes: `dpi` over a 12pt body (an em is dpi × 12 / 72 pixels), `background`
 /// and `color` as CSS colors (transparent and `#111` by default).
 #[pyfunction]
-#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111", max_width = None))]
+#[pyo3(signature = (tex, locale = "en", *, display = true, strict = false, input = "latex", braille = None, font = None, dpi = 300.0, background = None, color = "#111", max_width = None, fallback_fonts = None))]
 #[allow(clippy::too_many_arguments)]
 fn tex_to_png(
     py: Python<'_>,
@@ -96,10 +96,12 @@ fn tex_to_png(
     background: Option<String>,
     color: &str,
     max_width: Option<f32>,
+    fallback_fonts: Option<Vec<i64>>,
 ) -> PyResult<Py<pyo3::types::PyBytes>> {
     let options = mathra::PngOptions { dpi, background, color: color.to_string() };
     options.check().map_err(|e| PyValueError::new_err(e.to_string()))?;
-    let png = convert(tex, locale, display, strict, input, braille, false, false, font, max_width, None)?.png(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let png =
+        convert(tex, locale, display, strict, input, braille, false, false, font, max_width, fallback_fonts)?.png(&options).map_err(|e| PyValueError::new_err(e.to_string()))?;
     Ok(pyo3::types::PyBytes::new(py, &png).unbind())
 }
 

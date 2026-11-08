@@ -237,3 +237,14 @@ def test_png_breaks_lines_like_the_svg():
     height = lambda png: int.from_bytes(png[20:24], "big")
     width = lambda png: int.from_bytes(png[16:20], "big")
     assert width(broken) < width(one_line) and height(broken) > height(one_line)
+
+
+def test_png_takes_fallback_fonts():
+    # 中 is in neither STIX Two Math nor Noto Emoji: refused in strict mode, drawn from the fallback
+    with pytest.raises(ValueError, match="has no '中'"):
+        mathra.tex_to_png(r"\text{中}", strict=True)
+    fallback = mathra.load_fallback_font(FALLBACK)
+    png = mathra.tex_to_png(r"\text{中}", strict=True, fallback_fonts=[fallback])
+    assert png.startswith(b"\x89PNG")
+    # the emoji too, from the embedded Noto Emoji
+    assert mathra.tex_to_png("😀", strict=True).startswith(b"\x89PNG")
