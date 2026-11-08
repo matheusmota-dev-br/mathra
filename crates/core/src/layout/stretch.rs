@@ -33,16 +33,25 @@ pub fn vertical(c: char, target: f32, e: Style) -> R<MathBox> {
     if let Some(parts) = f.assembly(id, true) {
         return Ok(assemble(&parts, target / s, s, true, f));
     }
+    // \lgroup and \rgroup, which the fonts have at one size only: grown as cmex grows them
+    if variants.is_empty() && matches!(c, '⟮' | '⟯') {
+        if let Some(parts) = moustache(c, f) {
+            return Ok(assemble(&parts, target / s, s, true, f));
+        }
+    }
     Ok(variants.last().map_or(base, |(v, _)| glyph_id(*v, s, f)))
 }
 
-/// `\lmoustache` (⎰) and `\rmoustache` (⎱) in a font without them (Latin Modern Math): built as
-/// TeX's cmex builds them, from the halves of the braces and their extender, bottom to top. The
-/// connectors are the ones the braces' own assemblies give these parts.
+/// `\lmoustache` (⎰) and `\rmoustache` (⎱) in a font without them (Latin Modern Math), and a tall
+/// `\lgroup` (⟮) and `\rgroup` (⟯): built as TeX's cmex builds them, from the halves of the braces and
+/// their extender, bottom to top. The connectors are the ones the braces' own assemblies give these
+/// parts.
 fn moustache(c: char, f: &Font) -> Option<Vec<Part>> {
     let (bottom, top) = match c {
         '⎰' => ('⎭', '⎧'),
         '⎱' => ('⎩', '⎫'),
+        '⟮' => ('⎩', '⎧'),
+        '⟯' => ('⎭', '⎫'),
         _ => return None,
     };
     let known: Vec<Part> = ['{', '}'].iter().filter_map(|b| f.glyph(*b).and_then(|id| f.assembly(id, true))).flatten().collect();
