@@ -3463,6 +3463,11 @@ fn staggered_indices(raw: &str, pre: bool) -> String {
 
 /// mhchem's `\pu` unit to math: `J mol^-1` → `J\,mol^{-1}`, `.` and `*` between units → `\cdot`.
 fn mhchem_unit(unit: &str) -> String {
+    // `//` is a fraction bar: mhchem.js' `pu` state reads the unit before it and after it apart and
+    // writes them as a `pu-frac`, \frac in text style (\mathchoice{\textstyle\frac{…}{…}}…)
+    if let Some((numerator, denominator)) = unit.split_once("//") {
+        return format!("\\tfrac{{{}}}{{{}}}", mhchem_unit(numerator.trim()), mhchem_unit(denominator.trim()));
+    }
     let c: Vec<char> = unit.chars().collect();
     let mut s = String::new();
     let mut i = 0;
