@@ -4449,7 +4449,8 @@ impl Reader<'_> {
                     _ => format!("\\left\\{{ {x} \\right\\}}"),
                 }
             }
-            "idotsint" => "\\int\\!\\cdots\\!\\int ".into(),
+            // esint's \dotsint is amsmath's \idotsint
+            "idotsint" | "dotsint" => "\\int\\!\\cdots\\!\\int ".into(),
             // mathtools: \prescript{sup}{sub}{base}
             "prescript" => {
                 let sup = self.raw_text()?;

@@ -788,8 +788,9 @@ pub fn large_operator(name: &str) -> Option<(char, bool)> {
         "oiint" | "varoiint" => ('∯', false),
         "oiiint" => ('∰', false),
         "intclockwise" => ('∱', false),
-        "varointclockwise" => ('∲', false),
-        "ointctrclockwise" => ('∳', false),
+        // esint draws two of each, with the arrow on either side of the loop; Unicode has one
+        "ointclockwise" | "varointclockwise" => ('∲', false),
+        "ointctrclockwise" | "varointctrclockwise" => ('∳', false),
         "fint" => ('⨏', false),
         "sqint" => ('⨖', false),
         _ => return None,
