@@ -15,8 +15,8 @@ mod chemistry;
 mod color;
 mod diagram;
 mod mathtools;
-mod tex;
 mod siunitx;
+mod tex;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
     read_with(tex, locale, registry, true)
