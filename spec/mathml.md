@@ -30,6 +30,7 @@ Only the elements of [MathML Core](https://www.w3.org/TR/mathml-core/), the part
 | `\class`, `\cssId`, `\style`, `\htmlData` | the attributes (`class`, `id`, `style`, `data-*`, global in MathML Core) on an `<mrow>`, as the tree keeps them, sanitized |
 | `\vdotswithin{=}` | a one-column `<mtable>`: `⋮` over the relation in an `<mphantom>` with no height, so the dots take its width; `\shortvdotswithin` with `rowspacing="0em"` |
 | `\overgroup`, `\undergroup` | `<mover>`/`<munder>` with a stretchy `⏠`/`⏡` as an accent |
+| `\overlinesegment`, `\underlinesegment` (KaTeX) | `<mover>`/`<munder>` with a stretchy U+20E9 (combining wide bridge) as an accent: Unicode has no line with a tick at each end, and KaTeX writes no character for it; `\widebar` (mathabx) is `\bar`'s `¯` with `stretchy="true"` |
 | mhchem's words (`\ce{Hydrogen + Oxygen -> Water}`) | `<mtext>` |
 | `\slashed{D}` (slashed) | one token, the symbol and U+0338, the combining long solidus overlay (as Unicode writes ≠): `<mi>𝐷̸</mi>`, `<mo>∂̸</mo>`. Core does not italicize a token of two characters, so an italic letter is its mathematical italic; a slash over more than one symbol is S-MML-1 |
 | `\displaystyle`… | `<mstyle displaystyle scriptlevel>` |

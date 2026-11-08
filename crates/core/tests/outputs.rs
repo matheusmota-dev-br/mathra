@@ -118,6 +118,9 @@ const SPEECHES: &[(&str, &str, &str)] = &[
     (r"i\slashed{\partial}\psi", "derivada parcial cortado", "partial slash psi"),
     (r"\slashed{D}", "D cortado", "D slash"),
     (r"\circled{1}", "1 circulado", "circled 1"),
+    (r"\vv{AB}", "vetor A B", "vector A B"),
+    (r"\overlinesegment{AB}", "segmento A B", "segment A B"),
+    (r"\widebar{AB}", "A B barra", "A B bar"),
     (r"\boxed{x}", "x", "x"),
 ];
 

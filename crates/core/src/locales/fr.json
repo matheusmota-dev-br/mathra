@@ -73,6 +73,7 @@
   "accent.ddot": "{0} deux points",
   "accent.tilde": "{0} tilde",
   "accent.arc": "arc {0}",
+  "accent.segment": "segment {0}",
   "arrow.right": "flèche vers la droite",
   "arrow.left": "flèche vers la gauche",
   "arrow.both": "double flèche",

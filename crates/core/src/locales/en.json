@@ -25,6 +25,7 @@
   "accent.ddot": "{0} double dot",
   "accent.tilde": "{0} tilde",
   "accent.arc": "arc {0}",
+  "accent.segment": "segment {0}",
   "arrow.right": "right arrow",
   "arrow.left": "left arrow",
   "arrow.both": "double arrow",

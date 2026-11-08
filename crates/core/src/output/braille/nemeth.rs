@@ -639,7 +639,8 @@ impl Writer {
 
     fn accent(&mut self, base: &Node, accent: char, below: bool, ctx: &Ctx) {
         let modifier = match accent {
-            '\u{0304}' => "156",
+            // the line segment with a tick at each end (KaTeX's \overlinesegment) as the bar of a segment
+            '\u{0304}' | '\u{20E9}' => "156",
             '\u{0302}' => "456 126",
             '\u{20D7}' | '→' => "1246 135",
             '\u{0307}' => "16",

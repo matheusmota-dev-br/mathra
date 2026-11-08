@@ -168,6 +168,8 @@ impl Speaker {
                     '\u{0308}' => "accent.ddot",
                     '\u{0303}' => "accent.tilde",
                     '⏜' | '⏠' => "accent.arc",
+                    // KaTeX's \overlinesegment and \underlinesegment
+                    '\u{20E9}' => "accent.segment",
                     _ => {
                         self.say(b);
                         return;

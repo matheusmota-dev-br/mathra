@@ -11,6 +11,7 @@
 ["mathrsfs \\mathscr", "\\mathscr{L}"],
 ["dsfont \\mathds", "\\mathds{R}"],
 ["bm", "\\bm{v}"],
+["esvect \\vv, accents, mathabx", "\\vv{AB} + \\vv*{u}{1} = \\accentset{\\star}{X} + \\underaccent{\\tilde}{x} + \\widebar{AB} + \\widering{AB} + \\undertilde{AB} + \\Overrightarrow{AB} + \\overlinesegment{AB} + \\underlinesegment{CD}"],
 ["esint \\oiint", "\\oiint_S \\vec{E}\\cdot d\\vec{A}"],
 ["upgreek \\upmu", "\\upmu"],
 ["gensymb \\degree", "30\\degree"],

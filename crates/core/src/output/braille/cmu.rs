@@ -565,8 +565,9 @@ impl Writer {
     /// arc ⠈⠒, a dot ⠈ (with ⠐ before a Latin letter); more than one symbol goes in ⠢…⠔.
     fn mark(&mut self, base: &Node, accent: char, below: bool) {
         let dots = match (accent, below) {
-            ('\u{0304}', false) => "4 14",
-            ('\u{0304}', true) => "6 36",
+            // the line segment with a tick at each end (KaTeX's \overlinesegment) as the bar of a segment
+            ('\u{0304}' | '\u{20E9}', false) => "4 14",
+            ('\u{0304}' | '\u{20E9}', true) => "6 36",
             ('\u{20D7}' | '→', false) => "25 2",
             ('←', false) => "5 25",
             ('\u{0303}', false) => "5 26",

@@ -420,7 +420,15 @@ impl Reader<'_> {
         };
         if let Some(o) = over {
             let said = node.attribute("accent") == Some("true");
-            match decoration(&o, true, accent).or_else(|| other_accent(&o, said, if name == "munderover" { 2 } else { 1 }, false)) {
+            let at = if name == "munderover" { 2 } else { 1 };
+            // a macron said to stretch is a bar accent that widens with its base (mathabx's \widebar)
+            let widened = |d: Decoration| match d {
+                Decoration::Accent('\u{0304}', false, false) if elements.get(at).is_some_and(|e| e.attribute("stretchy") == Some("true")) => {
+                    Decoration::Accent('\u{0304}', true, false)
+                }
+                other => other,
+            };
+            match decoration(&o, true, accent).map(widened).or_else(|| other_accent(&o, said, at, false)) {
                 Some(d) => out = d.apply(out),
                 None => above_left = Some(o),
             }
