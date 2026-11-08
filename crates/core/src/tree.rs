@@ -413,6 +413,9 @@ pub enum Cancel {
     Bar,
     Backslash,
     X,
+    /// The Feynman slash of slashed.sty (`\slashed{D}`): a "/" over the base, which keeps its width.
+    /// Notation, not a cancellation.
+    Slash,
 }
 
 /// Horizontal table rule before row `row`, covering columns `from..=to` (0-based).

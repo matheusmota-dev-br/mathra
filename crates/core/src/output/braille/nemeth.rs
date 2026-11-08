@@ -246,6 +246,12 @@ impl Writer {
             }
             Node::Arrow { symbol, above, below } => self.labeled_arrow(*symbol, above.as_deref(), below.as_deref(), ctx),
             Node::Stacked { base, above, below } => self.modified(base, below.as_deref(), above.as_deref(), ctx),
+            // the Feynman slash is not a cancellation, and the code has no overlay sign for it: the base,
+            // then the full cell for the slash overlay (S-BRL-1)
+            Node::Canceled { base, shape: Cancel::Slash } => {
+                self.node(base, ctx);
+                self.missing(ctx, '\u{0338}');
+            }
             // cancellation indicators around the canceled expression (§12)
             Node::Canceled { base, .. } => {
                 self.put(ctx, "⠪", Kind::Other);

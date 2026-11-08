@@ -667,6 +667,25 @@ fn cancels_and_frames() {
 }
 
 #[test]
+fn slashed_overstrikes_a_slash_and_keeps_the_width() {
+    let glyphs = |b: &MathBox| b.items.iter().filter(|i| matches!(i, Item::Glyph { .. })).count();
+    // slashed.sty: the slash as a glyph over the letter, in a box as wide as the wider of the two
+    for letter in ["D", "p", "A"] {
+        let plain = math_box(letter);
+        let slashed = math_box(&format!(r"\slashed{{{letter}}}"));
+        assert_eq!(glyphs(&slashed), 2, "{letter}");
+        assert_eq!(lines(&slashed), 0, "{letter}: a glyph, not a drawn line");
+        assert!((slashed.width - plain.width).abs() < 1e-4, "{letter}: {} vs {}", slashed.width, plain.width);
+    }
+    // a slash wider than the letter (i) sets the width, both centered
+    let i = math_box("i");
+    let slash = math_box("/");
+    assert!((math_box(r"\slashed{i}").width - i.width.max(slash.width)).abs() < 1e-4);
+    // the spacing around it is a letter's
+    assert!((math_box(r"a\slashed{D}b").width - math_box("aDb").width).abs() < 1e-4);
+}
+
+#[test]
 fn colored_boxes_and_colored_frames() {
     let x = math_box("x");
     // \colorbox: a filled rectangle behind the text, which keeps the page color

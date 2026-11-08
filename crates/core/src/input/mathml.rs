@@ -185,6 +185,7 @@ impl Reader<'_> {
             "mphantom" => Node::Phantom { base: Box::new(self.row(node, variant)?), width: true, height: true },
             "mi" => self.identifier(node, variant),
             "mn" => self.number(node),
+            "mo" if slashed(&text_of(node)).is_some() => slashed_symbol(&text_of(node)),
             "mo" => match spaced(node, operator(&text_of(node))) {
                 // a word with limits that move aside in inline style: \operatorname*{argmax}
                 Node::Function { name, .. } if node.attribute("movablelimits") == Some("true") => Node::Function { name, limits: true },
@@ -311,6 +312,15 @@ impl Reader<'_> {
     fn identifier(&mut self, node: Xml, variant: Variant) -> Node {
         let mut t = text_of(node);
         let mut explicit = node.attribute("mathvariant").and_then(parse_variant);
+        // X̸, the Feynman slash (`\slashed`): two characters, which MathML Core does not italicize
+        if let Some(c) = slashed(&t) {
+            let base = match math_letters(&c.to_string()) {
+                Some((plain, v)) => Node::Identifier { name: plain, variant: v },
+                None if c.is_alphabetic() => Node::Identifier { name: c.to_string(), variant: explicit.unwrap_or(Variant::Upright) },
+                None => operator(&c.to_string()),
+            };
+            return Node::Canceled { base: Box::new(base), shape: Cancel::Slash };
+        }
         // Unicode's mathematical letters (𝐱, ℝ), as MathML Core writes a variant: the letter and its variant
         if let Some((plain, v)) = math_letters(&t) {
             t = plain;
@@ -753,6 +763,22 @@ fn number_value(t: &str, locale: Locale) -> Option<(String, Option<char>)> {
     }
     let canonical = if locale.comma_is_decimal() { t.replace(',', ".") } else { t.to_string() };
     (canonical.matches('.').count() <= 1 && canonical.chars().all(|c| c.is_ascii_digit() || c == '.')).then_some((canonical, None))
+}
+
+/// The symbol of a token written X̸ (X and the combining long solidus overlay, U+0338): slashed.sty's
+/// Feynman slash, as mathra's MathML writes `\slashed{X}`.
+fn slashed(t: &str) -> Option<char> {
+    let mut chars = t.trim().chars();
+    match (chars.next(), chars.next(), chars.next()) {
+        (Some(c), Some('\u{0338}'), None) => Some(c),
+        _ => None,
+    }
+}
+
+/// `<mo>∂̸</mo>`: the slashed symbol.
+fn slashed_symbol(t: &str) -> Node {
+    let base = slashed(t).map_or_else(|| Node::row(vec![]), |c| operator(&c.to_string()));
+    Node::Canceled { base: Box::new(base), shape: Cancel::Slash }
 }
 
 /// `<mo>`: the class of the character, a large operator, or a function name (`lim`, `max`).

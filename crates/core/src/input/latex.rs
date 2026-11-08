@@ -1346,10 +1346,12 @@ impl Reader<'_> {
                 let above = if empty(&above) { None } else { Some(Box::new(above)) };
                 Node::Arrow { symbol, above, below: below.map(Box::new) }
             }
-            "cancel" | "bcancel" | "xcancel" | "sout" => {
+            // slashed.sty's \slashed, the Feynman slash, an overlay drawn like the cancels
+            "cancel" | "bcancel" | "xcancel" | "sout" | "slashed" => {
                 let kind = match name {
                     "bcancel" => Cancel::Backslash,
                     "xcancel" => Cancel::X,
+                    "slashed" => Cancel::Slash,
                     _ => Cancel::Bar,
                 };
                 Node::Canceled { base: Box::new(self.argument()?), shape: kind }
@@ -4313,6 +4315,14 @@ impl Reader<'_> {
             "smashoperator" => {
                 self.raw_optional();
                 format!("{{{}}}", self.raw_text()?)
+            }
+            // slashed.sty's \declareslashed{class}{slash}{right shift}{up shift}{symbol}: another slash or
+            // offset for one symbol; read, and not applied (each \slashed is drawn centered)
+            "declareslashed" => {
+                for _ in 0..5 {
+                    self.raw_text()?;
+                }
+                String::new()
             }
             // the LaTeX kernel
             "underbar" => format!("\\underline{{{}}}", self.raw_text()?),

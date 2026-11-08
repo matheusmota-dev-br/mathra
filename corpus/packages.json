@@ -5,6 +5,7 @@
 ["mhchem \\ce", "\\ce{2H2 + O2 -> 2H2O}"],
 ["siunitx \\SI", "\\SI{9,8}{\\meter\\per\\second\\squared}"],
 ["cancel", "\\cancel{x}\\,\\frac{a}{\\bcancel{a}}"],
+["slashed \\slashed", "i\\slashed{\\partial}\\psi - m\\psi = 0 \\quad \\slashed{p} = \\gamma^\\mu p_\\mu"],
 ["xfrac \\sfrac", "\\sfrac{1}{2}"],
 ["mathrsfs \\mathscr", "\\mathscr{L}"],
 ["dsfont \\mathds", "\\mathds{R}"],
