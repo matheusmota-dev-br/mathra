@@ -172,6 +172,33 @@ fn e_rec_3_script_mark_as_the_argument_of_a_script() {
 }
 
 #[test]
+fn e_rec_9_misplaced_and_extra_alignment_tabs() {
+    // TeX: "Misplaced alignment tab character &"
+    assert_eq!(tolerant(r"u & v").text, "u v");
+    assert_eq!(warning_rules(r"u & v"), vec!["E-REC-9"]);
+    assert!(strict(r"u & v").is_err());
+    // TeX: "Extra alignment tab has been changed to \cr"; the extra cell keeps the default alignment
+    let extra = r"\begin{array}{cc} 1 & 2 & 3 \end{array}";
+    assert_eq!(tolerant(extra).text, "1, 2, 3");
+    assert_eq!(warning_rules(extra), vec!["E-REC-9"]);
+    assert!(strict(extra).is_err());
+    assert!(strict(r"\begin{tabular}{l} a & b \end{tabular}").is_err());
+    // what fits the declared columns stays valid, \multicolumn counting the columns it spans
+    for tex in [
+        r"\begin{array}{cc} 1 & 2 \\ 3 & 4 \end{array}",
+        r"\begin{array}{cc} 1 \\ 3 & 4 \\ \end{array}",
+        r"\begin{array}{cc} \multicolumn{2}{c}{x} \\ 1 & 2 \end{array}",
+        r"\begin{array}{*{3}{c}} 1 & 2 & 3 \end{array}",
+        r"\begin{pmatrix} 1 & 2 & 3 \end{pmatrix}",
+        r"\begin{aligned} a &= b \\ c &= d \end{aligned}",
+    ] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}: {:?}", tolerant(tex).warnings);
+        assert!(strict(tex).is_ok(), "{tex}");
+    }
+    assert!(strict(r"\begin{array}{cc} \multicolumn{2}{c}{x} & 3 \end{array}").is_err());
+}
+
+#[test]
 fn e_rec_9_percent_starts_a_comment() {
     // TeX: '%' drops the rest of the line, the line break and the next line's leading spaces
     assert_eq!(strict(r"p = 15% \cdot q").unwrap().text, "p = 15");

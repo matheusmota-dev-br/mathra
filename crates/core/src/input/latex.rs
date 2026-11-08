@@ -334,7 +334,7 @@ impl Reader<'_> {
 
     // ---------- structure ----------
 
-    /// Whole body. Loose `\\` and `&` become rows and columns of an alignment.
+    /// Whole body. Loose `\\` and `&` become rows and columns of an alignment (a loose `&` is misplaced in TeX: E-REC-9).
     fn top(&mut self) -> R<Node> {
         let mut rows: Vec<Vec<Node>> = Vec::new();
         let mut cells: Vec<Node> = Vec::new();
@@ -344,7 +344,11 @@ impl Reader<'_> {
             cells.push(Node::row(items).simplify());
             match stop {
                 Stop::Eof => break,
-                Stop::E => had_e = true,
+                Stop::E => {
+                    // TeX: "Misplaced alignment tab character &"
+                    self.tolerate(rules::E_REC_9, self.pos, "'&' outside an alignment", "read as a column of an alignment")?;
+                    had_e = true;
+                }
                 Stop::NewRow => rows.push(std::mem::take(&mut cells)),
                 Stop::CloseBrace => self.tolerate(rules::E_REC_4, self.pos, "'}' without a matching '{'", "ignored")?,
                 Stop::End(n) => self.tolerate(rules::E_REC_5, self.pos, format!("\\end{{{n}}} without a matching \\begin"), "ignored")?,
@@ -1822,6 +1826,17 @@ impl Reader<'_> {
         }
 
         let (rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        if kind == TableKind::Array {
+            // TeX: "Extra alignment tab has been changed to \cr"
+            let span = |cell: &Node| if let Node::Multicolumn { columns, .. } = cell { *columns } else { 1 };
+            for (r, row) in rows.iter().enumerate() {
+                let cells: usize = row.iter().map(span).sum();
+                if cells > columns.len() && !intertexts.contains(&r) {
+                    let declared = columns.len();
+                    self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
+                }
+            }
+        }
         if !columns.is_empty() && kind != TableKind::Array {
             // pmatrix*[r]: the same alignment in every column
             let a = columns[0];

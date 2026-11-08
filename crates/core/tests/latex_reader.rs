@@ -110,7 +110,8 @@ fn sub_reader_stopping_before_the_end() {
 
 #[test]
 fn top_level_ampersand_and_break_become_alignment() {
-    has(&tree("a &= b"), &["Table", "Aligned"]);
+    // a loose & is misplaced in TeX: read as a column with a warning (E-REC-9), refused in strict mode
+    has(&recovers("a &= b", "E-REC-9"), &["Table", "Aligned"]);
     has(&tree(r"a \\ b"), &["Table", "Centered"]);
     // a break at the end does not create an empty row
     let t = tree(r"a \\ b \\");
@@ -1279,10 +1280,16 @@ fn p_left_without_right_and_vice_versa() {
 
 #[test]
 fn p_alignment_outside_environment() {
-    // & and \\ at the top level are an implicit alignment: valid in both modes
-    for tex in ["a & b", r"a \\ b", r"& \\ &", r"\\\\\\", "&&&&"] {
+    // \\ at the top level is a row of an implicit alignment: valid in both modes
+    for tex in [r"a \\ b", r"\\\\\\"] {
         let (e, t) = finishes(tex);
-        assert!(e.is_none() && t.is_ok(), "{tex}: {e:?} {t:?}");
+        assert!(e.is_none() && t.as_ref().is_ok_and(Vec::is_empty), "{tex}: {e:?} {t:?}");
+    }
+    // & outside an alignment is "Misplaced alignment tab character &" in TeX: strict mode refuses it,
+    // tolerant mode still reads it as a column, with a warning
+    for tex in ["a & b", r"& \\ &", "&&&&"] {
+        let (e, t) = finishes(tex);
+        assert!(e.is_some() && t.as_ref().is_ok_and(|a| !a.is_empty() && a.iter().all(|r| r == "E-REC-9")), "{tex}: {e:?} {t:?}");
     }
 }
 
