@@ -4531,7 +4531,8 @@ impl Reader<'_> {
         // ASCII names only: a character like '∠' after the backslash has no prefix to cut
         for cut in (2..if name.is_ascii() { name.len() } else { 0 }).rev() {
             let (prefix, remainder) = name.split_at(cut);
-            if known(prefix) {
+            // #174: \text… names are textcomp's symbols (\textcelsius, \textbaht), not \text and a word
+            if known(prefix) && prefix != "text" {
                 self.tolerate(rules::E_REC_1, col, format!("unsupported command: \\{name}"), &format!("read as \\{prefix} {remainder}"))?;
                 self.inject(start, &format!("\\{prefix} {remainder}"), col)?;
                 return Ok(None);
