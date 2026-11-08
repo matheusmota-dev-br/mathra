@@ -1185,6 +1185,9 @@
      "tex": "\\le \\ge \\ne \\approx \\equiv \\sim \\cong \\propto"
     },
     {
+     "tex": "\\Gamma \\vdash \\lightning \\quad a \\boxast b \\quad \\Lbag x \\Rbag \\quad \\mathbold{x} + \\mathbold{\\alpha}"
+    },
+    {
      "tex": "\\subset \\subseteq \\in \\notin \\cup \\cap \\emptyset"
     },
     {

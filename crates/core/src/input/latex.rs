@@ -996,12 +996,12 @@ impl Reader<'_> {
             // graphicx: \scalebox{-1}[1]{…}, its argument in text mode
             "reflectbox" => Node::Reflected { base: Box::new(self.text()?) },
             "mathrm" | "mathup" | "mathit" | "mathbf" | "mathsf" | "mathtt" | "mathbb" | "mathcal" | "mathscr" | "mathfrak" | "boldsymbol" | "bm" | "pmb" | "mathbfit"
-            | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
+            | "mathbold" | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
                 let variant = match name {
                     "mathrm" | "mathup" | "symrm" => Variant::Upright,
                     "mathit" | "mathnormal" | "symit" => Variant::Italic,
                     "mathbf" | "symbf" => Variant::Bold,
-                    "boldsymbol" | "bm" | "pmb" | "mathbfit" => Variant::BoldItalic,
+                    "boldsymbol" | "bm" | "pmb" | "mathbfit" | "mathbold" => Variant::BoldItalic,
                     "mathsf" => Variant::SansSerif,
                     "mathtt" => Variant::Monospace,
                     "mathbb" | "mathds" | "mathbbm" | "Bbb" => Variant::DoubleStruck,
@@ -3182,7 +3182,7 @@ fn graphicx_box(name: &str) -> Option<&'static str> {
 /// Math commands that authors write in text, with their arguments (as for `text_arguments`).
 fn math_in_text(name: &str) -> Option<&'static str> {
     Some(match name {
-        "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb" | "mathfrak" | "mathscr" | "mathbfit" | "mathnormal" | "boldsymbol" | "bm" => "{",
+        "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb" | "mathfrak" | "mathscr" | "mathbfit" | "mathnormal" | "boldsymbol" | "bm" | "mathbold" => "{",
         "frac" | "dfrac" | "tfrac" => "{{",
         "sqrt" => "[{",
         "operatorname" => "*{",
@@ -3980,6 +3980,7 @@ fn known(name: &str) -> bool {
                 | "textrm"
                 | "mathit"
                 | "boldsymbol"
+                | "mathbold"
                 | "bmatrix"
                 | "pmatrix"
                 | "vmatrix"
