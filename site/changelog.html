@@ -81,6 +81,7 @@
     const p = new URLSearchParams({ tex: e.tex });
     if (e.locale !== "en") p.set("locale", e.locale);
     if (e.input !== "latex") p.set("input", e.input);
+    if (e.maxWidth) p.set("width", String(e.maxWidth));
     return `index.html#${p}`;
   };
 
@@ -141,7 +142,7 @@
     .then(() => {
       const draw = (e, animate = false) => {
         try {
-          return JSON.parse(wasm_bindgen.render(e.tex, e.locale, true, false, e.input, null, animate, false)).svg;
+          return JSON.parse(wasm_bindgen.render(e.tex, e.locale, true, false, e.input, null, animate, false, null, e.maxWidth ?? null)).svg;
         } catch (err) {
           return `<span class="empty">${escape(String(err.message ?? err))}</span>`;
         }
