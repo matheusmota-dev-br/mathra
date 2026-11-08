@@ -1,5 +1,8 @@
 pub mod braille;
+pub mod mathml;
 pub mod pen;
+#[cfg(feature = "png")]
+pub mod png;
 pub mod speech;
 pub mod svg;
 pub mod text;

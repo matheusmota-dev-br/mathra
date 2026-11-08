@@ -6,8 +6,10 @@ use mathra::rules::Registry;
 use mathra::tree::{Class, Node, Variant};
 use mathra::{Error, Locale, Options};
 
+/// No fallback fonts, with or without the `emoji` feature: a character the math font lacks is a box
+/// here (tests/fallback.rs has the fallbacks).
 fn options() -> Options {
-    Options { locale: Locale::PtBr, ..Options::default() }
+    Options { locale: Locale::PtBr, fallback_fonts: Vec::new(), ..Options::default() }
 }
 
 /// Box composed through the public API, with the tolerant mode's warnings.
@@ -43,7 +45,7 @@ fn assert_valid_svg(svg: &str, tex: &str) {
 /// Composes a hand-built tree (for nodes the reader only produces in rare combinations).
 fn compose_node(node: &Node, e: Style, strict: bool) -> Result<MathBox, Error> {
     let mut registry = Registry::default();
-    let mut ctx = Context { locale: Locale::PtBr, registry: &mut registry, strict, kerning: Default::default() };
+    let mut ctx = Context { locale: Locale::PtBr, registry: &mut registry, strict, kerning: Default::default(), fallbacks: &[] };
     compose(node, e, &mut ctx)
 }
 
@@ -1190,4 +1192,45 @@ fn text_is_kerned_as_tex_kerns_it() {
     assert_eq!(width("va", TextKerning::None), width("va", TextKerning::T1));
     // bold by its own table
     assert!(width(r"\text{\textbf{AV}}", TextKerning::None) > width(r"\text{\textbf{AV}}", TextKerning::Ot1));
+}
+
+/// Left edge and right edge of the glyphs of `letter` (math italic) in a box.
+fn letter_span(c: &MathBox, letter: char) -> (f32, f32) {
+    let f = mathra::font::font();
+    let id = f.glyph(letter).unwrap();
+    let xs: Vec<(f32, f32)> = c.items.iter().filter_map(|i| if let Item::Glyph { id: g, x, scale, .. } = i { (*g == id).then_some((*x, *scale)) } else { None }).collect();
+    assert!(!xs.is_empty(), "{letter} is drawn");
+    let start = xs.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
+    let end = xs.iter().map(|p| p.0 + f.advance(id) * p.1).fold(f32::NEG_INFINITY, f32::max);
+    (start, end)
+}
+
+#[test]
+fn multline_first_line_left_last_right_shoved_lines_at_their_side() {
+    let tex = r"\begin{multline} aaaaaaaa \\ b \\ \shoveleft{c} \\ \shoveright{d} \\ e \end{multline}";
+    let c = math_box(tex);
+    consistent(&c, tex);
+    let width = c.width;
+    // within 1/20 em
+    let near = |x: f32, at: f32| (x - at).abs() < 50.0;
+    let (a0, a1) = letter_span(&c, '𝑎');
+    let (b0, b1) = letter_span(&c, '𝑏');
+    let (c0, _) = letter_span(&c, '𝑐');
+    let (_, d1) = letter_span(&c, '𝑑');
+    let (_, e1) = letter_span(&c, '𝑒');
+    // the first line is the widest: it spans the box
+    assert!(near(a0, 0.0) && near(a1, width), "first line {a0}..{a1} in 0..{width}");
+    // a middle line is centered; a shoved one goes to its side; the last line goes right
+    assert!(near((b0 + b1) / 2.0, width / 2.0), "middle line {b0}..{b1} in 0..{width}");
+    assert!(near(c0, 0.0), "\\shoveleft at {c0}");
+    assert!(near(d1, width), "\\shoveright ends at {d1} of {width}");
+    assert!(near(e1, width), "last line ends at {e1} of {width}");
+    // multline* is the same layout, without a number
+    let starred = math_box(r"\begin{multline*} aaaaaaaa \\ b \\ \shoveleft{c} \\ \shoveright{d} \\ e \end{multline*}");
+    assert_eq!(starred.width, width);
+    assert_eq!(letter_span(&starred, '𝑒'), (letter_span(&c, '𝑒')));
+    // a short first line goes left, a short last line right
+    let c = math_box(r"\begin{multline} a \\ bbbbbbbb \\ e \end{multline}");
+    assert!(near(letter_span(&c, '𝑎').0, 0.0) && near(letter_span(&c, '𝑒').1, c.width));
+    assert!(warnings(tex).is_empty(), "{:?}", warnings(tex));
 }

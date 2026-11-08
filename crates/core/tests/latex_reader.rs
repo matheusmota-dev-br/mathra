@@ -482,6 +482,22 @@ fn siunitx_numbers() {
     has(&tree(r"\ang{30}"), &["'°'"]);
 }
 
+#[test]
+fn siunitx_tablenum_is_num() {
+    // the alignment of an S column on the decimal marker is not done: \tablenum reads as \num
+    for value in ["1.2", "-12.345", "100", "1e5", "2,5"] {
+        assert_eq!(tree(&format!(r"\tablenum{{{value}}}")), tree(&format!(r"\num{{{value}}}")), "{value}");
+    }
+    assert_eq!(tree(r"\tablenum[table-format=3.1]{1.2}"), tree(r"\num{1.2}"));
+    // with the language's decimal marker (L-NUM-1), in math and in text, in a table
+    let pt = Options { locale: Locale::PtBr, strict: true, ..Options::default() };
+    let text = |tex: &str| convert(tex, &pt).unwrap_or_else(|e| panic!("{tex}: {e}")).text;
+    assert_eq!(text(r"\tablenum{1.2}"), "1,2");
+    assert_eq!(text(r"\text{x = \tablenum{1.5}}"), "x = 1,5");
+    assert_eq!(text(r"\begin{array}{c} \tablenum{1.2} \\ \tablenum{-12.345} \\ \tablenum{100} \end{array}"), "1,2; −12,345; 100");
+    assert!(strict_error(r"\tablenum{1.2.3}").contains("is not a number"));
+}
+
 // ---------- arithmetic and other commands ----------
 
 #[test]
@@ -571,6 +587,52 @@ fn modular_arithmetic_and_misc() {
     has(&tree(r"a \lt b \gt c"), &["'<'", "'>'"]);
 }
 
+// ---------- HTML attributes (\class, \htmlId…) ----------
+
+/// Tree and warnings of an input that strict mode accepts too, with the same tree.
+fn both_modes(tex: &str) -> (String, Vec<String>) {
+    let strict = read_in(tex, Locale::PtBr, true).0.unwrap_or_else(|e| panic!("{tex}: strict mode refused: {e}"));
+    let (t, warnings) = tolerant(tex);
+    assert_eq!(format!("{strict:?}"), t, "{tex}");
+    (t, warnings)
+}
+
+#[test]
+fn html_attributes_wrap_the_content() {
+    has(&tree(r"\class{highlight}{x^2} + 1"), &["Attributed { attributes: [(\"class\", \"highlight\")], base: Scripts"]);
+    has(&tree(r"\htmlClass{term main}{x}"), &["(\"class\", \"term main\")"]);
+    has(&tree(r"\cssId{step-2}{a + b}"), &["(\"id\", \"step-2\")"]);
+    has(&tree(r"\htmlId{s_1}{a}"), &["(\"id\", \"s_1\")"]);
+    has(&tree(r"\htmlData{step=3, Kind=sum}{c}"), &["(\"data-step\", \"3\"), (\"data-kind\", \"sum\")"]);
+    // a style's color colors the content too, as \color does
+    has(&tree(r"\style{color:red}{\frac{a}{b}}"), &["(\"style\", \"color:red\")", "base: Colored { color: \"red\", base: Fraction"]);
+    has(&tree(r"\htmlStyle{color: blue; opacity: 0.5;}{y}"), &["(\"style\", \"color:blue;opacity:0.5\")", "Colored { color: \"blue\""]);
+    let t = tree(r"\style{background-color:yellow}{y}");
+    has(&t, &["(\"style\", \"background-color:yellow\")"]);
+    assert!(!t.contains("Colored"), "{t}");
+}
+
+#[test]
+fn html_attributes_drop_what_is_unsafe_with_a_warning_in_both_modes() {
+    for (tex, kept, gone) in [
+        (r#"\cssId{a" onload="alert(1)}{x}"#, "(\"id\", \"aonloadalert1\")", "onload="),
+        (r"\class{a<b>c}{x}", "(\"class\", \"abc\")", "<"),
+        (r"\style{color:red;position:fixed}{x}", "(\"style\", \"color:red\")", "position"),
+        (r"\style{background:url(http://evil/x.png)}{x}", "Identifier", "url("),
+        (r#"\style{color:red" onclick="x}{x}"#, "Identifier", "onclick"),
+        (r"\htmlStyle{color:expression(alert(1))}{x}", "Identifier", "expression"),
+        (r"\htmlData{on click=1,ok=2}{x}", "(\"data-onclick\", \"1\"), (\"data-ok\", \"2\")", "on click"),
+    ] {
+        let (t, warnings) = both_modes(tex);
+        has(&t, &[kept]);
+        assert!(!t.contains(gone), "{tex}: {t}");
+        assert!(warnings.iter().any(|w| w.starts_with("E-REC-9")), "{tex}: {warnings:?}");
+    }
+    // nothing safe left: the content alone
+    let (t, _) = both_modes(r"\cssId{<>}{x}");
+    assert!(!t.contains("Attributed"), "{t}");
+}
+
 // ---------- colors and delimiters ----------
 
 #[test]
@@ -582,6 +644,54 @@ fn colored_boxes_paint_the_background_not_the_text() {
     has(&tree(r"\fcolorbox[HTML]{FF0000}{yellow}{x}"), &["border: Some(\"#FF0000\")"]);
     // an invalid color in tolerant mode: the box stays, without that color
     has(&recovers(r"\fcolorbox{re;d}{yellow}{x}", "E-REC-9"), &["border: None", "background: Some(\"yellow\")"]);
+}
+
+#[test]
+fn bbox_is_a_colorbox_with_padding_and_a_css_border() {
+    // the background alone: no padding, as in MathJax
+    has(&tree(r"\bbox[yellow]{x^2}"), &["Framed", "shape: Fill", "background: Some(\"yellow\")", "border: None", "padding: Some(0.0)", "thickness: None", "Scripts"]);
+    // a padding and a border: a frame of that width and color
+    let t = tree(r"\bbox[5px,border:2px solid red]{E = mc^2}");
+    has(&t, &["shape: Rectangle", "background: None", "border: Some(\"red\")", "padding: Some(0.375)", "thickness: Some(0.15)"]);
+    has(&tree(r"\bbox[yellow,0.5em,border:1pt solid blue]{x}"), &["background: Some(\"yellow\")", "border: Some(\"blue\")", "padding: Some(0.5)", "thickness: Some(0.1)"]);
+    // a border without a color takes the content's, as CSS's currentColor
+    has(&tree(r"\bbox[border:1px solid]{x}"), &["shape: Rectangle", "border: None"]);
+    has(&tree(r"\bbox{x}"), &["shape: Fill", "background: None"]);
+    // what mathra does not draw is a warning, and the rest is kept
+    has(&recovers(r"\bbox[yellow,border-radius:3px]{x}", "E-REC-9"), &["background: Some(\"yellow\")"]);
+    has(&recovers(r"\bbox[2px,border:2px dashed red]{x}", "E-REC-9"), &["border: Some(\"red\")"]);
+    has(&recovers(r"\bbox[yellow,blue]{x}", "E-REC-9"), &["background: Some(\"yellow\")"]);
+    has(&recovers(r"\bbox[re;d]{x}", "E-REC-9"), &["background: None"]);
+}
+
+#[test]
+fn bbox_padding_and_border_take_their_room() {
+    let width = |tex: &str| mathra::typeset(tex, &Options::default()).unwrap().0.width;
+    // \bbox[yellow] fits the content (the italic correction of a lone x aside); a padding is on both sides
+    let fitted = width(r"\bbox[yellow]{x}");
+    assert!(fitted <= width("x") && fitted > 0.9 * width("x"), "{fitted}");
+    let padded = width(r"\bbox[yellow,10px]{x}");
+    let em = mathra::typeset(r"\hspace{1em}", &Options::default()).unwrap().0.width;
+    assert!((padded - fitted - 2.0 * 0.75 * em).abs() < 1.0, "{padded} {fitted} {em}");
+    // the border's width is drawn: thicker border, wider box
+    assert!(width(r"\bbox[border:4px solid red]{x}") > width(r"\bbox[border:1px solid red]{x}"));
+}
+
+#[test]
+fn enclose_draws_the_menclose_notations() {
+    has(&tree(r"\enclose{circle}{7}"), &["shape: Circle"]);
+    has(&tree(r"\enclose{updiagonalstrike,downdiagonalstrike}{x}"), &["Canceled", "shape: X"]);
+    has(&tree(r"\enclose{updiagonalstrike downdiagonalstrike}{x}"), &["shape: X"]);
+    has(&tree(r"\enclose{box}{x}"), &["shape: Rectangle"]);
+    has(&tree(r"\enclose{radical}{x}"), &["Root"]);
+    has(&tree(r"\enclose{roundedbox}[mathcolor=red]{a+b}"), &["Colored { color: \"red\", base: Framed"]);
+    has(&tree(r"\enclose{box}[mathbackground=yellow]{a}"), &["shape: Fill", "background: Some(\"yellow\")"]);
+    // a notation mathra does not draw: the content as it is
+    let t = recovers(r"\enclose{longdiv}{x}", "E-REC-9");
+    assert!(!t.contains("Framed"), "{t}");
+    has(&recovers(r"\enclose{circle,madruwb}{x}", "E-REC-9"), &["shape: Circle"]);
+    has(&recovers(r"\enclose{box}[mathcolor=re;d]{x}", "E-REC-9"), &["shape: Rectangle"]);
+    has(&recovers(r#"\enclose{box}[style="x"]{x}"#, "E-REC-9"), &["shape: Rectangle"]);
 }
 
 #[test]
@@ -599,12 +709,79 @@ fn square_brackets_and_arrows_under_and_over() {
 #[test]
 fn color_models() {
     has(&tree(r"\color[HTML]{FF0000} x"), &["#FF0000"]);
-    has(&tree(r"\textcolor[rgb]{1,0,0}{x}"), &["rgb(1,0,0)"]);
+    // each model as #rrggbb (CSS's rgb() counts to 255, not to 1)
+    has(&tree(r"\textcolor[rgb]{1,0,0}{x}"), &["#ff0000"]);
+    has(&tree(r"\textcolor[RGB]{0,128,255}{x}"), &["#0080ff"]);
+    has(&tree(r"\textcolor[gray]{0.5}{x}"), &["#808080"]);
+    has(&tree(r"\textcolor[cmyk]{1,0,0,0.2}{x}"), &["#00cccc"]);
+    has(&tree(r"\textcolor[named]{red}{x}"), &["\"red\""]);
     // invalid color: strict mode refuses; tolerant mode draws without color
-    for tex in [r"\color{re;d} x", r#"\textcolor{red" onload="x}{a}"#, r"\colorbox{}{a}", r"\color[HTML]{<script>} x"] {
+    for tex in [
+        r"\color{re;d} x",
+        r#"\textcolor{red" onload="x}{a}"#,
+        r"\colorbox{}{a}",
+        r"\color[HTML]{<script>} x",
+        r"\textcolor[rgb]{2,0,0}{x}",
+        r"\textcolor[RGB]{1,2}{x}",
+        r"\textcolor[hsb]{0.5,1,1}{x}",
+        r"\textcolor{nosuchcolor!50}{x}",
+        r"\textcolor{red!150}{x}",
+    ] {
         let t = recovers(tex, "E-REC-9");
         assert!(!t.contains("Colored"), "{tex}: {t}");
     }
+}
+
+#[test]
+fn definecolor_adds_a_color_for_the_rest_of_the_input() {
+    let t = tree(r"\definecolor{brand}{HTML}{1F6FEB} \color{brand} x + \textcolor{brand}{y}");
+    assert_eq!(t.matches("#1f6feb").count(), 2, "{t}");
+    for (tex, expected) in [
+        (r"\definecolor{warm}{rgb}{0.9,0.3,0.1}\textcolor{warm}{a}", "#e64d1a"),
+        (r"\definecolor{cool}{RGB}{30,120,200}\textcolor{cool}{b}", "#1e78c8"),
+        (r"\definecolor{mid}{gray}{0.5}\textcolor{mid}{c}", "#808080"),
+        (r"\definecolor{ink}{cmyk}{0,1,1,0.5}\textcolor{ink}{d}", "#800000"),
+        // xcolor's optional type, and a definition with several models takes the first
+        (r"\definecolor[named]{both}{rgb/cmyk}{0,0,1/1,1,0,0}\textcolor{both}{e}", "#0000ff"),
+        // a defined name wins over the name it shadows
+        (r"\definecolor{red}{rgb}{0.5,0,0}\textcolor{red}{f}", "#800000"),
+        // \providecolor keeps a color already defined
+        (r"\definecolor{a}{gray}{0}\providecolor{a}{gray}{1}\providecolor{b}{gray}{1}\textcolor{a}{g}\textcolor{b}{h}", "#000000"),
+        // in \colorbox, \fcolorbox and \color inside \text
+        (r"\definecolor{bg}{HTML}{FFEEAA}\colorbox{bg}{x}", "background: Some(\"#ffeeaa\")"),
+        (r"\definecolor{t}{gray}{0.25}\text{a \color{t}b}", "#404040"),
+    ] {
+        has(&tree(tex), &[expected]);
+    }
+    has(&tree(r"\definecolor{a}{gray}{0}\providecolor{a}{gray}{1}\providecolor{b}{gray}{1}\textcolor{b}{h}"), &["#ffffff"]);
+    // a color is defined from where it is written on
+    assert!(!tree(r"\textcolor{late}{x}\definecolor{late}{gray}{0}").contains('#'));
+    // an invalid definition defines nothing
+    for tex in [r"\definecolor{bad}{rgb}{2,0,0}", r"\definecolor{bad}{HTML}{12345}", r"\definecolor{bad}{hsb}{0,1,1}", r"\definecolor{bad}{RGB}{1,2,3,4}"] {
+        let t = recovers(&format!(r"{tex}\textcolor{{bad}}{{x}}"), "E-REC-9");
+        assert!(!t.contains('#'), "{tex}: {t}");
+    }
+}
+
+#[test]
+fn colorlet_and_xcolor_mixes() {
+    for (tex, expected) in [
+        // red!40: 40 % red, 60 % white
+        (r"\textcolor{red!40}{x}", "#ff9999"),
+        (r"\textcolor{red!40!blue}{x}", "#660099"),
+        (r"\textcolor{red!50!blue!50!white}{x}", "#bf80bf"),
+        (r"\textcolor{black!100}{x}", "#000000"),
+        // xcolor's base colors: green is (0,1,0) in a mix
+        (r"\textcolor{green!50!black}{x}", "#008000"),
+        (r"\definecolor{warm}{rgb}{0.9,0.3,0.1}\colorlet{soft}{warm!40}\textcolor{soft}{c}", "#f5b8a3"),
+        (r"\definecolor{brand}{HTML}{1F6FEB}\colorbox{brand!20}{x}", "#d2e2fb"),
+        (r"\colorlet{accent}{orange}\textcolor{accent!50}{x}", "#ffbf80"),
+    ] {
+        has(&tree(tex), &[expected]);
+    }
+    // \colorlet of a plain name keeps the name, as \color{orange} does
+    has(&tree(r"\colorlet{accent}{orange}\textcolor{accent}{x}"), &["\"orange\""]);
+    has(&recovers(r"\colorlet{x}{nosuch!40}\textcolor{x}{y}", "E-REC-9"), &["Identifier"]);
 }
 
 #[test]
@@ -868,7 +1045,7 @@ fn l_txt_4_color_inside_text() {
     has(&t, &["Text(\"a \")", "Math(Colored { color: \"red\", base: Text { parts: [Text(\"b \"), Math(Identifier", "Text(\" c\")"]);
     assert!(t.find("Colored").unwrap() < t.find("Text(\" c\")").unwrap(), "{t}");
     // to the end of the text, with a color model
-    has(&tree(r"\text{a \color[rgb]{0,0,1}b}"), &["Colored { color: \"rgb(0,0,1)\"", "Text(\"b\")"]);
+    has(&tree(r"\text{a \color[rgb]{0,0,1}b}"), &["Colored { color: \"#0000ff\"", "Text(\"b\")"]);
     // \textcolor: its argument
     has(&tree(r"\text{\textcolor{blue}{x}y}"), &["Math(Colored { color: \"blue\", base: Text { parts: [Text(\"x\")]", "Text(\"y\")"]);
     // the colored text stays bold, and its math bold after \boldmath
@@ -1546,4 +1723,14 @@ fn a_quantitys_value_as_siunitx_prints_it() {
     assert_eq!(tree(r"\SI{+10}{V}"), tree(r"\SI{10}{V}"));
     assert_eq!(tree(r"\SI{.25}{V}"), tree(r"\SI{0.25}{V}"));
     assert_eq!(tree(r"\SI{-.5}{V}"), tree(r"\SI{-0.5}{V}"));
+}
+
+#[test]
+fn bbox_and_enclose_take_defined_colors() {
+    let t = tree(r"\definecolor{brand}{HTML}{1F6FEB} \bbox[brand,border:1px solid brand]{x}");
+    assert_eq!(t.matches("#1f6feb").count(), 2, "{t}");
+    let t = tree(r"\definecolor{brand}{HTML}{1F6FEB} \enclose{circle}[mathcolor=brand]{x}");
+    assert!(t.contains("#1f6feb"), "{t}");
+    let t = tree(r"\bbox[red!40]{x}");
+    assert!(t.contains('#'), "an xcolor mix becomes #rrggbb: {t}");
 }

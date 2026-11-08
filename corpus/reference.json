@@ -1048,6 +1048,12 @@
     },
     {
      "tex": "\\begin{split} a &= b \\\\ &= c \\end{split}"
+    },
+    {
+     "tex": "\\begin{multline*} a + b + c + d \\\\ \\shoveleft{{} + e + f} \\\\ {} + g = 0 \\end{multline*}"
+    },
+    {
+     "tex": "\\begin{aligned} a &= b \\\\ &\\vdotswithin{=} \\\\ &= c \\\\ \\shortvdotswithin{=} &= d \\end{aligned}"
     }
    ]
   },
@@ -1185,6 +1191,9 @@
      "tex": "\\le \\ge \\ne \\approx \\equiv \\sim \\cong \\propto"
     },
     {
+     "tex": "\\Gamma \\vdash \\lightning \\quad a \\boxast b \\quad \\Lbag x \\Rbag \\quad \\mathbold{x} + \\mathbold{\\alpha}"
+    },
+    {
      "tex": "\\subset \\subseteq \\in \\notin \\cup \\cap \\emptyset"
     },
     {
@@ -1252,6 +1261,9 @@
     },
     {
      "tex": "\\url{https://example.org/a_b}"
+    },
+    {
+     "tex": "\\definecolor{brand}{HTML}{1F6FEB} \\colorlet{soft}{brand!40} \\textcolor{brand}{a} + \\textcolor{soft}{b} = \\textcolor{red!60!blue}{c}"
     }
    ]
   },
@@ -1275,6 +1287,9 @@
      "tex": "\\overbracket{a+b} \\underbracket{c+d}"
     },
     {
+     "tex": "a \\stackrel{\\text{def}}{=} b \\quad a \\stackbin{*}{+} b"
+    },
+    {
      "tex": "\\cancel{x} \\bcancel{y} \\xcancel{z}"
     },
     {
@@ -1284,10 +1299,19 @@
      "tex": "\\colorbox{yellow}{x} \\fcolorbox{red}{yellow}{y}"
     },
     {
+     "tex": "\\bbox[yellow,5px,border:2px solid red]{x^2} \\enclose{circle}{7} \\enclose{updiagonalstrike}{x}"
+    },
+    {
      "tex": "\\overleftharpoon{AB} \\quad \\overrightharpoon{AB} \\quad \\utilde{AB}"
     },
     {
+     "tex": "\\overgroup{AB} \\quad \\undergroup{AB} \\quad \\underparen{AB}"
+    },
+    {
      "tex": "\\cancelto{0}{x} \\quad \\reflectbox{abc}"
+    },
+    {
+     "tex": "\\class{highlight}{x^2} + \\style{color:red}{2x} + \\htmlData{step=3}{1}"
     }
    ]
   }
@@ -1347,6 +1371,9 @@
     },
     {
      "tex": "\\num{6.022e23}"
+    },
+    {
+     "tex": "\\begin{array}{c} \\tablenum{1.2} \\\\ \\tablenum{-12.345} \\end{array}"
     },
     {
      "tex": "\\ang{12;30;15}"

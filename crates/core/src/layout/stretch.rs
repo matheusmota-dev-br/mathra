@@ -79,7 +79,75 @@ pub fn horizontal(c: char, target: f32, e: Style) -> R<MathBox> {
     if let Some(built) = composite_arrow(c, id, target, e)? {
         return Ok(built);
     }
-    Ok(variants.last().map_or(glyph_id(id, s, f), |(v, _)| glyph_id(*v, s, f)))
+    let widest = variants.last().map_or(id, |(v, _)| *v);
+    if let Some(built) = tiled_group(c, widest, target, e) {
+        return Ok(built);
+    }
+    Ok(glyph_id(widest, s, f))
+}
+
+/// `\overgroup` (⏠) and `\undergroup` (⏡) wider than the font's widest size (STIX Two Math has
+/// sizes but no assembly for them; Latin Modern Math has one). The glyph is a flat stroke between
+/// two slanted corners, and is drawn again from its own outline at the width asked: the stroke as
+/// a rule, each corner as a line from the foot of the glyph to where the stroke begins, as thick
+/// as the glyph's.
+fn tiled_group(c: char, id: ttf_parser::GlyphId, target: f32, e: Style) -> Option<MathBox> {
+    if !matches!(c, '⏠' | '⏡') {
+        return None;
+    }
+    let f = e.font();
+    let s = e.scale();
+    let (x0, y0, x1, y1) = f.limits(id);
+    if x1 <= x0 || (x1 - x0) * s >= target {
+        return None;
+    }
+    // the stroke, where the outline crosses the middle of the glyph
+    let (bottom, top) = crossings(f, id, (x0 + x1) / 2.0)?;
+    let thickness = top - bottom;
+    let points: Vec<(f32, f32)> = f.contours(id, 4.0).into_iter().flatten().collect();
+    // the foot: the end of the corner, at the far left; the corner goes up (⏠) or down (⏡) to the stroke
+    let foot: Vec<&(f32, f32)> = points.iter().filter(|p| p.0 < x0 + thickness / 2.0).collect();
+    let foot = (foot.iter().map(|p| p.0).sum::<f32>() / foot.len() as f32, foot.iter().map(|p| p.1).sum::<f32>() / foot.len() as f32);
+    let up = foot.1 < bottom;
+    // the stroke's outer edge, and where it starts on the left
+    let outer = if up { top } else { bottom };
+    let start = points.iter().filter(|p| (p.1 - outer).abs() < 1.0).map(|p| p.0).fold(f32::INFINITY, f32::min);
+    let inner = points.iter().filter(|p| (p.1 - (bottom + top - outer)).abs() < 1.0).map(|p| p.0).fold(f32::INFINITY, f32::min);
+    if !start.is_finite() || !inner.is_finite() {
+        return None;
+    }
+    let joint = ((start + inner) / 2.0, (bottom + top) / 2.0);
+    let (dx, dy) = (joint.0 - foot.0, joint.1 - foot.1);
+    let length = dx.hypot(dy);
+    // the corner's own thickness, across it; the line's round cap stops at the foot
+    let across = thickness * dx.abs() / length;
+    let foot = (foot.0 + dx / length * across / 2.0, foot.1 + dy / length * across / 2.0);
+    let left = |x: f32| (x - x0) * s;
+    let right = |x: f32| target - (x - x0) * s;
+    let mut math_box = MathBox::empty();
+    for side in [&left as &dyn Fn(f32) -> f32, &right] {
+        math_box.items.push(Item::Line { x1: side(foot.0), y1: foot.1 * s, x2: side(joint.0), y2: joint.1 * s, thickness: across * s, color: None });
+    }
+    math_box.items.push(Item::Rule { x: left(start), y: bottom * s, width: right(start) - left(start), height: thickness * s, color: None });
+    math_box.width = target;
+    math_box.height = (y1 * s).max(0.0);
+    math_box.depth = (-y0 * s).max(0.0);
+    Some(math_box)
+}
+
+/// Lowest and highest point where the outline of a glyph crosses the vertical line at `x` (font units).
+fn crossings(f: &Font, id: ttf_parser::GlyphId, x: f32) -> Option<(f32, f32)> {
+    let mut found = (f32::INFINITY, f32::NEG_INFINITY);
+    for contour in f.contours(id, 4.0) {
+        let closed = contour.iter().zip(contour.iter().cycle().skip(1));
+        for (&(xa, ya), &(xb, yb)) in closed {
+            if (xa - x) * (xb - x) <= 0.0 && xa != xb {
+                let y = ya + (yb - ya) * (x - xa) / (xb - xa);
+                found = (found.0.min(y), found.1.max(y));
+            }
+        }
+    }
+    (found.0 < found.1).then_some(found)
 }
 
 /// The narrowest a horizontal brace or bracket (⏞ ⏟ ⎴ ⎵) is drawn: the font's smallest variant
@@ -158,8 +226,8 @@ pub fn ink(math_box: &MathBox, e: Style) -> (f32, f32) {
     let f = e.font();
     let mut bounds = (f32::INFINITY, f32::NEG_INFINITY);
     for item in &math_box.items {
-        if let Item::Glyph { id, y, scale, .. } = item {
-            let (_, y0, _, y1) = f.limits(*id);
+        if let Item::Glyph { id, y, scale, font, .. } = item {
+            let (_, y0, _, y1) = crate::font::glyph_font(*font, f).limits(*id);
             bounds = (bounds.0.min(y + y0 * scale), bounds.1.max(y + y1 * scale));
         }
     }
@@ -203,7 +271,7 @@ fn assemble(parts: &[Part], target: f32, s: f32, vertical: bool, f: &Font) -> Ma
     for p in &seq {
         let (x0, y0, _, _) = f.limits(p.id);
         let (x, y) = if vertical { (0.0, (cursor - y0) * s) } else { ((cursor - x0) * s, 0.0) };
-        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None, flip: false });
+        math_box.items.push(Item::Glyph { id: p.id, x, y, scale: s, color: None, flip: false, font: None });
         let g = glyph_id(p.id, s, f);
         if vertical {
             math_box.width = math_box.width.max(g.width);

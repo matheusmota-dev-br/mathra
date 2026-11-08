@@ -18,10 +18,22 @@ export interface Options {
   steps?: boolean;
   /** The math font the equation is set in: what `loadFont` returned, or its id. Default STIX Two Math. */
   font?: Font | number;
+  /** The widest a line may be, in em. A wider equation is broken after a relation (`=`, `≤`, `→`…), or also after `+` and `−` when relations alone are not enough, only at its top level (never inside a fraction, root, `\left…\right`, scripts or a table), with each line a `<g data-line>` of the SVG. Speech, text and braille do not change. Default: one line, however wide. */
+  maxWidth?: number;
+  /** Fonts for the characters the math font lacks (emoji, CJK in `\text{…}`), tried in order: what `loadFallbackFont` returned, or a math font from `loadFont` or `loadFontFromCatalog`. Their outlines go in the SVG as the other glyphs'. Default none: the npm package embeds no emoji font, so a character no font has is drawn as a box (E-REC-8) or, with `strict`, refused. */
+  fallbackFonts?: (FallbackFont | Font)[];
   /** The numbers of the document's labels, which an equation converted alone cannot know: `{ "eq:a": 3 }` makes `\eqref{eq:a}` show `(3)` and `\ref{eq:a}` show `3`. An unknown label is `??`, with a warning (E-REC-9), or an error with `strict`. */
   labels?: Record<string, string | number>;
   /** The numbers of the document's citations: `{ knuth: 1 }` makes `\cite{knuth}` show `[1]`. An unknown key is `?`, with a warning (E-REC-9), or an error with `strict`. */
   citations?: Record<string, string | number>;
+}
+
+/** A font loaded with `loadFallbackFont`, for `options.fallbackFonts`. */
+export interface FallbackFont {
+  id: number;
+  /** The font's family name. */
+  name: string;
+  fallback: true;
 }
 
 /** A math font loaded with `loadFont`. */
@@ -49,6 +61,8 @@ export interface Result {
   braille: string;
   /** The braille code used: "cmu" or "nemeth". */
   braille_code: "cmu" | "nemeth";
+  /** The equation as presentation MathML: a `<math>` element with MathML Core's elements, `display="block"` or `"inline"` as `options.display`, and `intent` where the tree knows what the drawing does not say. What MathML cannot draw (chemfig, diagrams, `\cancel`) is a `<semantics>` with the source as an annotation. */
+  mathml: string;
   /** The tree of meaning. */
   tree: unknown;
   /** Rules that changed something in this equation, in the order they acted. */
@@ -68,6 +82,9 @@ export function render(tex: string, options?: Options | Locale): Result;
 
 /** Loads an OpenType math font (an `.otf` or `.ttf` with a MATH table, such as Libertinus Math or Fira Math) from its bytes, to pass as `options.font`. The same bytes again give the same font. Throws if it is not a font or has no MATH table. */
 export function loadFont(bytes: Uint8Array | ArrayBuffer): Font;
+
+/** Loads a fallback font from its bytes, to pass in `options.fallbackFonts`: any OpenType or TrueType font with outlines (glyf or CFF), such as Noto Emoji (the monochrome one) or a CJK font; no MATH table needed. Color layers are not read: glyphs are drawn in one color, `currentColor`. The same bytes again give the same font. Throws if it is not a font or has no outlines. */
+export function loadFallbackFont(bytes: Uint8Array | ArrayBuffer): FallbackFont;
 
 /** A font of the mathfonts catalog (https://matheusmota-dev-br.github.io/mathfonts/). */
 export interface CatalogFont {

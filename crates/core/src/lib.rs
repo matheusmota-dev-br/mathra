@@ -2,7 +2,8 @@
 //!
 //! It reads math LaTeX (and MathML and AsciiMath), commutative diagrams (amscd, tikz-cd, xymatrix)
 //! and chemistry (mhchem formulas, chemfig structures, reaction schemes and mechanism arrows), and
-//! writes an SVG that carries its speech in 16 languages, its braille and its source.
+//! writes an SVG that carries its speech in 16 languages, its braille and its source, and the same
+//! equation as MathML (`spec/mathml.md`).
 //!
 //! ```
 //! let svg = mathra::tex_to_svg("3.14").unwrap();
@@ -20,6 +21,10 @@
 //!   `\chemfig` and `\schemestart` are unsupported commands.
 //! - `latin-modern`: Latin Modern Math as a second font, chosen with [`convert_in_font`]; some 700 KB
 //!   more in the binary.
+//! - `png`: PNG output, [`Output::png`] (the SVG rasterized with resvg, no fonts loaded); off by
+//!   default here, on in the command line and the Python package.
+//! - `emoji`: Noto Emoji (monochrome, OFL) as the default fallback font ([`Options::fallback_fonts`]),
+//!   for the emoji the math font lacks; about 780 KB more in the binary.
 
 #[cfg(feature = "chem")]
 pub mod chem;
@@ -35,6 +40,8 @@ use std::fmt;
 
 pub use locale::Locale;
 pub use output::braille::BrailleCode;
+#[cfg(feature = "png")]
+pub use output::png::{PngError, PngOptions};
 pub use rules::Applied;
 pub use tree::{Class, Node};
 
@@ -106,6 +113,15 @@ pub struct Options {
     /// The math font the equation is set in: STIX Two Math by default, or one loaded with
     /// [`font::MathFont::load`].
     pub font: font::MathFont,
+    /// The widest a line may be, in em: a wider formula is broken after a relation, or after `+`
+    /// and `−` when relations alone are not enough, at its top level only (L-BRK-1); each line is
+    /// a `<g data-line>` of the SVG (S-SVG-12). `None` (the default): one line, however wide.
+    /// [`convert`] breaks lines; [`typeset`] and [`pen`] draw one line.
+    pub max_width: Option<f32>,
+    /// Fonts for the characters the math font lacks (emoji, CJK in `\text{…}`), looked up in order;
+    /// a character none has is drawn as a box (E-REC-8) or, strict, refused. Noto Emoji with the
+    /// `emoji` feature ([`font::FallbackFont::defaults`]), else none.
+    pub fallback_fonts: Vec<font::FallbackFont>,
     /// The numbers of the document's labels, which an equation converted alone cannot know:
     /// `{"eq:a": "3"}` makes `\eqref{eq:a}` show `(3)` and `\ref{eq:a}` show `3`. A label missing here
     /// (and not numbered by a `\tag` in the equation) is `??`, with a warning (E-REC-9; an error in
@@ -131,6 +147,8 @@ impl Default for Options {
             steps: false,
             text_kerning: Default::default(),
             font: font::MathFont::StixTwo,
+            max_width: None,
+            fallback_fonts: font::FallbackFont::defaults(),
             labels: Labels::new(),
             citations: Labels::new(),
         }
@@ -138,7 +156,8 @@ impl Default for Options {
 }
 
 /// The tree of meaning of an equation, in the notation `options.input` says, and the labels it numbers.
-fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Result<(Node, Input, Labels), Error> {
+/// `font` in place of `options.font` (the `_in_font` functions).
+fn read(source: &str, options: &Options, font: font::MathFont, registry: &mut rules::Registry) -> Result<(Node, Input, Labels), Error> {
     let input = match options.input {
         Input::Latex if input::mathml::looks_like_mathml(source) => {
             registry.note(rules::L_ENT_4, "MathML pasted as LaTeX: read as MathML");
@@ -147,7 +166,7 @@ fn read(source: &str, options: &Options, registry: &mut rules::Registry) -> Resu
         other => other,
     };
     let (tree, labels) = match input {
-        Input::Latex => input::latex::read_in_document(source, options.locale, registry, options.strict, options.font, &options.labels, &options.citations)?,
+        Input::Latex => input::latex::read_in_document(source, options.locale, registry, options.strict, font, &options.labels, &options.citations)?,
         Input::MathMl => (input::mathml::read_with(source, options.locale, registry, options.strict)?, Labels::new()),
         Input::AsciiMath => (input::asciimath::read_with(source, options.locale, registry, options.strict)?, Labels::new()),
     };
@@ -162,6 +181,9 @@ pub struct Output {
     pub text: String,
     /// The equation in braille (Unicode braille cells), in the code of `braille_code`.
     pub braille: String,
+    /// The equation as presentation MathML, in the elements of MathML Core (spec/mathml.md): a
+    /// `<math>` element, `display="block"` or `"inline"` as [`Options::display`].
+    pub mathml: String,
     pub braille_code: BrailleCode,
     /// Rules that changed something in this equation, in the order they acted.
     pub applied: Vec<Applied>,
@@ -174,7 +196,7 @@ pub struct Output {
 }
 
 impl Output {
-    /// Every output as one JSON object: `svg`, `speech`, `text`, `tree`, `applied` and `warnings`, the
+    /// Every output as one JSON object: `svg`, `speech`, `text`, `braille`, `braille_code`, `mathml`, `tree`, `applied` and `warnings`, the
     /// last two as lists of `{"rule", "description"}`. What the JavaScript and Python packages return.
     pub fn to_json(&self) -> String {
         let rules = |list: &[Applied]| -> Vec<serde_json::Value> { list.iter().map(|a| serde_json::json!({ "rule": a.rule, "description": a.description })).collect() };
@@ -185,11 +207,25 @@ impl Output {
             "text": self.text,
             "braille": self.braille,
             "braille_code": self.braille_code.code(),
+            "mathml": self.mathml,
             "tree": tree,
             "applied": rules(&self.applied),
             "warnings": rules(&self.warnings),
         })
         .to_string()
+    }
+
+    /// The SVG as a PNG, at `options.dpi` over a 12pt body (50 pixels per em at 300 dpi), transparent
+    /// and in `#111` ink by default; see [`output::png`]. The `png` feature.
+    ///
+    /// ```
+    /// let r = mathra::convert(r"e^{i\pi} + 1 = 0", &mathra::Options::default()).unwrap();
+    /// let png = r.png(&mathra::PngOptions { dpi: 150.0, ..Default::default() }).unwrap();
+    /// assert!(png.starts_with(b"\x89PNG"));
+    /// ```
+    #[cfg(feature = "png")]
+    pub fn png(&self, options: &PngOptions) -> Result<Vec<u8>, PngError> {
+        output::png::from_svg(&self.svg, options)
     }
 }
 
@@ -219,13 +255,35 @@ pub fn convert(tex: &str, options: &Options) -> Result<Output, Error> {
 
 /// [`convert`], with the equation set in `font` (in place of [`Options::font`]).
 pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<Output, Error> {
-    let options = &Options { font, ..options.clone() };
     let mut registry = rules::Registry::default();
-    let (tree, input, labels) = read(tex, options, &mut registry)?;
+    let (tree, input, labels) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
     let math_box = {
-        let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+        let mut ctx =
+            layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
         layout::compose_list(&tree, style, &mut ctx)?
+    };
+    finish(tex, options, tree, input, style, math_box, registry, labels)
+}
+
+/// What follows the layout: the lines (L-BRK-1), the speech, text and braille, and the SVG. A frame
+/// of its own, not on the stack while the deep recursions of reading and layout run.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn finish(
+    tex: &str,
+    options: &Options,
+    tree: Node,
+    input: Input,
+    style: layout::Style,
+    math_box: layout::MathBox,
+    mut registry: rules::Registry,
+    labels: Labels,
+) -> Result<Output, Error> {
+    let formula = {
+        let mut ctx =
+            layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
+        layout::break_lines(&tree, math_box, style, &mut ctx, options.max_width)?
     };
     let speech = output::speech::speak(&tree, options.locale);
     let text = output::text::linear(&tree, options.locale);
@@ -234,10 +292,12 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
     for c in &braille.missing {
         registry.note(rules::S_BRL_1, format!("no {braille_code} braille sign for '{c}' (U+{:04X}): written as the full cell ⠿", *c as u32));
     }
+    let mathml = mathml_output(&tree, options, tex, input, &mut registry);
     let tree_json = tree.to_json();
     registry.dedup();
     let svg = output::svg::generate(&output::svg::Content {
-        math_box: &math_box,
+        math_box: &formula.math_box,
+        lines: &formula.lines,
         source: tex,
         input,
         tree_json: &tree_json,
@@ -247,11 +307,23 @@ pub fn convert_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
         braille_code,
         locale: options.locale,
         warnings: &registry.warnings,
-        font,
+        // the font `convert_in_font` was given, which may not be `options.font`
+        font: style.font,
         steps: options.steps,
         animate: options.animate,
     });
-    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, applied: registry.applied, warnings: registry.warnings, labels })
+    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, mathml, applied: registry.applied, warnings: registry.warnings, labels })
+}
+
+/// The MathML of [`Output::mathml`], and the note S-MML-1 when it is a fallback. A function of its
+/// own, so its locals stay off the stack while the layout recurses.
+#[inline(never)]
+fn mathml_output(tree: &Node, options: &Options, source: &str, input: Input, registry: &mut rules::Registry) -> String {
+    let mathml = output::mathml::generate(tree, options.locale, options.display, source, input);
+    if let Some(what) = mathml.fallback {
+        registry.note(rules::S_MML_1, format!("{what} has no MathML drawing: the MathML is a <semantics> with the source as an annotation"));
+    }
+    mathml.text
 }
 
 /// The composed box, without generating SVG: for callers that draw the equation inside something
@@ -263,11 +335,10 @@ pub fn typeset(tex: &str, options: &Options) -> Result<(layout::MathBox, Vec<App
 /// [`typeset`], with the equation set in `font` (in place of [`Options::font`]; its glyph ids are
 /// that font's).
 pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Result<(layout::MathBox, Vec<Applied>), Error> {
-    let options = &Options { font, ..options.clone() };
     let mut registry = rules::Registry::default();
-    let (tree, _, _) = read(tex, options, &mut registry)?;
+    let (tree, _, _) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
-    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
     registry.dedup();
     Ok((math_box, registry.warnings))
@@ -278,12 +349,18 @@ pub fn typeset_in_font(tex: &str, options: &Options, font: font::MathFont) -> Re
 pub fn pen(tex: &str, options: &Options, pen: &output::pen::Pen) -> Result<String, Error> {
     let font = options.font;
     let mut registry = rules::Registry::default();
-    let (tree, _, _) = read(tex, options, &mut registry)?;
+    let (tree, _, _) = read(tex, options, font, &mut registry)?;
     let style = if options.display { layout::Style::display() } else { layout::Style::text() }.in_font(font);
-    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning };
+    let mut ctx = layout::Context { locale: options.locale, registry: &mut registry, strict: options.strict, kerning: options.text_kerning, fallbacks: &options.fallback_fonts };
     let math_box = layout::compose_list(&tree, style, &mut ctx)?;
     let speech = output::speech::speak(&tree, options.locale);
     Ok(output::pen::generate(&math_box, font, tex, &speech, pen))
+}
+
+/// The tree of meaning as MathML (spec/mathml.md), for a tree built or changed by hand; [`convert`]
+/// already returns it in [`Output::mathml`]. The fallback's annotation, if any, holds `source`.
+pub fn mathml(tree: &Node, locale: Locale, display: bool, source: &str) -> String {
+    output::mathml::generate(tree, locale, display, source, Input::Latex).text
 }
 
 /// Shortcut with the default locale (English).

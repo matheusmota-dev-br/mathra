@@ -70,7 +70,7 @@ With the `chem` feature (on by default), `\chemfig{…}`, `\schemestart … \sch
 
 ### L-CHE-1 · mhchem
 
-`\ce{…}` reads chemical formulas: element symbols upright, digits after them as subscripts, charges as superscripts (`Ag+`, `SO4^2-`, `[H+]`), radicals (`^{.}` → •), oxidation states (`^{II}`), states (`(aq)`, `(s)`, `(l)`, `(g)`), isotopes on an empty base (`^{14}_{6}C`) and bonds (`-`, `=`, `#`, `\bond{…}`), which are drawn as lines and are not read as minus, equals or congruence. Coefficients may be integers, decimals (`0.5`), fractions (`1/2`, drawn small) or math (`$x$`, or a lone lowercase letter); after the dot of a hydrate (`CuSO4.5H2O`, also `*`) a number is a coefficient again, not a subscript. The arrows are `->`, `<-`, `<->` (resonance), `<-->`, `<=>`, `<=>>` and `<<=>`; `[above][below]` right after an arrow are labels, read as `\ce` themselves, and the arrow stretches over them. `\frac{…}{…}` inside `\ce` keeps formulas in numerator and denominator, and any other command (`\Delta`) is read as math. `\pu{123 kJ mol^-1}` writes a quantity with mhchem's unit syntax. Both work inside `\text{…}` (and every text argument) as in math, as mhchem typesets them in text too (`\text{water, \ce{H2O}}`).
+`\ce{…}` reads chemical formulas: element symbols upright, digits after them as subscripts, charges as superscripts (`Ag+`, `SO4^2-`, `[H+]`), radicals (`^{.}` → •), oxidation states (`^{II}`), states (`(aq)`, `(s)`, `(l)`, `(g)`), isotopes on an empty base (`^{14}_{6}C`) and bonds (`-`, `=`, `#`, `\bond{…}`), which are drawn as lines and are not read as minus, equals or congruence. Coefficients may be integers, decimals (`0.5`), fractions (`1/2`, drawn small) or math (`$x$`, or a lone lowercase letter); after the dot of a hydrate (`CuSO4.5H2O`, also `*`) a number is a coefficient again, not a subscript. The arrows are `->`, `<-`, `<->` (resonance), `<-->`, `<=>`, `<=>>` and `<<=>`; `[above][below]` right after an arrow are labels, read as `\ce` themselves, and the arrow stretches over them. `\frac{…}{…}` inside `\ce` keeps formulas in numerator and denominator, and any other command (`\Delta`) is read as math. `\pu{123 kJ mol^-1}` writes a quantity with mhchem's unit syntax. Words are text (`\ce{Hydrogen + Oxygen -> Water}`), two formulas or words written apart get a word space (`sodium chloride`), and a state may hold more after a comma (`(aq,$\infty$)`), by the rules in `chemistry.md`. Both work inside `\text{…}` (and every text argument) as in math, as mhchem typesets them in text too (`\text{water, \ce{H2O}}`).
 
 ## Input coming from other systems
 
@@ -238,6 +238,24 @@ graphicx's box commands set their argument in text mode, and work in math and in
 - `\raisebox{lift}[height][depth]{…}` raises it, then gives it that height and depth, if asked: `\raisebox{0pt}[\height][0pt]{…}` (the manual's `\killdepth`) removes its depth, so labels with and without descenders share a baseline.
 
 The lengths take any TeX unit and the box's own `\width`, `\height`, `\depth` and `\totalheight`, with a factor (`2\height`); in `\raisebox`, those of the raised box. A length that cannot be read is an error in `\raisebox{lift}` and `\resizebox`; in `\raisebox`'s optional arguments it is ignored in tolerant mode (E-REC-9). Turned and unevenly scaled boxes are drawn through an SVG `matrix()` (S-SVG-5).
+
+## Line breaking
+
+### L-BRK-1 · Automatic line breaking
+
+Off by default. With a maximum width in em (`Options::max_width`, `--max-width 30em`, `{ maxWidth: 30 }`, `max_width=30`), a formula wider than it is broken into lines, in display and inline style alike:
+
+- **Where.** Only between the atoms of the formula's top-level row, so never inside a fraction, a root, `\left…\right`, scripts, a group (`{…}`) or a table. After a relation (`=`, `≤`, `→`, an extensible arrow) first: if breaking only after relations makes every line fit, no other break is taken. Otherwise after a relation or a binary `+`, `−`, `±` or `∓` (a unary minus is not binary, L-ESP-2; `·`, `×` and punctuation are never break points), each line taking as much as fits (first fit, as TeX's and MathJax's breaks without a penalty search). Never after a relation that another relation follows, as TeX's `\relpenalty` goes only after the last.
+- **The operator.** It ends its line and is not repeated at the start of the next, as TeX and MathJax do, in every locale. Spaces at the start of a line are dropped, as TeX discards glue after a break.
+- **Indent.** Continuation lines start under the right-hand side of the first top-level relation (where the atom after it starts), so they read as more of that side. With no relation, or one whose right-hand side starts more than half the maximum width in, they start 2 em in.
+- **Lines.** Each line's baseline sits below the previous one's as table rows do: a strut of 0.84 em above and 0.36 em below, plus `\jot` (0.3 em) in display style (S-SVG-12). The first line's baseline is the formula's (S-SVG-1).
+- **Not broken.** An equation the author already set in lines (`align`, `gather`, `aligned`… at its top level) is never broken again. Tables (`array`, matrices, `cases`) are atoms: a line breaks around them, never inside.
+
+Speech, linear text, braille and the tree are the same with and without it. `applied` gets one note: how many lines, and after which operators.
+
+### L-BRK-2 · What cannot be broken
+
+A formula, a line or a table that cannot be made narrower than the maximum width (a single wide fraction, a long alignment, a run without break points) is drawn as it is, overflowing, and `applied` notes by how much (`the table cannot be broken within 3em: drawn 4.2em wider`). It is a fact about the layout, not a problem of the input: it goes in `applied`, as the full braille cell of S-BRL-1 does, not in `warnings`, which hold what tolerant mode fixed and stay empty in strict mode (`tolerance.md`); so it does not show on the terminal's stderr or as `warning` in `--batch`, only in `--explain`.
 
 ## Measured coverage
 

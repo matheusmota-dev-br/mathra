@@ -5,6 +5,16 @@ use std::sync::OnceLock;
 
 use crate::tree::Class;
 
+/// The 118 element symbols, and D and T (hydrogen's isotopes, written as elements): what mhchem's
+/// formulas and chemfig's labels are made of.
+pub(crate) const ELEMENTS: &[&str] = &[
+    "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga",
+    "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac",
+    "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+    "D", "T",
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Symbol {
     pub symbol: char,
@@ -546,6 +556,35 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("lBrace", '⦃', Open),
         ("rBrace", '⦄', Close),
         ("mapsfrom", '↤', Rel),
+        ("lightning", '↯', Ord),
+        ("Mapsto", '⤇', Rel),
+        ("Mapsfrom", '⤆', Rel),
+        ("Longmapsto", '⟾', Rel),
+        ("Longmapsfrom", '⟽', Rel),
+        ("longmapsfrom", '⟻', Rel),
+        ("boxbox", '⧈', Bin),
+        ("boxslash", '⧄', Bin),
+        ("boxbslash", '⧅', Bin),
+        ("boxast", '⧆', Bin),
+        ("boxcircle", '⧇', Bin),
+        ("obar", '⦶', Bin),
+        ("obslash", '⦸', Bin),
+        ("olessthan", '⧀', Bin),
+        ("ogreaterthan", '⧁', Bin),
+        ("fatsemi", '⨟', Bin),
+        ("interleave", '⫴', Bin),
+        ("talloblong", '⫾', Bin),
+        ("sslash", '⫽', Bin),
+        ("Lbag", '⟅', Open),
+        ("Rbag", '⟆', Close),
+        ("llparenthesis", '⦇', Open),
+        ("rrparenthesis", '⦈', Close),
+        // marvosym: its lightning, for a contradiction as stmaryrd's
+        ("Lightning", '↯', Ord),
+        // wasysym
+        ("invneg", '⌐', Rel),
+        ("checked", '✓', Ord),
+        ("diameter", '⌀', Ord),
         // unicode-math
         ("imageof", '⊷', Rel),
         ("origof", '⊶', Rel),
@@ -717,6 +756,12 @@ pub fn function(name: &str) -> Option<(&'static str, bool)> {
     })
 }
 
+/// A large operator that takes its limits under and over in display style when nothing says otherwise
+/// (∑, ⋃), as [`large_operator`] gives them; the integrals take them at the side.
+pub fn limits_by_default(c: char) -> bool {
+    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄')
+}
+
 /// Large operators and whether, by default, they take limits below and above in display style.
 pub fn large_operator(name: &str) -> Option<(char, bool)> {
     Some(match name {
@@ -779,6 +824,11 @@ pub fn delimiter_command(name: &str) -> Option<Option<char>> {
         "rparen" => ')',
         "lBrace" => '⦃',
         "rBrace" => '⦄',
+        // stmaryrd
+        "Lbag" => '⟅',
+        "Rbag" => '⟆',
+        "llparenthesis" => '⦇',
+        "rrparenthesis" => '⦈',
         "rgroup" => '⟯',
         "lmoustache" => '⎰',
         "rmoustache" => '⎱',
@@ -835,6 +885,9 @@ pub fn accent(name: &str) -> Option<(char, bool)> {
         "overrightharpoon" => ('⇀', true),
         "overarc" | "wideparen" | "overparen" | "arc" => ('⏜', true),
         "underparen" => ('⏝', true),
+        // KaTeX's group accents (MnSymbol, yhmath): a wide arc with corners over or under the base
+        "overgroup" => ('⏠', true),
+        "undergroup" => ('⏡', true),
         _ => return None,
     })
 }

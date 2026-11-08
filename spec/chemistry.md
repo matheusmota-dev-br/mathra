@@ -105,6 +105,16 @@ The label above an arrow goes on its left side, looking along it, and the label 
 
 A curved arrow goes from one hooked atom to another, as a cubic Bézier: it leaves in its `out` direction (TikZ's first control point, or `out=`), arrives from its `in` direction, and each control point reaches the length given (or 0.45 of the distance between the atoms). Without directions it bends 45° to the left (`bend left`, or the angle given). It starts and ends 0.12 em beyond the atoms' letters; a fishhook has one barb.
 
+## mhchem: words and formulas (L-CHE-1)
+
+`\ce{Hydrogen + Oxygen -> Water}` and `\ce{sodium chloride -> sodium + chlorine}` are text, `\ce{NaOH}` and `\ce{CO}` formulas. The rules come from mhchem's own parser, mhchemParser 4.2.1 (by mhchem's author; MathJax and KaTeX use it), read in its source:
+
+- mhchem has no test that tells a word from a formula. In the `ce` state machine, the pattern `letters` (`[a-zA-Z]` and Greek letters, repeated) takes a whole run of letters into the formula's body, and the `o` machine writes that run with the action `rm`, `\mathrm{…}`: `Hydrogen` and `NaOH` are both upright letters, as written, never split into elements. So the drawing of a word and of a formula is the same, and mathra's only decision is how the tree keeps it.
+- Two entities written apart, with no operator or arrow between them, are separated by `entitySkip`, which mhchem writes as `~`, a word space: in the `ce` machine, a space after a formula sets `sb=true` and the next formula's `output` begins with `entitySkip`. A space after an operator or an arrow resets it (`sb=false`), a space after a coefficient is the coefficient's own `\,`, and a state of aggregation is not an entity.
+- The pattern `state of aggregation $`: a parenthesis with one to three lowercase letters, followed by `)` or `,`, up to the closing parenthesis, at the end or before a space or `,;)]}`. `(aq,$\infty$)` is one state, drawn upright with its math inside.
+
+mathra reads a token of `\ce` (up to a space) as a word when it is made of two or more letters, either all lowercase (`heat`, `sodium`) or a capital followed by lowercase letters that is not an element symbol (`Water`, `Hydrogen`, `Água`; `Co`, `He` and `Na` are elements). A word is one text node: drawn upright, read as the word it is (not spelled, not read as elements), written as is in the linear text and in braille. Two formulas or words written apart get a word space of 0.333 em (`sodium chloride`, `NaCl solution`, `Iron(III) oxide`); a coefficient keeps its small space, and operators, arrows, bonds and states their own. A run of capitals (`DNA`) is still a formula: mhchem draws it the same, and nothing in it tells an acronym from elements.
+
 ## Not yet
 
 - SMILES input, with automatic 2D coordinates (rings first, then chains), so structures can come from databases

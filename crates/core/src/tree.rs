@@ -155,6 +155,13 @@ pub enum Node {
         /// `\fcolorbox`: color of the frame line.
         #[serde(skip_serializing_if = "Option::is_none")]
         border: Option<String>,
+        /// Space between the content and the frame, in em, when the input gives one (`\bbox[5px]`);
+        /// the `\fboxsep` of LaTeX otherwise.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        padding: Option<f32>,
+        /// Thickness of the frame line, in em, when the input gives one (`\bbox[border:2px solid]`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        thickness: Option<f32>,
     },
     /// Arrow that stretches to fit its text: `\xrightarrow[below]{above}`.
     Arrow {
@@ -190,6 +197,14 @@ pub enum Node {
     },
     Colored {
         color: String,
+        base: Box<Node>,
+    },
+    /// HTML attributes for the content's group in the SVG (`class`, `id`, `style`, `data-*`), so a
+    /// page can style or animate it: `\class`, `\cssId`, `\style` (MathJax) and `\htmlClass`,
+    /// `\htmlId`, `\htmlStyle`, `\htmlData` (KaTeX). The reader keeps only safe names and values;
+    /// speech, text and braille ignore them.
+    Attributed {
+        attributes: Vec<(String, String)>,
         base: Box<Node>,
     },
     /// Quantity with a unit (`\SI`, `\qty`): value and unit in upright form.
@@ -273,6 +288,14 @@ pub enum Node {
         base: Box<Node>,
         height: bool,
         depth: bool,
+    },
+    /// mathtools' `\vdotswithin{=}`: ⋮ centered in a box as wide as `{}={}`, so that it sits under
+    /// the symbol of the line above. `short` (`\shortvdotswithin`): its table row is set close to
+    /// the rows around it, with no strut.
+    VdotsWithin {
+        symbol: Box<Node>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        short: bool,
     },
     /// `\mathllap`, `\mathclap`, `\mathrlap`: draws without taking width. Side: 'l', 'c' or 'r'.
     Overlapped {
@@ -595,6 +618,9 @@ pub enum TableKind {
 }
 
 impl Node {
+    /// The ⋮ of `\vdotswithin`: what speech, text and braille read for it.
+    pub const VDOTS: Node = Node::Operator { symbol: '⋮', class: Class::Ord };
+
     pub fn children(&self) -> &[Node] {
         match self {
             Node::Row { children } => children,

@@ -220,7 +220,12 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
                 write_node(b, loc, s);
             }
         }
-        Node::Canceled { base, .. } | Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => write_node(base, loc, s),
+        Node::Canceled { base, .. }
+        | Node::Colored { base, .. }
+        | Node::Attributed { base, .. }
+        | Node::ForcedClass { base, .. }
+        | Node::Style { base, .. }
+        | Node::Unit { base, .. } => write_node(base, loc, s),
         Node::Framed { base, shape, .. } => {
             match shape {
                 Frame::Circle => {
@@ -261,6 +266,7 @@ fn write_node(node: &Node, loc: Locale, s: &mut String) {
         | Node::Rotated { base, .. }
         | Node::Reflected { base }
         | Node::Overlapped { base, .. } => write_node(base, loc, s),
+        Node::VdotsWithin { .. } => write_node(&Node::VDOTS, loc, s),
         Node::Rule { .. } => {}
         Node::VerticalArrow { symbol, .. } => {
             s.push(' ');

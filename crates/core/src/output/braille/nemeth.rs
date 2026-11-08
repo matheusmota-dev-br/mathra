@@ -290,6 +290,7 @@ impl Writer {
             }
             Node::Framed { base, .. }
             | Node::Colored { base, .. }
+            | Node::Attributed { base, .. }
             | Node::ForcedClass { base, .. }
             | Node::Style { base, .. }
             | Node::Multicolumn { base, .. }
@@ -303,6 +304,7 @@ impl Writer {
             | Node::Overlapped { base, .. }
             | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base, ctx),
+            Node::VdotsWithin { .. } => self.node(&Node::VDOTS, ctx),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(ctx, *symbol),
             #[cfg(feature = "chem")]
@@ -638,8 +640,8 @@ impl Writer {
             // two dots over: the dot twice, as in the compound ⩷ (Rule 21 table)
             '\u{0308}' => "16 16",
             // arcs concave downward and upward (Ex. 15-53 to 15-56)
-            '⏜' => "1246 1",
-            '⏝' => "1246 3",
+            '⏜' | '⏠' => "1246 1",
+            '⏝' | '⏡' => "1246 3",
             '\u{0303}' => "4 156",
             other => {
                 self.node(base, ctx);
@@ -1073,7 +1075,12 @@ fn fraction_depth(n: &Node) -> usize {
         Node::Root { radicand, .. } => fraction_depth(radicand),
         // a fraction at script level does not make the outer one complex (§13.5)
         Node::Scripts { base, .. } => fraction_depth(base),
-        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Framed { base, .. } | Node::Unit { base, .. } => fraction_depth(base),
+        Node::Colored { base, .. }
+        | Node::Attributed { base, .. }
+        | Node::ForcedClass { base, .. }
+        | Node::Style { base, .. }
+        | Node::Framed { base, .. }
+        | Node::Unit { base, .. } => fraction_depth(base),
         _ => 0,
     }
 }

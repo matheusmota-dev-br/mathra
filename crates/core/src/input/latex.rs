@@ -11,6 +11,7 @@ use super::symbols::{self, Symbol};
 
 #[cfg(feature = "chem")]
 mod chemistry;
+mod color;
 mod diagram;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
@@ -89,6 +90,8 @@ fn numbered_environment(name: &str) -> bool {
 struct Macros {
     commands: std::collections::HashMap<String, Macro>,
     environments: std::collections::HashMap<String, (String, String)>,
+    /// Colors defined by `\definecolor` and `\colorlet`, for the rest of the input.
+    colors: color::Colors,
     expansions: usize,
     /// How much the text may grow through expansions, counting the original size.
     max_size: usize,
@@ -96,6 +99,8 @@ struct Macros {
     warned_excess: bool,
     /// Groups, commands and scripts open right now: protects the stack from inputs like `{{{{…`.
     depth: usize,
+    /// mathtools' `\shortvdotswithin` wrote the `\vdotswithin` that comes next: that one is short.
+    short_row: bool,
 }
 
 #[derive(Clone)]
@@ -933,10 +938,67 @@ impl Reader<'_> {
                 self.environment(col)?
             }
             "intertext" | "shortintertext" => return Ok(Some(Some(Stop::Intertext(self.text()?)))),
+            // amsmath, for a line of multline: the line at the left or right margin (the optional
+            // [length] away from it, which mathra, with no margin to measure from, leaves out)
+            "shoveleft" | "shoveright" => {
+                self.raw_optional();
+                let alignment = if name == "shoveleft" { 'l' } else { 'r' };
+                Node::Multicolumn { columns: 1, alignment, base: Box::new(self.argument()?) }
+            }
             _ => return Ok(None),
         };
         items.push(node);
         Ok(Some(None))
+    }
+
+    /// TeX's "Extra alignment tab has been changed to \cr": a row of an `array` with more cells than its
+    /// columns declare (E-REC-9; refused in strict mode). Out of line, so the frame of the environment
+    /// reader, on the path of nested environments, does not grow.
+    #[inline(never)]
+    fn extra_cells(&mut self, rows: &[Vec<Node>], declared: usize, intertexts: &[usize], name: &str, col: usize) -> R<()> {
+        let span = |cell: &Node| if let Node::Multicolumn { columns, .. } = cell { *columns } else { 1 };
+        for (r, row) in rows.iter().enumerate() {
+            let cells: usize = row.iter().map(span).sum();
+            if cells > declared && !intertexts.contains(&r) {
+                self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// mathtools' `\vdotswithin` and `\shortvdotswithin`, asked by `mod_command`: not in `structure_command`,
+    /// which is on the path of every nested environment, where arms widen its stack frame.
+    fn vdots_command(&mut self, name: &str, col: usize, start: usize, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
+        match name {
+            "vdotswithin" => items.push(self.vdots_within()?),
+            "shortvdotswithin" => self.short_vdots_within(start, col)?,
+            _ => return Ok(None),
+        }
+        Ok(Some(None))
+    }
+
+    /// mathtools' `\vdotswithin{=}`: ⋮ centered in a box as wide as `{}={}`, so that it sits under
+    /// the symbol of the line above (a relation with its spaces). Short when `\shortvdotswithin`
+    /// wrote it.
+    fn vdots_within(&mut self) -> R<Node> {
+        let short = std::mem::take(&mut self.macros.short_row);
+        // read as a list, not as a group: `=` keeps its class, and its spaces
+        let raw = self.raw_text()?;
+        let symbol = self.sub_reader(&raw, self.variant)?;
+        Ok(Node::VdotsWithin { symbol: Box::new(symbol), short })
+    }
+
+    /// mathtools' `\shortvdotswithin{=}`: a row of its own, `&\vdotswithin{=}\\` (`\vdotswithin{=}&\\`
+    /// with the star, in the first column), set close to the rows around it.
+    fn short_vdots_within(&mut self, start: usize, col: usize) -> R<()> {
+        let starred = self.current() == Some('*');
+        if starred {
+            self.pos += 1;
+        }
+        let symbol = self.raw_text()?;
+        self.macros.short_row = true;
+        let row = if starred { format!("\\vdotswithin{{{symbol}}}&\\\\") } else { format!("&\\vdotswithin{{{symbol}}}\\\\") };
+        self.inject(start, &row, col)
     }
 
     fn space_command(&mut self, name: &str, col: usize, start: usize, star: bool, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
@@ -1130,7 +1192,7 @@ impl Reader<'_> {
             "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textsf" | "textmd" | "textsl" | "fbox" | "framebox" => {
                 let text = self.text()?;
                 if matches!(name, "fbox" | "framebox") {
-                    Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None }
+                    Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None, padding: None, thickness: None }
                 } else {
                     text
                 }
@@ -1164,12 +1226,12 @@ impl Reader<'_> {
             // graphicx: \scalebox{-1}[1]{…}, its argument in text mode
             "reflectbox" => Node::Reflected { base: Box::new(self.text()?) },
             "mathrm" | "mathup" | "mathit" | "mathbf" | "mathsf" | "mathtt" | "mathbb" | "mathcal" | "mathscr" | "mathfrak" | "boldsymbol" | "bm" | "pmb" | "mathbfit"
-            | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
+            | "mathbold" | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
                 let variant = match name {
                     "mathrm" | "mathup" | "symrm" => Variant::Upright,
                     "mathit" | "mathnormal" | "symit" => Variant::Italic,
                     "mathbf" | "symbf" => Variant::Bold,
-                    "boldsymbol" | "bm" | "pmb" | "mathbfit" => Variant::BoldItalic,
+                    "boldsymbol" | "bm" | "pmb" | "mathbfit" | "mathbold" => Variant::BoldItalic,
                     "mathsf" => Variant::SansSerif,
                     "mathtt" => Variant::Monospace,
                     "mathbb" | "mathds" | "mathbbm" | "Bbb" => Variant::DoubleStruck,
@@ -1235,11 +1297,16 @@ impl Reader<'_> {
                 };
                 Node::Accent { base: Box::new(self.argument()?), accent, stretchy: true, below: true }
             }
-            "overset" | "stackrel" => {
+            // MathJax's \stackbin: \stackrel for a binary operator
+            "overset" | "stackrel" | "stackbin" => {
                 let above = self.argument()?;
                 let base = self.base_with_class()?;
                 Node::ForcedClass {
-                    class: if name == "stackrel" { Class::Rel } else { natural_class(&base) },
+                    class: match name {
+                        "stackrel" => Class::Rel,
+                        "stackbin" => Class::Bin,
+                        _ => natural_class(&base),
+                    },
                     base: Box::new(Node::Stacked { base: Box::new(base), above: Some(Box::new(above)), below: None }),
                 }
             }
@@ -1292,7 +1359,7 @@ impl Reader<'_> {
                 let base = self.argument()?;
                 Node::Scripts { base: Box::new(Node::Canceled { base: Box::new(base), shape: Cancel::Bar }), sup: Some(Box::new(value)), sub: None }
             }
-            "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle, background: None, border: None },
+            "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle, background: None, border: None, padding: None, thickness: None },
             // steinmetz: \phase[style]{angle}, the angle in text style unless [0] to [3] say otherwise
             // (display, text, script, scriptscript); any other option leaves the current style, as
             // the package's \ifcase does
@@ -1303,7 +1370,7 @@ impl Reader<'_> {
                     Some(level) => Node::Style { level, base: Box::new(angle) },
                     None => angle,
                 };
-                Node::Framed { base: Box::new(base), shape: Frame::Phase, background: None, border: None }
+                Node::Framed { base: Box::new(base), shape: Frame::Phase, background: None, border: None, padding: None, thickness: None }
             }
             // actuarialangle: \angl{n}, and \angln, \anglr, \anglk for the common durations
             "angl" | "angln" | "anglr" | "anglk" => {
@@ -1311,10 +1378,15 @@ impl Reader<'_> {
                     "angl" => self.argument()?,
                     _ => Node::Identifier { name: name[4..].to_string(), variant: Variant::Italic },
                 };
-                Node::Framed { base: Box::new(base), shape: Frame::ActuarialAngle, background: None, border: None }
+                Node::Framed { base: Box::new(base), shape: Frame::ActuarialAngle, background: None, border: None, padding: None, thickness: None }
             }
-            "textcircled" | "circled" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None },
+            "textcircled" | "circled" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None, padding: None, thickness: None },
             "phantom" | "hphantom" | "vphantom" => Node::Phantom { base: Box::new(self.argument()?), width: name != "vphantom", height: name != "hphantom" },
+            // MathJax's \class, \cssId, \style and KaTeX's \htmlClass, \htmlId, \htmlStyle, \htmlData:
+            // HTML attributes for the content's group in the SVG, kept only when safe (in strict mode too:
+            // they are not wrong LaTeX, what is dropped is a warning)
+            // (read in a function of its own: this match's frame is on the stack at every level of \not)
+            "class" | "cssId" | "style" | "htmlClass" | "htmlId" | "htmlStyle" | "htmlData" => self.html_attributes_command(name, col)?,
             "textcolor" => {
                 let color = self.color()?;
                 let base = self.argument()?;
@@ -1326,13 +1398,18 @@ impl Reader<'_> {
             // the color is the background, not the content's: the text keeps the page color
             "colorbox" => {
                 let background = self.color()?;
-                Node::Framed { base: Box::new(self.text()?), shape: Frame::Fill, background, border: None }
+                Node::Framed { base: Box::new(self.text()?), shape: Frame::Fill, background, border: None, padding: None, thickness: None }
             }
             "fcolorbox" => {
                 let border = self.color()?;
                 let background = self.color()?;
-                Node::Framed { base: Box::new(self.text()?), shape: Frame::Rectangle, background, border }
+                Node::Framed { base: Box::new(self.text()?), shape: Frame::Rectangle, background, border, padding: None, thickness: None }
             }
+            // MathJax: \bbox[background,padding,border:…]{math}, a \colorbox or \fcolorbox around math
+            // (read in functions of their own: this match's frame is on the stack at every level of \not)
+            "bbox" => self.bbox(col)?,
+            // MathJax: \enclose{notation}[attributes]{math}, drawn as MathML's menclose
+            "enclose" => self.enclose(col)?,
             // \centernot (centernot package) is drawn like \not
             "not" | "centernot" => {
                 self.skip_spaces();
@@ -1400,7 +1477,8 @@ impl Reader<'_> {
                 let unit = self.raw_text()?;
                 self.quantity(None, &unit, col)?
             }
-            "num" => {
+            // \tablenum: the number as \num (the alignment on the decimal marker of an S column is not done)
+            "num" | "tablenum" => {
                 self.raw_optional();
                 let value = self.raw_text()?;
                 self.raw_optional();
@@ -1727,6 +1805,9 @@ impl Reader<'_> {
 
     fn mod_command(&mut self, name: &str, col: usize, start: usize, star: bool, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
         let _ = (col, start, star);
+        if let Some(done) = self.vdots_command(name, col, start, items)? {
+            return Ok(Some(done));
+        }
         let mu = |m: f32| Node::Space { em: m / 18.0 };
         let node: Node = match name {
             // modular arithmetic, with amsmath's spacing
@@ -1782,7 +1863,8 @@ impl Reader<'_> {
             let variant = if symbols::greek_upright(other) && self.variant == Variant::Italic { Variant::Upright } else { self.variant };
             Node::Identifier { name: letter.to_string(), variant }
         } else if let Some((accent, stretchy)) = symbols::accent(other) {
-            Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: false }
+            // the "under" ones (⏝, ⏡) go below the base
+            Node::Accent { base: Box::new(self.argument()?), accent, stretchy, below: matches!(accent, '⏝' | '⏡') }
         } else if let Some(Symbol { symbol, class }) = symbols::command(other) {
             Node::Operator { symbol, class }
         } else {
@@ -1827,17 +1909,101 @@ impl Reader<'_> {
         let col = self.column();
         let model = self.raw_optional();
         let raw = self.raw_text()?.trim().to_string();
-        let color = match model.as_deref() {
+        let color = match model.as_deref().map(str::trim) {
+            // the digits as written
             Some("HTML") => format!("#{raw}"),
-            Some("rgb") => format!("rgb({raw})"),
-            _ => raw,
+            // a name the equation defined, or an xcolor mix (red!40!blue); any other name as written
+            None | Some("named") => color::expression(&raw, &self.macros.colors).map_or(raw, |d| d.css),
+            // a model's value as #rrggbb; a value that does not fit stays invalid, with its model
+            Some(m) => color::model(m, &raw).map_or_else(|| format!("[{m}]{{{raw}}}"), color::hex),
         };
+        self.checked_color(color, col)
+    }
+
+    /// A color named in place (`\bbox[brand]`, `\enclose{…}[mathcolor=brand]`): a color the equation
+    /// defined or an xcolor mix becomes its CSS value, any other name stays as written; then checked.
+    fn named_color(&mut self, name: &str, col: usize) -> R<Option<String>> {
+        let css = color::expression(name, &self.macros.colors).map_or_else(|| name.to_string(), |d| d.css);
+        self.checked_color(css, col)
+    }
+
+    /// `color` when it is a color mathra can write into the SVG; None in tolerant mode otherwise.
+    fn checked_color(&mut self, color: String, col: usize) -> R<Option<String>> {
         let valid = color.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c)) && !color.is_empty() && color.len() < 40;
         if valid {
             return Ok(Some(color));
         }
         self.tolerate(rules::E_REC_9, col, format!("invalid color: {color}"), "drawn without color")?;
         Ok(None)
+    }
+
+    /// `\bbox[…]` (MathJax): the parts, separated by commas, are a background color, a padding (`5px`)
+    /// and CSS styles, of which mathra draws `border:` (width, style and color).
+    fn bbox(&mut self, col: usize) -> R<Node> {
+        let spec = self.raw_optional().unwrap_or_default();
+        let base = self.argument()?;
+        let (mut background, mut padding, mut border, mut thickness, mut framed) = (None, None, None, None, false);
+        for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            if let Some(em) = measure_em(part).filter(|v| v.is_finite() && *v >= 0.0) {
+                padding = Some(em);
+            } else if let Some((property, value)) = part.split_once(':') {
+                if !property.trim().eq_ignore_ascii_case("border") {
+                    self.tolerate(rules::E_REC_9, col, format!("\\bbox style not drawn: {part}"), "ignored")?;
+                    continue;
+                }
+                framed = true;
+                for word in value.split_whitespace() {
+                    if let Some(em) = measure_em(word).filter(|v| v.is_finite() && *v >= 0.0) {
+                        thickness = Some(em);
+                    } else if matches!(word, "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset") {
+                        if word != "solid" {
+                            self.tolerate(rules::E_REC_9, col, format!("\\bbox border style not drawn: {word}"), "drawn solid")?;
+                        }
+                    } else {
+                        border = self.named_color(word, col)?;
+                    }
+                }
+            } else if background.is_none() {
+                background = self.named_color(part, col)?;
+            } else {
+                self.tolerate(rules::E_REC_9, col, format!("\\bbox part not understood: {part}"), "ignored")?;
+            }
+        }
+        let shape = if framed { Frame::Rectangle } else { Frame::Fill };
+        // MathJax adds no space of its own: without a padding the background fits the content
+        Ok(Node::Framed { base: Box::new(base), shape, background, border, padding: Some(padding.unwrap_or(0.0)), thickness })
+    }
+
+    /// `\enclose{notation}[attributes]{…}` (MathJax): the same tree as MathML's `menclose`, with its
+    /// `mathcolor` and `mathbackground` attributes.
+    fn enclose(&mut self, col: usize) -> R<Node> {
+        let notation = self.raw_text()?;
+        let attributes = self.raw_optional();
+        let base = self.argument()?;
+        for n in notation.split(|c: char| c.is_whitespace() || c == ',').filter(|n| !n.is_empty()) {
+            if !super::mathml::ENCLOSE_NOTATIONS.contains(&n) {
+                self.tolerate(rules::E_REC_9, col, format!("\\enclose notation not drawn: {n}"), "ignored")?;
+            }
+        }
+        let mut out = super::mathml::enclose(base, &notation);
+        for attribute in attributes.as_deref().unwrap_or_default().split(',').map(str::trim).filter(|a| !a.is_empty()) {
+            let (name, value) = attribute.split_once('=').unwrap_or((attribute, ""));
+            let value = value.trim().trim_matches(['"', '\'']).to_string();
+            match name.trim() {
+                "mathcolor" => {
+                    if let Some(color) = self.named_color(&value, col)? {
+                        out = Node::Colored { color, base: Box::new(out) };
+                    }
+                }
+                "mathbackground" => {
+                    if let Some(background) = self.named_color(&value, col)? {
+                        out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background), border: None, padding: None, thickness: None };
+                    }
+                }
+                _ => self.tolerate(rules::E_REC_9, col, format!("\\enclose attribute not drawn: {attribute}"), "ignored")?,
+            }
+        }
+        Ok(out)
     }
 
     fn delimiter(&mut self) -> R<Option<char>> {
@@ -1965,17 +2131,12 @@ impl Reader<'_> {
             self.array_columns(&spec, &mut columns, &mut verticals, &mut dashed, &mut between, col)?;
         }
 
-        let (rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        let (mut rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        if base == "multline" {
+            multline_alignments(&mut rows);
+        }
         if kind == TableKind::Array {
-            // TeX: "Extra alignment tab has been changed to \cr"
-            let span = |cell: &Node| if let Node::Multicolumn { columns, .. } = cell { *columns } else { 1 };
-            for (r, row) in rows.iter().enumerate() {
-                let cells: usize = row.iter().map(span).sum();
-                if cells > columns.len() && !intertexts.contains(&r) {
-                    let declared = columns.len();
-                    self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
-                }
-            }
+            self.extra_cells(&rows, columns.len(), &intertexts, &name, col)?;
         }
         if !columns.is_empty() && kind != TableKind::Array {
             // pmatrix*[r]: the same alignment in every column
@@ -2766,6 +2927,8 @@ impl Reader<'_> {
         let c: Vec<char> = raw.chars().collect();
         let mut children: Vec<Node> = Vec::new();
         let mut i = 0;
+        // whether the last token was a formula or a word, for the word space before the next one
+        let mut previous_entity = false;
         loop {
             while c.get(i).is_some_and(|x| x.is_whitespace()) {
                 i += 1;
@@ -2773,12 +2936,23 @@ impl Reader<'_> {
             if i >= c.len() {
                 break;
             }
+            let arrow = chemical_arrow(&c[i..]);
+            let entity = arrow.is_none() && chemical_entity(&chemical_token(&c, &mut i.clone()));
             if let Some(previous) = children.last() {
-                // a variable coefficient written apart ($x$ H2O, n H2O) gets the small space a number gets
+                // a variable coefficient written apart ($x$ H2O, n H2O) gets the small space a number gets;
+                // two formulas or words written apart get a word space, mhchem's entitySkip (sodium chloride)
                 let coefficient = matches!(previous.clone().simplify(), Node::Identifier { .. });
-                children.push(Node::Space { em: if coefficient { 2.0 / 18.0 } else { 0.0 } });
+                let em = if coefficient {
+                    2.0 / 18.0
+                } else if previous_entity && entity {
+                    CHEMICAL_WORD_SPACE
+                } else {
+                    0.0
+                };
+                children.push(Node::Space { em });
             }
-            if let Some((symbol, len)) = chemical_arrow(&c[i..]) {
+            previous_entity = entity;
+            if let Some((symbol, len)) = arrow {
                 i += len;
                 let above = bracketed(&c, &mut i);
                 let below = if above.is_some() { bracketed(&c, &mut i) } else { None };
@@ -2806,8 +2980,8 @@ impl Reader<'_> {
                 "→" | "⇌" | "←" => children.push(Node::Operator { symbol: token.chars().next().unwrap_or('→'), class: Class::Rel }),
                 // a variable as coefficient (x, n): italic, like in math
                 t if t.len() == 1 && t.chars().all(|x| x.is_ascii_lowercase()) => children.push(Node::Identifier { name: t.to_string(), variant: Variant::Italic }),
-                // a word (heat, light, catalyst): upright text
-                t if t.len() > 1 && t.chars().all(|x| x.is_alphabetic() && x.is_lowercase()) => children.push(Node::Text { parts: vec![TextPart::Text(t.to_string())] }),
+                // a word (heat, catalyst, Water, sodium): upright text, whole
+                t if chemical_word(t) => children.push(Node::Text { parts: vec![TextPart::Text(t.to_string())] }),
                 formula => children.push(self.chemical_formula(formula, col)?),
             }
         }
@@ -2879,9 +3053,21 @@ impl Reader<'_> {
                 // a charge at the end of the formula or before a closing bracket: Ag+, [H+], [A-]
                 attach_script(&mut children, Some(charge(&ch.to_string())), None);
                 i += 1;
-            } else if let Some(state) = ["(aq)", "(s)", "(l)", "(g)", "(sol)", "(cr)"].into_iter().find(|e| c[i..].iter().take(e.len()).copied().eq(e.chars())) {
+            } else if let Some(state) = CHEMICAL_STATES.into_iter().find(|e| c[i..].iter().take(e.len()).copied().eq(e.chars())) {
                 children.push(upright(state.to_string()));
                 i += state.chars().count();
+            } else if let Some((state, len)) = chemical_state(&c[i..]) {
+                // mhchem's state of aggregation with more inside: (aq,$\infty$)
+                let mut parts = Vec::new();
+                for (k, piece) in state.split('$').enumerate() {
+                    if k % 2 == 1 {
+                        parts.push(TextPart::Math(self.sub_reader(piece, Variant::Italic)?));
+                    } else if !piece.is_empty() {
+                        parts.push(TextPart::Text(piece.to_string()));
+                    }
+                }
+                children.push(Node::Text { parts });
+                i += len;
             } else if matches!(ch, '.' | '*' | '·') && i > 0 {
                 // hydrate or adduct: the dot is centered and a coefficient may follow
                 children.push(Node::Operator { symbol: '·', class: Class::Ord });
@@ -2982,6 +3168,57 @@ impl Reader<'_> {
             }
         }
     }
+}
+
+/// The space mhchem puts between two formulas or words written apart: its `entitySkip`, a `~`.
+const CHEMICAL_WORD_SPACE: f32 = 0.333;
+
+/// The states of aggregation `\ce` reads as upright text wherever they are.
+const CHEMICAL_STATES: [&str; 6] = ["(aq)", "(s)", "(l)", "(g)", "(sol)", "(cr)"];
+
+/// A token of `\ce` that is a word, kept whole as upright text: letters only, at least two, and either
+/// all lowercase (heat, sodium) or a capital followed by lowercase letters that is not an element
+/// symbol (Water, Hydrogen; Na and Co stay elements). mhchem draws any run of letters upright as
+/// written, so the drawing is the same; this decides how the tree keeps it (spec/chemistry.md).
+fn chemical_word(t: &str) -> bool {
+    let mut letters = t.chars();
+    let Some(first) = letters.next() else { return false };
+    let rest: Vec<char> = letters.collect();
+    if rest.is_empty() || !first.is_alphabetic() || !rest.iter().all(|x| x.is_alphabetic() && x.is_lowercase()) {
+        return false;
+    }
+    first.is_lowercase() || !symbols::ELEMENTS.contains(&t)
+}
+
+/// A token of `\ce` that is a formula or a word, which mhchem separates from the next one by a word
+/// space when they are written apart: it has a letter, and it is not an operator, a bond (`\bond{…}`),
+/// a coefficient (`n`, `$x$`) or a state of aggregation standing alone (`(g)`).
+fn chemical_entity(t: &str) -> bool {
+    if t.starts_with("\\bond") {
+        return false;
+    }
+    let c: Vec<char> = t.chars().collect();
+    let coefficient = (c.len() == 1 && c[0].is_ascii_lowercase()) || (c.len() > 1 && t.starts_with('$') && t.ends_with('$'));
+    let state = CHEMICAL_STATES.contains(&t) || chemical_state(&c).is_some_and(|(_, len)| len == c.len());
+    c.iter().any(|x| x.is_alphabetic()) && !coefficient && !state
+}
+
+/// mhchem's state of aggregation with more inside, `(aq,$\infty$)`: a parenthesis, one to three
+/// lowercase letters and a comma, up to the closing parenthesis, at the end of the formula or before a
+/// space or `,;)]}` (mhchem's pattern `state of aggregation $`). Its text and its length.
+fn chemical_state(c: &[char]) -> Option<(String, usize)> {
+    if c.first() != Some(&'(') {
+        return None;
+    }
+    let letters = c[1..].iter().take_while(|x| x.is_ascii_lowercase()).count();
+    if !(1..=3).contains(&letters) || c.get(1 + letters) != Some(&',') {
+        return None;
+    }
+    let close = c.iter().position(|&x| x == ')')?;
+    if c.get(close + 1).is_some_and(|x| !x.is_whitespace() && !",;)]}".contains(*x)) {
+        return None;
+    }
+    Some((c[..=close].iter().collect(), close + 1))
 }
 
 /// A chemical bond: drawn as its line, but it is not a minus, an equals or a congruence.
@@ -3359,6 +3596,7 @@ fn siunitx_in_text(name: &str) -> Option<&'static str> {
         "SI" | "qty" | "SIlist" | "qtylist" | "SIproduct" | "qtyproduct" => "[{{",
         "si" | "unit" | "ang" | "numlist" | "anglist" | "numproduct" => "[{",
         "num" => "[{[",
+        "tablenum" => "[{",
         "SIrange" | "qtyrange" => "[{{{",
         "numrange" | "angrange" => "[{{",
         _ => return None,
@@ -3380,12 +3618,30 @@ fn graphicx_box(name: &str) -> Option<&'static str> {
 /// Math commands that authors write in text, with their arguments (as for `text_arguments`).
 fn math_in_text(name: &str) -> Option<&'static str> {
     Some(match name {
-        "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb" | "mathfrak" | "mathscr" | "mathbfit" | "mathnormal" | "boldsymbol" | "bm" => "{",
+        "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb" | "mathfrak" | "mathscr" | "mathbfit" | "mathnormal" | "boldsymbol" | "bm" | "mathbold" => "{",
         "frac" | "dfrac" | "tfrac" => "{{",
         "sqrt" => "[{",
         "operatorname" => "*{",
         _ => return None,
     })
+}
+
+/// amsmath's `multline`: the first line at the left, the last at the right, the ones between
+/// centered, except a line in `\shoveleft{…}` or `\shoveright{…}` (already a one-column
+/// `Multicolumn` with its alignment). One line alone stays as it is.
+fn multline_alignments(rows: &mut [Vec<Node>]) {
+    let last = rows.len().saturating_sub(1);
+    if last == 0 {
+        return;
+    }
+    for (i, alignment) in [(0, 'l'), (last, 'r')] {
+        if let [cell] = rows[i].as_mut_slice() {
+            if !matches!(cell, Node::Multicolumn { .. }) {
+                let base = std::mem::replace(cell, Node::row(vec![]));
+                *cell = Node::Multicolumn { columns: 1, alignment, base: Box::new(base) };
+            }
+        }
+    }
 }
 
 /// Environments that start math, read in text: `Some(true)` for the displays, which TeX allows in a
@@ -3486,6 +3742,114 @@ fn measure_em(m: &str) -> Option<f32> {
         }
     }
     None
+}
+
+impl Reader<'_> {
+    /// `\class{…}{…}` and its kin: the content with the attributes [`html_attributes`] keeps.
+    fn html_attributes_command(&mut self, name: &str, col: usize) -> R<Node> {
+        let value = self.raw_text()?;
+        let base = self.argument()?;
+        let (node, dropped) = html_attributes(name, &value, base);
+        if !dropped.is_empty() {
+            self.registry.warn(rules::E_REC_9, format!("column {col}: \\{name}: unsafe or unsupported {}; dropped", dropped.join(", ")));
+        }
+        Ok(node)
+    }
+}
+
+/// The CSS properties `\style` and `\htmlStyle` keep: they change how the content looks, and cannot
+/// load anything or move it out of its place.
+const STYLE_PROPERTIES: [&str; 4] = ["color", "background", "background-color", "opacity"];
+
+/// `\class`, `\cssId`, `\style`, `\htmlClass`, `\htmlId`, `\htmlStyle` or `\htmlData` with its first
+/// argument `value`, around `base`; and what was dropped as unsafe or unsupported. Classes, ids and
+/// data keys keep only `[A-Za-z0-9_-]`; a style keeps only [`STYLE_PROPERTIES`] with plain values
+/// (no `url(`, quotes, `;`, `<` or `>`). A style's color also colors the content, as `\color` does,
+/// so it reaches the outputs that have no CSS.
+fn html_attributes(command: &str, value: &str, base: Node) -> (Node, Vec<String>) {
+    let mut dropped = Vec::new();
+    let mut attributes: Vec<(String, String)> = Vec::new();
+    let mut color = None;
+    let safe_name = |raw: &str, dropped: &mut Vec<String>| -> String {
+        let kept: String = raw.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').collect();
+        if kept.len() != raw.len() {
+            dropped.push(format!("characters of {raw:?}"));
+        }
+        kept
+    };
+    match command {
+        "class" | "htmlClass" => {
+            let classes: Vec<String> = value.split_whitespace().map(|c| safe_name(c, &mut dropped)).filter(|c| !c.is_empty()).collect();
+            if !classes.is_empty() {
+                attributes.push(("class".into(), classes.join(" ")));
+            }
+        }
+        "cssId" | "htmlId" => {
+            let id = safe_name(value.trim(), &mut dropped);
+            if !id.is_empty() {
+                attributes.push(("id".into(), id));
+            }
+        }
+        "style" | "htmlStyle" => {
+            let mut kept = Vec::new();
+            for declaration in value.split(';').map(str::trim).filter(|d| !d.is_empty()) {
+                // the same test as safe_style, which the MathML reader uses
+                let Some((property, v)) = declaration.split_once(':') else {
+                    dropped.push(format!("style {declaration:?}"));
+                    continue;
+                };
+                let (property, v) = (property.trim().to_ascii_lowercase(), v.trim());
+                let lower = v.to_ascii_lowercase();
+                let plain = !v.is_empty() && v.len() < 60 && v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),.% -".contains(c));
+                let is_color = v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c));
+                if !STYLE_PROPERTIES.contains(&property.as_str()) || !plain || lower.contains("url(") || lower.contains("expression(") || (property == "color" && !is_color) {
+                    dropped.push(format!("style {declaration:?}"));
+                    continue;
+                }
+                if property == "color" {
+                    color = Some(v.to_string());
+                }
+                kept.push(format!("{property}:{v}"));
+            }
+            if !kept.is_empty() {
+                attributes.push(("style".into(), kept.join(";")));
+            }
+        }
+        _ => {
+            for pair in value.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+                let (key, v) = pair.split_once('=').unwrap_or((pair, ""));
+                // HTML lowercases attribute names; XML keeps them as written
+                let key = safe_name(key.trim(), &mut dropped).to_ascii_lowercase();
+                if key.is_empty() {
+                    dropped.push(format!("data {pair:?}"));
+                    continue;
+                }
+                attributes.push((format!("data-{key}"), v.trim().to_string()));
+            }
+        }
+    }
+    let mut out = base;
+    if let Some(color) = color {
+        out = Node::Colored { color, base: Box::new(out) };
+    }
+    if !attributes.is_empty() {
+        out = Node::Attributed { attributes, base: Box::new(out) };
+    }
+    (out, dropped)
+}
+
+/// A style attribute with only the declarations [`html_attributes`] keeps, as it writes them; `None`
+/// when none is left. For the MathML reader, which reads back the `style` mathra writes.
+pub(crate) fn safe_style(value: &str) -> Option<String> {
+    let (node, _) = html_attributes("style", value, Node::row(vec![]));
+    let mut node = node;
+    loop {
+        match node {
+            Node::Attributed { attributes, .. } => return attributes.into_iter().find(|(k, _)| k == "style").map(|(_, v)| v),
+            Node::Colored { base, .. } => node = *base,
+            _ => return None,
+        }
+    }
 }
 
 /// A number in siunitx format: decimal comma or dot, spaces, exponent with `e`.
@@ -3724,6 +4088,34 @@ impl Reader<'_> {
                 let open = self.raw_text()?;
                 let close = self.raw_text()?;
                 self.macros.environments.insert(target, (open, close));
+                Ok(true)
+            }
+            // xcolor: a color for the rest of the input, as \newcommand defines a macro
+            "definecolor" | "providecolor" => {
+                self.raw_optional();
+                let target = self.raw_text()?.trim().to_string();
+                let model = self.raw_text()?;
+                let value = self.raw_text()?;
+                match color::model(&model, &value) {
+                    Some(rgb) if name == "definecolor" || !self.macros.colors.contains_key(&target) => {
+                        self.macros.colors.insert(target, color::Defined { css: color::hex(rgb), rgb: Some(rgb) });
+                    }
+                    Some(_) => {}
+                    None => self.tolerate(rules::E_REC_9, col, format!("invalid color: {{{}}}{{{}}}", model.trim(), value.trim()), "not defined")?,
+                }
+                Ok(true)
+            }
+            "colorlet" => {
+                self.raw_optional();
+                let target = self.raw_text()?.trim().to_string();
+                self.raw_optional();
+                let expression = self.raw_text()?.trim().to_string();
+                match color::expression(&expression, &self.macros.colors).or_else(|| color::name(&expression)) {
+                    Some(defined) => {
+                        self.macros.colors.insert(target, defined);
+                    }
+                    None => self.tolerate(rules::E_REC_9, col, format!("invalid color: {expression}"), "not defined")?,
+                }
                 Ok(true)
             }
             "usepackage" | "RequirePackage" | "require" => {
@@ -4178,6 +4570,7 @@ fn known(name: &str) -> bool {
                 | "textrm"
                 | "mathit"
                 | "boldsymbol"
+                | "mathbold"
                 | "bmatrix"
                 | "pmatrix"
                 | "vmatrix"

@@ -145,6 +145,7 @@ impl Writer {
             }
             Node::Framed { base, .. }
             | Node::Colored { base, .. }
+            | Node::Attributed { base, .. }
             | Node::ForcedClass { base, .. }
             | Node::Style { base, .. }
             | Node::Multicolumn { base, .. }
@@ -158,6 +159,7 @@ impl Writer {
             | Node::Overlapped { base, .. }
             | Node::Unit { base, .. }
             | Node::Quantity { unit: base, .. } => self.node(base),
+            Node::VdotsWithin { .. } => self.node(&Node::VDOTS),
             Node::Space { .. } | Node::Phantom { .. } | Node::Rule { .. } => {}
             Node::VerticalArrow { symbol, .. } => self.missing(*symbol),
             #[cfg(feature = "chem")]
@@ -567,7 +569,7 @@ impl Writer {
             ('\u{20D7}' | '→', false) => "25 2",
             ('←', false) => "5 25",
             ('\u{0303}', false) => "5 26",
-            ('⏜', false) => "4 25",
+            ('⏜' | '⏠', false) => "4 25",
             ('\u{0307}', false) => "4",
             ('\u{0308}', false) => "4 4",
             (other, _) => {
@@ -628,7 +630,7 @@ fn simple(n: &Node) -> bool {
         Node::Fraction { .. } => numeric_fraction(n).is_some(),
         Node::Scripts { base, sup, sub } => simple(base) && sup.as_deref().is_none_or(simple) && sub.as_deref().is_none_or(simple),
         Node::Accent { base, .. } | Node::Bar { base, .. } => simple(base),
-        Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => simple(base),
+        Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => simple(base),
         // a signed term: x⁻¹ = ⠭⠡⠤⠼⠁ (§5.2)
         Node::Row { children } => match children.as_slice() {
             [one] => simple(one),

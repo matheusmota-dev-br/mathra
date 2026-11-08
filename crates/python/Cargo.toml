@@ -13,5 +13,7 @@ name = "mathra_python"
 crate-type = ["cdylib"]
 
 [dependencies]
-mathra.workspace = true
+# PNG output (tex_to_png), and Noto Emoji as the fallback font for emoji; the wasm package leaves
+# both out (the browser rasterizes, and fallback fonts are loaded on demand there)
+mathra = { workspace = true, features = ["png", "emoji"] }
 pyo3 = { version = "0.25", features = ["extension-module", "abi3-py39"] }

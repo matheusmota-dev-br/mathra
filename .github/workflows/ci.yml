@@ -25,6 +25,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --exclude mathra-python --all-targets -- -D warnings
       - run: cargo test --workspace --exclude mathra-python
+      - run: cargo clippy -p mathra-cli --no-default-features --all-targets -- -D warnings
+      - run: cargo test -p mathra-cli --no-default-features
 
   wasm:
     runs-on: ubuntu-latest

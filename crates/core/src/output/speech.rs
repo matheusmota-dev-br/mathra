@@ -167,7 +167,7 @@ impl Speaker {
                     '\u{0307}' => "accent.dot",
                     '\u{0308}' => "accent.ddot",
                     '\u{0303}' => "accent.tilde",
-                    '⏜' => "accent.arc",
+                    '⏜' | '⏠' => "accent.arc",
                     _ => {
                         self.say(b);
                         return;
@@ -213,7 +213,7 @@ impl Speaker {
                     Frame::Fill => self.say(b),
                 }
             }
-            Node::Colored { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => self.node(base),
+            Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => self.node(base),
             Node::Quantity { value, unit } => {
                 let named = units_by_name(unit, value.as_deref(), self.loc);
                 self.node(&named);
@@ -254,6 +254,7 @@ impl Speaker {
             | Node::Resized { base, .. }
             | Node::Rotated { base, .. }
             | Node::Reflected { base } => self.node(base),
+            Node::VdotsWithin { .. } => self.node(&Node::VDOTS),
             // the speech does not follow the style: \mathchoice reads as its text style's branch
             Node::Choice { branches } => {
                 if let Some(b) = branches.get(1) {
@@ -601,7 +602,8 @@ fn operator(symbol: char, class: Class, loc: Locale) -> String {
         '⟹' => "op.⇒".to_string(),
         '⟺' => "op.⇔".to_string(),
         '∣' => "op.|".to_string(),
-        '⋯' => "op.…".to_string(),
+        // \vdots and \vdotswithin: the list goes on, down the column
+        '⋯' | '⋮' => "op.…".to_string(),
         '″' => "double_prime".to_string(),
         // physics' bold nabla is read as the nabla
         '𝛁' => "op.∇".to_string(),
