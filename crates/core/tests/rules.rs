@@ -1,5 +1,6 @@
 //! One test per rule in spec/rules.md and spec/svg.md. The test name starts with the rule id.
 
+use mathra::tree::Variant;
 use mathra::{convert, Class, Locale, Node, Options};
 
 fn pt(tex: &str) -> mathra::Output {
@@ -11,7 +12,7 @@ fn en(tex: &str) -> mathra::Output {
 }
 
 fn number(value: &str) -> Node {
-    Node::Number { value: value.into(), group: false, thousands: None }
+    Node::Number { value: value.into(), group: false, thousands: None, variant: Variant::Upright }
 }
 
 fn rules(r: &mathra::Output) -> Vec<&'static str> {

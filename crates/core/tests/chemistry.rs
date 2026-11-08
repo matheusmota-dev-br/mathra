@@ -1,7 +1,7 @@
 //! mhchem's `\ce` and `\pu` (L-CHE-1): what each construction becomes in the tree, in the speech and in
 //! the linear text. Every case is valid mhchem, so it must read the same in both modes, with no warnings.
 
-use mathra::tree::{Class, FractionStyle, TextPart};
+use mathra::tree::{Class, FractionStyle, TextPart, Variant};
 use mathra::{convert, Locale, Node, Options};
 
 fn read(tex: &str, locale: Locale) -> mathra::Output {
@@ -108,7 +108,7 @@ fn l_che_1_hydrate_coefficient_is_not_a_subscript() {
 #[test]
 fn l_che_1_decimal_and_fraction_coefficients() {
     let r = en(r"\ce{0.5 H2}");
-    assert_eq!(r.tree.children()[0].clone().simplify().children()[0], Node::Number { value: "0.5".into(), group: false, thousands: None });
+    assert_eq!(r.tree.children()[0].clone().simplify().children()[0], Node::Number { value: "0.5".into(), group: false, thousands: None, variant: Variant::Upright });
     assert_eq!(r.speech, "0.5 H sub 2");
     let r = en(r"\ce{1/2 O2 -> O}");
     let first = r.tree.children()[0].children()[0].clone();
@@ -155,8 +155,8 @@ fn l_che_1_isotopes_share_one_empty_base() {
     let scripts = nodes(&r.tree).into_iter().find(|n| matches!(n, Node::Scripts { .. })).cloned();
     let Some(Node::Scripts { base, sup: Some(sup), sub: Some(sub) }) = scripts else { panic!("{:?}", r.tree) };
     assert_eq!(*base, Node::row(vec![]));
-    assert_eq!(*sup, Node::Number { value: "14".into(), group: false, thousands: None });
-    assert_eq!(*sub, Node::Number { value: "6".into(), group: false, thousands: None });
+    assert_eq!(*sup, Node::Number { value: "14".into(), group: false, thousands: None, variant: Variant::Upright });
+    assert_eq!(*sub, Node::Number { value: "6".into(), group: false, thousands: None, variant: Variant::Upright });
     assert_eq!(r.text, "_6^14C");
 }
 

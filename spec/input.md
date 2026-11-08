@@ -9,7 +9,7 @@ Presentation MathML, as Word, Google Docs, LibreOffice, MathType and MathJax exp
 | Element | Becomes |
 |---|---|
 | `mi` | one letter: a variable, in italic (uppercase Greek upright, as in TeX); several letters: a function (`sin`, `lim`) or an upright word; `mathvariant` chooses the alphabet |
-| `mn` | a number, with the locale's decimal comma and thousands separator (L-NUM-1, L-NUM-3) |
+| `mn` | a number, with the locale's decimal comma and thousands separator (L-NUM-1, L-NUM-3); Unicode's mathematical digits (`𝟏`, `𝟣`, `𝟷`) or `mathvariant` give the number its alphabet |
 | `mo` | the character with its TeX class (`≰` a relation, `⊗` a binary operator); `∑ ∫ ∏…` large operators; words (`lim`, `max`) functions; invisible operators (U+2061–U+2064) draw nothing |
 | `mtext`, `ms`, `mspace` | text; quoted text; a space (`em`, `ex`, `pt`, `px`, `mu` and the named spaces) |
 | `mrow`, `mstyle`, `mpadded` | a row; `mstyle` carries `displaystyle`, `mathvariant`, `mathcolor` and `mathbackground` |

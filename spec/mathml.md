@@ -15,7 +15,7 @@ Only the elements of [MathML Core](https://www.w3.org/TR/mathml-core/), the part
 
 | Tree | MathML |
 |---|---|
-| number | `<mn>` as the locale writes it (`3,14` in pt-BR, L-NUM-2), with the author's thousands separator (L-NUM-3) or siunitx's thin spaces |
+| number | `<mn>` as the locale writes it (`3,14` in pt-BR, L-NUM-2), with the author's thousands separator (L-NUM-3) or siunitx's thin spaces; digits in another alphabet (`\mathbf{1}`, `\mathsf{1}`, `\mathtt{1}`) are Unicode's mathematical digits (`<mn>𝟏</mn>`) |
 | letter | `<mi>`: MathML Core sets a single letter in italic on its own (L-LET-1); upright letters that it would slant (`\Gamma`, `\mathrm{d}`) take `mathvariant="normal"`; other alphabets are Unicode's mathematical letters (`𝐱`, `ℝ`, `ℒ`), which is how Core draws them |
 | function | `<mi>` with the name as the locale writes it (L-FUN-1), followed by U+2061 (function application) before its argument, with TeX's thin space as its `rspace` unless a parenthesis follows; with limits under it (`lim`, `max`) an `<mo movablelimits="true">` |
 | operator | `<mo>`; a class that is not the character's own (`{,}`, `\mathrel`) as `lspace` and `rspace`; a parenthesis or bracket outside `\left…\right` is `stretchy="false"`, as TeX keeps it its size |

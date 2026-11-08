@@ -409,7 +409,7 @@ pub fn fallback_glyph(c: char, e: Style, fallbacks: &[FallbackFont]) -> Option<M
 
 fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
     match node {
-        Node::Number { value, group, thousands } => compose_number(value, *group, *thousands, e, ctx),
+        Node::Number { value, group, thousands, variant } => compose_number(value, (*group, *thousands, *variant), e, ctx),
         Node::Identifier { name, variant } => {
             let mut math_box = MathBox::empty();
             for c in name.chars() {
@@ -607,7 +607,7 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
     }
 }
 
-fn compose_number(value: &str, group: bool, thousands: Option<char>, e: Style, ctx: &mut Context) -> R<MathBox> {
+fn compose_number(value: &str, (group, thousands, variant): (bool, Option<char>, Variant), e: Style, ctx: &mut Context) -> R<MathBox> {
     let sep = ctx.locale.decimal_separator();
     if value.contains('.') && sep != '.' {
         ctx.registry.note(rules::L_NUM_2, format!("{value} written with '{sep}' as decimal separator ({})", ctx.locale));
@@ -625,16 +625,21 @@ fn compose_number(value: &str, group: bool, thousands: Option<char>, e: Style, c
                 math_box.append(&glyph(m, e)?);
             }
         }
-        math_box.append(&glyph(c, e)?);
+        math_box.append(&digit(c, variant, e)?);
     }
     if let Some(fr) = fraction {
         math_box.append(&glyph(sep, e)?);
         for c in fr.chars() {
-            math_box.append(&glyph(c, e)?);
+            math_box.append(&digit(c, variant, e)?);
         }
     }
     math_box.single_glyph = value.chars().count() == 1;
     Ok(math_box)
+}
+
+/// #203: a digit in its alphabet (𝟏 in `\mathbf`), or the regular one if the font lacks it.
+fn digit(c: char, variant: Variant, e: Style) -> R<MathBox> {
+    glyph(alphabet::character(c, variant), e).or_else(|_| glyph(c, e))
 }
 
 // ---------- row: classes and spacing ----------

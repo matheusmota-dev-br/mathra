@@ -186,7 +186,7 @@ impl Reader<'_> {
             "mi" => self.identifier(node, variant),
             // KaTeX writes \mathbb{1} as <mn mathvariant="double-struck">1</mn>: the symbol 𝟙, as from LaTeX
             "mn" if variant == Variant::DoubleStruck && text_of(node).trim().len() == 1 => self.identifier(node, variant),
-            "mn" => self.number(node),
+            "mn" => self.number(node, variant),
             "mo" if slashed(&text_of(node)).is_some() => slashed_symbol(&text_of(node)),
             "mo" => match spaced(node, operator(&text_of(node))) {
                 // a word with limits that move aside in inline style: \operatorname*{argmax}
@@ -356,8 +356,10 @@ impl Reader<'_> {
         }
     }
 
-    fn number(&mut self, node: Xml) -> Node {
+    fn number(&mut self, node: Xml, variant: Variant) -> Node {
         let raw = text_of(node);
+        // #203: digits in another alphabet, as mathra writes them (𝟏) or with mathvariant (KaTeX)
+        let (raw, variant) = math_digits(&raw, variant);
         // digits grouped with thin spaces, as siunitx's \num writes them (L-UNI-1)
         let group = raw.contains(['\u{2009}', '\u{202F}']);
         let t: String = raw.chars().filter(|c| !c.is_whitespace() && *c != '\u{202F}').collect();
@@ -366,7 +368,7 @@ impl Reader<'_> {
                 if t.contains(',') && thousands.is_none() {
                     self.registry.note(rules::L_NUM_1, format!("'{t}': comma between digits read as decimal separator ({value})"));
                 }
-                Node::Number { value, group, thousands }
+                Node::Number { value, group, thousands, variant }
             }
             None => Node::Text { parts: vec![TextPart::Text(t)] },
         }
@@ -708,6 +710,23 @@ fn math_letters(t: &str) -> Option<(String, Variant)> {
         plain.push(p);
     }
     variant.map(|v| (plain, v))
+}
+
+/// #203: the plain digits of a number written in a Unicode alphabet (𝟏𝟐) and that alphabet; the
+/// inherited variant (mathvariant) when its digits are plain.
+fn math_digits(t: &str, inherited: Variant) -> (String, Variant) {
+    let mut variant = inherited.of_digits();
+    let plain = t
+        .chars()
+        .map(|c| match math_letter(c) {
+            Some((d, v)) if d.is_ascii_digit() && !v.of_digits().is_upright() => {
+                variant = v.of_digits();
+                d
+            }
+            _ => c,
+        })
+        .collect();
+    (plain, variant)
 }
 
 fn math_letter(c: char) -> Option<(char, Variant)> {

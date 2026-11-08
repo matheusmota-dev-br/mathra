@@ -130,10 +130,10 @@ fn letters_numbers_and_symbols() {
     // a word that is not a symbol is read letter by letter, as asciimath.org does
     assert_eq!(am("speed").speech, "s p e e d");
     assert!(matches!(first("sin x"), Node::Function { .. }));
-    assert_eq!(first("3.14"), Node::Number { value: "3.14".into(), group: false, thousands: None });
+    assert_eq!(first("3.14"), Node::Number { value: "3.14".into(), group: false, thousands: None, variant: Variant::Upright });
     // in pt-BR a comma between digits is decimal (L-NUM-1); with a space it separates
     let pt = |s: &str| convert(s, &Options { input: Input::AsciiMath, locale: Locale::PtBr, ..Options::default() }).unwrap();
-    assert_eq!(pt("3,14").tree.children()[0], Node::Number { value: "3.14".into(), group: false, thousands: None });
+    assert_eq!(pt("3,14").tree.children()[0], Node::Number { value: "3.14".into(), group: false, thousands: None, variant: Variant::Upright });
     assert_eq!(pt("f(1, 5)").text, "f(1, 5)");
     assert_eq!(am("x_1^2").speech, "x sub 1 squared");
     assert_eq!(am("^14_6 C").text, "^14_6C");

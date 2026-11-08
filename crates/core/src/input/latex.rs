@@ -648,7 +648,7 @@ impl Reader<'_> {
         if written.contains(',') {
             self.registry.note(rules::L_NUM_1, format!("'{written}': comma between digits read as decimal separator ({value})"));
         }
-        Node::Number { value, group: false, thousands: None }
+        Node::Number { value, group: false, thousands: None, variant: self.variant.of_digits() }
     }
 
     /// L-NUM-3: `1.000` and `12.345,67` in pt-BR, `1,000` and `12,345.67` in English: the locale's thousands
@@ -697,7 +697,7 @@ impl Reader<'_> {
         let written: String = self.c[self.pos..i].iter().collect();
         self.pos = i;
         self.registry.note(rules::L_NUM_3, format!("'{written}': '{thousands}' separa milhares ({value})"));
-        Some(Node::Number { value, group: false, thousands: Some(thousands) })
+        Some(Node::Number { value, group: false, thousands: Some(thousands), variant: self.variant.of_digits() })
     }
 
     /// Argument of a command or script: a group or a single token.
@@ -723,7 +723,7 @@ impl Reader<'_> {
             }
             Some(c) if c.is_ascii_digit() => {
                 self.pos += 1;
-                Ok(Node::Number { value: c.to_string(), group: false, thousands: None })
+                Ok(Node::Number { value: c.to_string(), group: false, thousands: None, variant: self.variant.of_digits() })
             }
             Some(_) => Ok(Node::row(self.atom()?).simplify()),
         }
@@ -2984,7 +2984,7 @@ impl Reader<'_> {
             let product = self.si_product(inter)?;
             let mut children = joined_units(&numerator, false, &product);
             if !denominator.is_empty() {
-                let one = || Node::Number { value: "1".into(), group: false, thousands: None };
+                let one = || Node::Number { value: "1".into(), group: false, thousands: None, variant: Variant::Upright };
                 match mode {
                     PerMode::Power => {
                         if !children.is_empty() {
@@ -3173,7 +3173,7 @@ impl Reader<'_> {
                     d.push(c[i]);
                     i += 1;
                 }
-                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None }));
+                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None, variant: Variant::Upright }));
             } else if ch == '^' || ch == '_' {
                 i += 1;
                 let payload = if c.get(i) == Some(&'{') {
@@ -3260,7 +3260,7 @@ impl Reader<'_> {
     /// Subscript in a formula: a number, a state (`_{(aq)}`) as text, anything else as math (`NO_x`).
     fn chemical_subscript(&mut self, payload: &str) -> R<Node> {
         if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
-            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None });
+            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None, variant: Variant::Upright });
         }
         if payload.starts_with('(') {
             return Ok(Node::Text { parts: vec![TextPart::Text(payload.to_string())] });
@@ -3471,16 +3471,16 @@ fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
     } else if c.get(*i) == Some(&'/') && c.get(*i + 1).is_some_and(char::is_ascii_digit) {
         *i += 1;
         let den = digits(i);
-        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
+        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None, variant: Variant::Upright });
         return Node::Fraction { numerator_align: None, num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
     }
-    Node::Number { value, group: false, thousands: None }
+    Node::Number { value, group: false, thousands: None, variant: Variant::Upright }
 }
 
 /// Charge or oxidation state: `2-` → 2−, `.-` → •− (radical), `II` → II.
 fn charge(payload: &str) -> Node {
     if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
-        return Node::Number { value: payload.to_string(), group: false, thousands: None };
+        return Node::Number { value: payload.to_string(), group: false, thousands: None, variant: Variant::Upright };
     }
     let text: String = payload
         .chars()
@@ -4360,7 +4360,7 @@ fn siunitx_uncertainty(raw: &str) -> Option<(Node, bool)> {
     let at = children.iter().position(|n| matches!(n, Node::Number { .. }))? + 1;
     let compact = [
         Node::Operator { symbol: '(', class: Class::Open },
-        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None },
+        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None, variant: Variant::Upright },
         Node::Operator { symbol: ')', class: Class::Close },
     ];
     children.splice(at..at, compact);
@@ -4386,7 +4386,7 @@ fn siunitx_number(raw: &str, group: bool) -> Option<Node> {
     if let Some(s) = sign {
         children.push(Node::Operator { symbol: if s == '-' { '−' } else { '+' }, class: Class::Ord });
     }
-    children.push(Node::Number { value, group, thousands: None });
+    children.push(Node::Number { value, group, thousands: None, variant: Variant::Upright });
     if let Some(e) = exponent {
         let (sign_e, digits) = match e.strip_prefix(['-', '+']) {
             Some(d) => (e.starts_with('-'), d.to_string()),
@@ -4399,10 +4399,10 @@ fn siunitx_number(raw: &str, group: bool) -> Option<Node> {
         if sign_e {
             exp.push(Node::Operator { symbol: '−', class: Class::Ord });
         }
-        exp.push(Node::Number { value: digits, group: false, thousands: None });
+        exp.push(Node::Number { value: digits, group: false, thousands: None, variant: Variant::Upright });
         children.push(Node::Operator { symbol: '×', class: Class::Bin });
         children.push(Node::Scripts {
-            base: Box::new(Node::Number { value: "10".into(), group: false, thousands: None }),
+            base: Box::new(Node::Number { value: "10".into(), group: false, thousands: None, variant: Variant::Upright }),
             sup: Some(Box::new(Node::row(exp).simplify())),
             sub: None,
         });

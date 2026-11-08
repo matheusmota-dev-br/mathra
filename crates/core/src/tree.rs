@@ -16,6 +16,10 @@ pub enum Node {
         /// L-NUM-3: thousands separator the author wrote (`1.000` in pt-BR), kept in the drawing.
         #[serde(skip_serializing_if = "Option::is_none")]
         thousands: Option<char>,
+        /// #203: the alphabet of its digits (`\mathbf{1}` is 𝟏): bold, sans-serif, bold sans-serif or
+        /// monospace, the ones Unicode has digits for; upright otherwise.
+        #[serde(skip_serializing_if = "Variant::is_upright")]
+        variant: Variant,
     },
     /// Single-letter variable or constant: "x".
     Identifier {
@@ -399,6 +403,23 @@ pub enum Variant {
 impl Variant {
     pub fn is_default(&self) -> bool {
         *self == Variant::Italic
+    }
+
+    pub fn is_upright(&self) -> bool {
+        *self == Variant::Upright
+    }
+
+    /// #203: the alphabet a digit takes in this one: the digits of bold, sans-serif, bold sans-serif and
+    /// monospace (U+1D7CE…), which the italic forms share; the others have none and leave it upright.
+    /// Double-struck digits are symbols (𝟙, #159), not numbers.
+    pub fn of_digits(self) -> Variant {
+        match self {
+            Variant::Bold | Variant::BoldItalic => Variant::Bold,
+            Variant::SansSerif | Variant::SansSerifItalic => Variant::SansSerif,
+            Variant::BoldSansSerif | Variant::SansSerifBoldItalic => Variant::BoldSansSerif,
+            Variant::Monospace => Variant::Monospace,
+            _ => Variant::Upright,
+        }
     }
 }
 

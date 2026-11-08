@@ -242,8 +242,9 @@ fn double_struck_one() {
     assert_eq!(pt(r"\mathbb{1}").speech, "1 duplo");
     // the braille stays the digit it was (its typeform is a question for a transcriber)
     assert_eq!(en(r"\mathbb{1}").braille, en("1").braille);
-    // other alphabets leave numbers alone, and \mathbb still makes ℝ
-    assert_eq!(en(r"\mathbf{1}").text, "1");
+    // other alphabets keep numbers numbers, in their digits (#203), and \mathbb still makes ℝ
+    assert!(matches!(en(r"\mathbf{1}").tree.children(), [Node::Number { .. }]));
+    assert_eq!(en(r"\mathbf{1}").text, "𝟏");
     assert_eq!(en(r"\mathbb{R}").speech, "the real numbers");
 }
 

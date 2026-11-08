@@ -358,7 +358,7 @@ impl Writer {
             n = base;
         }
         match n {
-            Node::Number { value, group, thousands } => self.number(value, *group, *thousands),
+            Node::Number { value, group, thousands, variant } => self.number(value, (*group, *thousands), *variant),
             Node::Identifier { name, variant } => self.identifier(name, *variant),
             Node::Function { name, limits } => self.function(name, *limits, false),
             Node::Operator { symbol, class } => self.operator(*symbol, *class),
@@ -472,12 +472,13 @@ impl Writer {
     }
 
     #[inline(never)]
-    fn number(&mut self, value: &str, group: bool, thousands: Option<char>) {
-        let written = super::written_number(value, thousands, self.locale);
+    fn number(&mut self, value: &str, (group, thousands): (bool, Option<char>), variant: Variant) {
+        // #203: a digit in another alphabet is written as its Unicode character (𝟏), as a letter is
+        let written: String = super::written_number(value, thousands, self.locale).chars().map(|c| alphabet::character(c, variant)).collect();
         if group && thousands.is_none() {
             // siunitx groups (L-UNI-1): a thin space every three digits of the integer part, from five on
-            let (int, rest) = written.split_at(written.find(|c: char| !c.is_ascii_digit()).unwrap_or(written.len()));
-            let n = int.len();
+            let (int, rest) = written.split_at(written.find(|c: char| !c.is_numeric()).unwrap_or(written.len()));
+            let n = int.chars().count();
             let mut s = String::with_capacity(written.len() + 8);
             for (i, c) in int.chars().enumerate() {
                 if n >= 5 && i > 0 && (n - i) % 3 == 0 {

@@ -628,7 +628,7 @@ impl Parser<'_> {
                 if value.contains('.') && self.locale.comma_is_decimal() {
                     self.registry.note(rules::L_NUM_1, format!("'{value}': read as a decimal number"));
                 }
-                Node::Number { value, group: false, thousands: None }
+                Node::Number { value, group: false, thousands: None, variant: Variant::Upright }
             }
             Kind::Letter(c) if c.is_alphabetic() => {
                 let variant = if c.is_ascii_alphabetic() || ('α'..='ω').contains(&c) { Variant::Italic } else { Variant::Upright };
@@ -789,6 +789,8 @@ fn unary(name: &str, arg: Node) -> Node {
 fn with_variant(node: Node, variant: Variant) -> Node {
     match node {
         Node::Identifier { name, .. } => Node::Identifier { name, variant },
+        // #203: digits in bold, sans-serif and typewriter (`bb(1)`)
+        Node::Number { value, group, thousands, .. } => Node::Number { value, group, thousands, variant: variant.of_digits() },
         Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(_)]) => match parts.into_iter().next() {
             Some(TextPart::Text(t)) => Node::Identifier { name: t, variant },
             _ => unreachable!("one text part"),

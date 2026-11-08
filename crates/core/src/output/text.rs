@@ -34,7 +34,7 @@ fn group(node: &Node, loc: Locale, s: &mut String) {
 
 fn write_node(node: &Node, loc: Locale, s: &mut String) {
     match node {
-        Node::Number { value, thousands, .. } => s.push_str(&super::written_number(value, *thousands, loc)),
+        Node::Number { value, thousands, variant, .. } => s.extend(super::written_number(value, *thousands, loc).chars().map(|c| crate::layout::alphabet::character(c, *variant))),
         Node::Identifier { name, variant } => {
             let mapped: String = name.chars().map(|c| crate::layout::alphabet::character(c, *variant)).collect();
             s.push_str(if matches!(variant, Variant::Italic | Variant::Upright) { name } else { &mapped });
