@@ -10,12 +10,13 @@ fn corpus(name: &str) -> Value {
     serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap()
 }
 
-/// Every equation of the corpus, with its locale and notation: (where, locale, input, source).
-fn equations() -> Vec<(String, Locale, Input, String)> {
+/// Every equation of the corpus, with its locale, notation and the max width a gallery row carries:
+/// (where, locale, input, source, max width).
+fn equations() -> Vec<(String, Locale, Input, String, Option<f32>)> {
     let mut out = Vec::new();
     for file in ["constructions.json", "packages.json"] {
         for pair in corpus(file).as_array().unwrap() {
-            out.push((format!("{file}: {}", pair[0].as_str().unwrap()), Locale::default(), Input::Latex, pair[1].as_str().unwrap().to_string()));
+            out.push((format!("{file}: {}", pair[0].as_str().unwrap()), Locale::default(), Input::Latex, pair[1].as_str().unwrap().to_string(), None));
         }
     }
     for section in corpus("gallery.json").as_array().unwrap() {
@@ -23,14 +24,15 @@ fn equations() -> Vec<(String, Locale, Input, String)> {
             let locale = row["locale"].as_str().unwrap_or("en").parse().unwrap();
             let input = row["input"].as_str().unwrap_or("latex").parse().unwrap();
             let name = row.get("name").unwrap_or(&row["caption"]).as_str().unwrap();
-            out.push((format!("gallery: {name}"), locale, input, row["tex"].as_str().unwrap().to_string()));
+            let max_width = row.get("options").and_then(|o| o.get("maxWidth")).map(|w| w.as_f64().unwrap() as f32);
+            out.push((format!("gallery: {name}"), locale, input, row["tex"].as_str().unwrap().to_string(), max_width));
         }
     }
     let reference = corpus("reference.json");
     for (group, sections) in reference.as_object().unwrap() {
         for section in sections.as_array().unwrap() {
             for (i, row) in section["rows"].as_array().unwrap().iter().enumerate() {
-                out.push((format!("reference {group}/{} #{i}", section["id"].as_str().unwrap()), Locale::default(), Input::Latex, row["tex"].as_str().unwrap().to_string()));
+                out.push((format!("reference {group}/{} #{i}", section["id"].as_str().unwrap()), Locale::default(), Input::Latex, row["tex"].as_str().unwrap().to_string(), None));
             }
         }
     }
@@ -87,8 +89,8 @@ const KNOWN: &[(&str, &str)] = &[
 #[test]
 fn the_corpus_round_trips_through_mathml() {
     let (mut checked, mut fallbacks, mut failures) = (0, 0, Vec::new());
-    for (name, locale, input, tex) in equations() {
-        let options = Options { locale, input, ..Options::default() };
+    for (name, locale, input, tex, max_width) in equations() {
+        let options = Options { locale, input, max_width, ..Options::default() };
         let Ok(first) = convert(&tex, &options) else { continue };
         if first.mathml.contains("<semantics>") {
             fallbacks += 1;
@@ -212,8 +214,8 @@ fn only_mathml_core_elements() {
         "merror",
         "maction",
     ];
-    for (name, locale, input, tex) in equations() {
-        let Ok(r) = convert(&tex, &Options { locale, input, ..Options::default() }) else { continue };
+    for (name, locale, input, tex, max_width) in equations() {
+        let Ok(r) = convert(&tex, &Options { locale, input, max_width, ..Options::default() }) else { continue };
         let doc = roxmltree::Document::parse(&r.mathml).unwrap_or_else(|e| panic!("{name}: invalid XML {e}\n{}", r.mathml));
         for n in doc.descendants().filter(|n| n.is_element()) {
             assert!(core.contains(&n.tag_name().name()), "{name}: <{}> is not MathML Core", n.tag_name().name());
