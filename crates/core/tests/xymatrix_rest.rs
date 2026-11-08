@@ -43,6 +43,35 @@ fn paths_through_entries() {
 }
 
 #[test]
+fn curves_with_in_and_out_directions() {
+    // #256, the issue's example: a loop on A leaving up-left and coming back from up-right, labelled f,
+    // with no target (the path's position is empty: the entry itself), and a curve from B to A
+    let (_, a) = arrows(r"\xymatrix{ A \ar@(ul,ur)^{f} \ar[r] & B \ar@(rd,ul)[l] }");
+    assert_eq!(a.len(), 3);
+    assert_eq!((a[0].from, a[0].to, a[0].directions), ((0, 0), (0, 0), Some((135, 45))));
+    assert_eq!(a[0].labels.len(), 1);
+    assert_eq!((a[2].from, a[2].to, a[2].directions), ((0, 1), (0, 0), Some((315, 135))));
+    // an explicit [] is the same loop; either order of a diagonal's letters (reference manual, note 4l)
+    assert_eq!(arrows(r"\xymatrix{ A \ar@(lu,ru)[]^{f} }").1, arrows(r"\xymatrix{ A \ar@(ul,ur)^{f} }").1);
+    // the curve is drawn: not the straight arrow, and a loop is drawn at all
+    assert_ne!(strict(r"\xymatrix{ A \ar@(u,u)[r] & B }").svg, strict(r"\xymatrix{ A \ar[r] & B }").svg);
+    assert!(strict(r"\xymatrix{ A \ar@(ul,dl)[] }").svg.contains("<line"));
+    // the cell keeps no text of the arrow, and the text reads the loop
+    let out = strict(r"\xymatrix{ A \ar@(ul,ur)^{f} \ar[r] & B \ar@(rd,ul)[l] }");
+    assert_eq!(out.text, "A, B; A →[f] A; A → B; B → A");
+    // the Stacks Project's long exact sequences: the connecting map from the end of a row to the start
+    // of the next
+    let (_, a) = arrows(r"\xymatrix{ 0 \ar[r] & A \ar[r] & B \ar@(rd, ul)[rdll] \\ & C \ar[r] & D }");
+    assert_eq!((a[2].from, a[2].to), ((0, 2), (1, 1)));
+    // a direction it cannot read: drawn straight with a warning, refused in strict mode
+    let tex = r"\xymatrix{ A \ar@(v(1,2),ur)[r] & B }";
+    let out = convert(tex, &Options::default()).unwrap();
+    assert!(out.warnings.iter().any(|w| w.rule == "E-REC-1"), "{:?}", out.warnings);
+    assert!(matches!(out.tree.single(), Node::ArrowDiagram { arrows, .. } if arrows.len() == 1 && arrows[0].directions.is_none()));
+    assert!(convert(tex, &Options { strict: true, ..Default::default() }).is_err());
+}
+
+#[test]
 fn holes() {
     // as an entry, an empty cell
     let (cells, a) = arrows(r"\xymatrix{A \ar[r] & \hole & B}");

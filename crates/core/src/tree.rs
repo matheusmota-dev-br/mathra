@@ -522,6 +522,11 @@ pub struct DiagramArrow {
     /// Cells the path goes through on its way, in straight segments (xymatrix's `\ar'[d][dd]`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub via: Vec<(usize, usize)>,
+    /// xymatrix's `\ar@(d1,d2)` (xy-pic reference manual, note 24p): the directions, in degrees
+    /// counterclockwise from the right, the arrow leaves `from` in and enters `to` from. The arrow is
+    /// a curve; with `to` equal to `from`, a loop.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directions: Option<(i16, i16)>,
 }
 
 impl DiagramArrow {

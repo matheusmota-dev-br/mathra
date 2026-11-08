@@ -478,6 +478,15 @@ impl Reader<'_> {
                                 let degrees = if size.is_empty() { 30 } else { 40 };
                                 a.bend = if curve.trim_start().starts_with('_') { -degrees } else { degrees };
                             }
+                            // xy-pic's @(d1,d2) (reference manual, note 24p): a curve that leaves the
+                            // entry in direction d1 and enters the target from direction d2
+                            Some('(') => {
+                                let pair = group(&c, &mut i, '(', ')');
+                                match pair.split_once(',').and_then(|(d1, d2)| Some((xy_direction(d1)?, xy_direction(d2)?))) {
+                                    Some(d) => a.directions = Some(d),
+                                    None => self.tolerate(rules::E_REC_1, col, format!("unsupported xymatrix curve: @({pair})"), "drawn straight")?,
+                                }
+                            }
                             Some('<') => {
                                 let amount = group(&c, &mut i, '<', '>');
                                 let pt: f32 = amount.trim_end_matches("pt").trim().parse().unwrap_or(2.0);
@@ -597,6 +606,9 @@ impl Reader<'_> {
                 through.clear();
             }
             a.via = through;
+            // with @(d1,d2) and no target, the path's position is empty: xy-pic reuses the last c (reference
+            // manual, figure 2), the entry itself, so the arrow is a loop
+            let target = target.or(a.directions.map(|_| (0, 0)));
             match target.and_then(|(di, dj)| destination(from, di, dj)) {
                 Some(to) => arrows.push(DiagramArrow { to, ..a }),
                 None if target.is_none() => self.tolerate(rules::E_REC_7, col, "\\ar without a direction", "left out")?,
@@ -617,7 +629,7 @@ impl Reader<'_> {
             let inside = |(r, c): (usize, usize)| r < cells.len() && c < ncol;
             if !inside(a.from) || !inside(a.to) || !a.via.iter().all(|v| inside(*v)) {
                 self.tolerate(rules::E_REC_7, col, format!("arrow to a cell outside the diagram: row {}, column {}", a.to.0 + 1, a.to.1 + 1), "left out")?;
-            } else if a.from == a.to {
+            } else if a.from == a.to && a.directions.is_none() {
                 self.tolerate(rules::E_REC_7, col, "arrow from a cell to itself", "left out")?;
             } else {
                 kept.push(a);
@@ -840,7 +852,25 @@ fn blank_arrow(from: (usize, usize)) -> DiagramArrow {
         sag: 0.0,
         across: false,
         via: vec![],
+        directions: None,
     }
+}
+
+/// xy-pic's simple directions (reference manual, note 4l), in degrees counterclockwise from the right:
+/// `r`, `u`, `l`, `d` and the diagonals in either order (`ul` is `lu`). The ones `@(d1,d2)` takes
+/// (note 24p).
+fn xy_direction(word: &str) -> Option<i16> {
+    Some(match word.trim() {
+        "r" => 0,
+        "ur" | "ru" => 45,
+        "u" => 90,
+        "ul" | "lu" => 135,
+        "l" => 180,
+        "dl" | "ld" => 225,
+        "d" => 270,
+        "dr" | "rd" => 315,
+        _ => return None,
+    })
 }
 
 fn destination(from: (usize, usize), di: isize, dj: isize) -> Option<(usize, usize)> {

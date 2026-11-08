@@ -11,6 +11,10 @@ use super::{em, k, Context, Item, Level, MathBox, Style};
 type R<T> = Result<T, Error>;
 type P = (f32, f32);
 
+/// xy-pic's `@(d1,d2)` puts the curve's control points 3 pc from the entries, in the two directions
+/// (xyarrow.tex, `\ar@curveinout`): 3.6 em at 10 pt.
+const XY_CURVE_REACH: f32 = 3.6;
+
 /// Points per bent arrow, per hook and per barb: enough for a smooth stroke at any display size.
 const CURVE_STEPS: usize = 40;
 const BARB_STEPS: usize = 8;
@@ -81,6 +85,33 @@ fn exit(r: Rect, p: P, d: P) -> P {
         t = 0.0;
     }
     add(p, mul(d, t.max(0.0)))
+}
+
+/// xy-pic's `@(d1,d2)` (reference manual, note 24p): the cubic from the center `p` of the source to the
+/// center `q` of the target whose control points are `reach` from them, in direction d1 from `p` and
+/// d2 from `q`, so it leaves `p` in direction d1 and enters `q` from direction d2; cut at the borders
+/// of the two entries (the same one for a loop).
+fn in_out_curve(p: P, q: P, (d1, d2): (i16, i16), reach: f32, rf: Rect, rt: Rect) -> Vec<P> {
+    let towards = |degrees: i16| {
+        let (s, c) = (degrees as f32).to_radians().sin_cos();
+        (c, s)
+    };
+    let (c1, c2) = (add(p, mul(towards(d1), reach)), add(q, mul(towards(d2), reach)));
+    let full: Vec<P> = (0..=CURVE_STEPS * 2)
+        .map(|s| {
+            let t = s as f32 / (CURVE_STEPS * 2) as f32;
+            let u = 1.0 - t;
+            let w = [u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t];
+            (w[0] * p.0 + w[1] * c1.0 + w[2] * c2.0 + w[3] * q.0, w[0] * p.1 + w[1] * c1.1 + w[2] * c2.1 + w[3] * q.1)
+        })
+        .collect();
+    let first = full.iter().position(|x| !rf.contains(*x)).unwrap_or(0);
+    let last = full.iter().rposition(|x| !rt.contains(*x)).unwrap_or(full.len() - 1);
+    if first >= last {
+        Vec::new()
+    } else {
+        full[first..=last].to_vec()
+    }
 }
 
 fn polyline_length(path: &[P]) -> f32 {
@@ -295,6 +326,8 @@ pub fn compose(cells: &[Vec<Node>], arrows: &[DiagramArrow], e: Style, ctx: &mut
             } else {
                 full[first..=last].to_vec()
             }
+        } else if let Some(directions) = a.directions {
+            in_out_curve(p, q, directions, em(e, XY_CURVE_REACH), border(a.from), border(a.to))
         } else if !a.via.is_empty() {
             // xy-pic's straight segments (reference manual, note 24d): each one between the objects it
             // joins, so an entry with something in it interrupts the path; an empty one does not
