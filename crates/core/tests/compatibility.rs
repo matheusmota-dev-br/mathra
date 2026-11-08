@@ -884,3 +884,58 @@ fn a_tree_node_stays_small() {
     let size = std::mem::size_of::<Node>();
     assert!(size <= 176, "Node is {size} bytes");
 }
+
+/// #204: MathJax's \unicode reads a bare number as decimal and `x…` or `0x…` as hexadecimal; TeX's \char
+/// keeps its own reading (decimal, "hex, 'octal), and the commands that expand to \unicode keep theirs.
+#[test]
+fn unicode_reads_decimal_as_mathjax() {
+    for options in [strict(), Options::default()] {
+        for (tex, text) in [
+            (r"\unicode{8918}", "⋖"),
+            (r"\unicode{x22D6}", "⋖"),
+            (r"\unicode{0x22D6}", "⋖"),
+            (r"\unicode{X22D6}", "⋖"),
+            (r"\unicode{U+22D6}", "⋖"),
+            (r"\unicode{65}", "A"),
+            (r"\unicode{8918} \quad \unicode{x22D6}", "⋖ ⋖"),
+            (r#"\char65 \char"41 \char'101 \char`A"#, "AAAA"),
+            (r"\grad f", "𝛁f"),
+        ] {
+            let out = convert(tex, &options).unwrap_or_else(|e| panic!("{tex}: {e}"));
+            assert!(out.warnings.is_empty(), "{tex}: {:?}", out.warnings);
+            assert_eq!(out.text, text, "{tex}");
+        }
+    }
+    // a decimal code point out of Unicode's range is not a character
+    assert!(convert(r"\unicode{99999999}", &strict()).is_err());
+}
+
+/// #205: `\not` before a long arrow is TeX's zero-width relation: its slash over the arrow's start, where it
+/// would cross an `=`, the arrow its own length and the whole a relation spaced as one.
+#[test]
+fn not_before_a_long_arrow_slashes_its_start() {
+    let equals = glyph_middles(&math_box("="), '=')[0].0;
+    for (tex, arrow) in [(r"\not\longrightarrow", '⟶'), (r"\not\Longrightarrow", '⟹'), (r"\not\longleftarrow", '⟵'), (r"\not\longmapsto", '⟼')] {
+        let b = math_box(tex);
+        let plain = math_box(&tex.replace(r"\not", ""));
+        let slash = glyph_middles(&b, '⧸');
+        assert_eq!(slash.len(), 1, "{tex}");
+        // the middle of an = set where the arrow starts (both boxes start at 0)
+        assert!((slash[0].0 - equals).abs() < 1.0, "{tex}: ⧸ at {}, = at {equals}", slash[0].0);
+        assert!(slash[0].0 < glyph_middles(&b, arrow)[0].0 - 100.0, "{tex}");
+        assert!(!b.items.iter().any(|i| matches!(i, Item::Line { .. })), "{tex}: no slash across the whole arrow");
+        assert_eq!(b.width, plain.width, "{tex}: the arrow keeps its length");
+        // a relation: spaced as the arrow alone
+        let spaced = math_box(&format!("A {tex} B")).width;
+        assert_eq!(spaced, math_box(&format!("A {} B", tex.replace(r"\not", ""))).width, "{tex}: spaced as a relation");
+    }
+    let _ = read(r"A \not\longrightarrow B \quad A \not\Longrightarrow B");
+    // a short relation without a negated character, and \cancel, are still crossed out whole
+    for tex in [r"\not\approxeq", r"\cancel{\longrightarrow}"] {
+        let b = math_box(tex);
+        assert!(b.items.iter().any(|i| matches!(i, Item::Line { .. })), "{tex}");
+        assert!(glyph_middles(&b, '⧸').is_empty(), "{tex}");
+    }
+    // \not before a relation with a negated character is that character
+    assert_eq!(read(r"a \not= b").text, "a ≠ b");
+}

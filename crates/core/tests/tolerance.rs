@@ -303,3 +303,52 @@ fn e_rec_9_percent_starts_a_comment() {
         assert_eq!(strict(tex).unwrap().text, tolerant(tex).text, "{tex}");
     }
 }
+
+/// #206: plain TeX's math glue registers are measures (3mu, 4mu, 5mu; the stretch ignored), in `\mskip`,
+/// `\hskip` and `\mspace`, alone or times a factor.
+#[test]
+fn muskip_registers_are_measures() {
+    let space = |tex: &str| match strict(tex).unwrap_or_else(|e| panic!("{tex}: {e}")).tree.children() {
+        [_, mathra::Node::Space { em }, _] => *em,
+        other => panic!("{tex}: {other:?}"),
+    };
+    for (tex, mu) in [
+        (r"a \mskip\thinmuskip b", 3.0),
+        (r"a \mskip\medmuskip b", 4.0),
+        (r"a \mskip\thickmuskip b", 5.0),
+        (r"a \hskip\thinmuskip b", 3.0),
+        (r"a \mspace{\medmuskip} b", 4.0),
+        (r"a \mskip 2\thinmuskip b", 6.0),
+        (r"a \mskip-\thickmuskip b", -5.0),
+    ] {
+        assert!((space(tex) - mu / 18.0).abs() < 1e-6, "{tex}: {}", space(tex));
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+    }
+    // the same space as \, \: and \;
+    assert_eq!(strict(r"a \mskip\thinmuskip b").unwrap().tree, strict(r"a \, b").unwrap().tree);
+    let out = tolerant(r"a \mskip\medmuskip b \mskip\thickmuskip c");
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+}
+
+/// #206: a measure mathra cannot read is no space with a warning (E-REC-9), never a failure in tolerant
+/// mode; strict mode refuses it.
+#[test]
+fn an_unknown_measure_is_no_space_in_tolerant_mode() {
+    for tex in [r"a \mskip\foo b", r"a \mskip 3furlong b", r"a \hskip\tabcolsep b", r"a \mspace{2qq} b", r"a \hspace{x} b"] {
+        assert_eq!(warning_rules(tex), ["E-REC-9"], "{tex}");
+        assert_eq!(tolerant(tex).text, "ab", "{tex}");
+        assert!(strict(tex).unwrap_err().to_string().contains("unrecognized measure"), "{tex}");
+    }
+}
+
+/// #206: the registers alone are known commands (not split as `\th inmuskip`): an assignment mathra does
+/// not honor, ignored with a warning in tolerant mode; strict mode refuses it.
+#[test]
+fn a_muskip_register_alone_is_an_ignored_assignment() {
+    for (tex, text) in [(r"\thinmuskip", ""), (r"\medmuskip a", "a"), (r"\thickmuskip=2mu plus 1mu a", "a"), (r"\thinmuskip = 4mu a", "a")] {
+        let out = tolerant(tex);
+        assert_eq!(out.warnings.iter().map(|w| w.rule).collect::<Vec<_>>(), ["E-REC-9"], "{tex}");
+        assert_eq!(out.text, text, "{tex}");
+        assert!(strict(tex).is_err(), "{tex}");
+    }
+}

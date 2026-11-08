@@ -266,7 +266,7 @@ pub(super) fn unit_node(u: &UnitEntry, negative: bool) -> Node {
         None => u.0.clone(),
     };
     let base = Node::Unit { prefix: Some(u.2.clone()).filter(|p| !p.is_empty()), name: u.3.clone(), base: Box::new(symbol) };
-    let power = Node::Number { value: u.1.to_string(), group: false, thousands: None };
+    let power = Node::Number { value: u.1.to_string(), group: false, thousands: None, variant: Variant::Upright };
     let power = match negative {
         true => Node::row(vec![Node::Operator { symbol: '−', class: Class::Ord }, power]),
         false if u.1 == 1 => return base,

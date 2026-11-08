@@ -3,8 +3,9 @@
 use mathra::tree::{Node, Variant};
 use mathra::{convert, font, Options};
 
-/// upgreek.dtx: the capitals and the var forms; `\upvarrho` and `\upvarsigma` are `\let` to `\uprho` and
-/// `\upsigma`. `\upomicron` comes from MathJax's upgreek extension.
+/// upgreek.dtx: the capitals and the var forms. `\upvarrho` and `\upvarsigma` are ϱ and ς as MathJax's upgreek
+/// extension draws them (#202; the package `\let`s them to `\uprho` and `\upsigma`). `\upomicron` comes from
+/// MathJax's upgreek extension.
 const LETTERS: &[(&str, char)] = &[
     ("Upgamma", 'Γ'),
     ("Updelta", 'Δ'),
@@ -20,8 +21,8 @@ const LETTERS: &[(&str, char)] = &[
     ("upvarepsilon", 'ε'),
     ("upvartheta", 'ϑ'),
     ("upvarpi", 'ϖ'),
-    ("upvarrho", 'ρ'),
-    ("upvarsigma", 'σ'),
+    ("upvarrho", 'ϱ'),
+    ("upvarsigma", 'ς'),
     ("upvarphi", 'φ'),
     ("upomicron", 'ο'),
 ];
@@ -65,4 +66,17 @@ fn the_issue_examples_read_without_warnings() {
     }
     // upright, not the italic of \Delta in \varDelta
     assert_eq!(convert(r"\Updelta", &Options::default()).unwrap().text, convert(r"\Delta", &Options::default()).unwrap().text);
+}
+
+/// #202: the var forms of rho and sigma are the variant letters, upright, not the plain ones.
+#[test]
+fn upvarrho_and_upvarsigma_are_the_variant_letters() {
+    let out = convert(r"\upvarrho \quad \upvarsigma", &Options::default()).unwrap();
+    assert!(out.warnings.is_empty(), "{:?}", out.warnings);
+    assert_eq!(out.text, "ϱ ς");
+    assert_ne!(out.svg, convert(r"\uprho \quad \upsigma", &Options::default()).unwrap().svg);
+    let exact = convert(r"\upvarrho \quad \upvarsigma", &strict()).unwrap();
+    assert_eq!(exact.text, "ϱ ς");
+    // upright: not the italic \varrho and \varsigma
+    assert_ne!(exact.svg, convert(r"\varrho \quad \varsigma", &strict()).unwrap().svg);
 }

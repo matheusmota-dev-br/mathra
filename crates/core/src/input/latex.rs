@@ -648,7 +648,7 @@ impl Reader<'_> {
         if written.contains(',') {
             self.registry.note(rules::L_NUM_1, format!("'{written}': comma between digits read as decimal separator ({value})"));
         }
-        Node::Number { value, group: false, thousands: None }
+        Node::Number { value, group: false, thousands: None, variant: self.variant.of_digits() }
     }
 
     /// L-NUM-3: `1.000` and `12.345,67` in pt-BR, `1,000` and `12,345.67` in English: the locale's thousands
@@ -697,7 +697,7 @@ impl Reader<'_> {
         let written: String = self.c[self.pos..i].iter().collect();
         self.pos = i;
         self.registry.note(rules::L_NUM_3, format!("'{written}': '{thousands}' separa milhares ({value})"));
-        Some(Node::Number { value, group: false, thousands: Some(thousands) })
+        Some(Node::Number { value, group: false, thousands: Some(thousands), variant: self.variant.of_digits() })
     }
 
     /// Argument of a command or script: a group or a single token.
@@ -723,7 +723,7 @@ impl Reader<'_> {
             }
             Some(c) if c.is_ascii_digit() => {
                 self.pos += 1;
-                Ok(Node::Number { value: c.to_string(), group: false, thousands: None })
+                Ok(Node::Number { value: c.to_string(), group: false, thousands: None, variant: self.variant.of_digits() })
             }
             Some(_) => Ok(Node::row(self.atom()?).simplify()),
         }
@@ -1067,7 +1067,15 @@ impl Reader<'_> {
                     self.pos += 1;
                 }
                 let measure = if self.c.get(self.pos).is_some_and(|c| *c == '{') || name.starts_with('h') && name != "hskip" { self.raw_text()? } else { self.raw_measure() };
-                Node::Space { em: measure_em(&measure).ok_or(Error::Syntax { column: col, message: format!("unrecognized measure: {measure}") })? }
+                match self.space_measure(&measure, col)? {
+                    Some(em) => Node::Space { em },
+                    None => return Ok(Some(None)),
+                }
+            }
+            // #206: plain TeX's math glue registers, which only an assignment names outside a skip
+            "thinmuskip" | "medmuskip" | "thickmuskip" => {
+                self.muskip_assignment(name, col)?;
+                return Ok(Some(None));
             }
             _ => return Ok(None),
         };
@@ -1644,9 +1652,7 @@ impl Reader<'_> {
                     self.raw_optional();
                 }
                 let raw = self.raw_text()?;
-                let code = raw.trim().trim_start_matches("0x").trim_start_matches(['x', 'X', '#', 'U', '+']);
-                let c = u32::from_str_radix(code, 16).ok().and_then(char::from_u32);
-                match c {
+                match unicode_code_point(&raw) {
                     Some(c) => Node::Operator { symbol: c, class: Class::Ord },
                     None => return self.error(col, format!("\\unicode{{{raw}}}: invalid code point")),
                 }
@@ -1946,6 +1952,16 @@ impl Reader<'_> {
     fn raw_measure(&mut self) -> String {
         self.skip_spaces();
         let mut s = String::new();
+        // #206: a glue register, maybe with a factor: \thinmuskip, 2\medmuskip, -\thickmuskip
+        let factor: String = self.c[self.pos..].iter().take_while(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')).collect();
+        let at = self.pos + factor.chars().count();
+        if self.c.get(at) == Some(&'\\') {
+            let name: String = self.c[at + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
+            if !name.is_empty() {
+                self.pos = at + 1 + name.chars().count();
+                return format!("{factor}\\{name}");
+            }
+        }
         while let Some(c) = self.current() {
             if c.is_ascii_digit() || c == '.' || c == '-' || c == ',' || (c.is_ascii_alphabetic() && s.len() < 12) {
                 s.push(c);
@@ -2984,7 +3000,7 @@ impl Reader<'_> {
             let product = self.si_product(inter)?;
             let mut children = joined_units(&numerator, false, &product);
             if !denominator.is_empty() {
-                let one = || Node::Number { value: "1".into(), group: false, thousands: None };
+                let one = || Node::Number { value: "1".into(), group: false, thousands: None, variant: Variant::Upright };
                 match mode {
                     PerMode::Power => {
                         if !children.is_empty() {
@@ -3173,7 +3189,7 @@ impl Reader<'_> {
                     d.push(c[i]);
                     i += 1;
                 }
-                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None }));
+                attach_script(&mut children, None, Some(Node::Number { value: d, group: false, thousands: None, variant: Variant::Upright }));
             } else if ch == '^' || ch == '_' {
                 i += 1;
                 let payload = if c.get(i) == Some(&'{') {
@@ -3260,7 +3276,7 @@ impl Reader<'_> {
     /// Subscript in a formula: a number, a state (`_{(aq)}`) as text, anything else as math (`NO_x`).
     fn chemical_subscript(&mut self, payload: &str) -> R<Node> {
         if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
-            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None });
+            return Ok(Node::Number { value: payload.to_string(), group: false, thousands: None, variant: Variant::Upright });
         }
         if payload.starts_with('(') {
             return Ok(Node::Text { parts: vec![TextPart::Text(payload.to_string())] });
@@ -3471,16 +3487,16 @@ fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
     } else if c.get(*i) == Some(&'/') && c.get(*i + 1).is_some_and(char::is_ascii_digit) {
         *i += 1;
         let den = digits(i);
-        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
+        let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None, variant: Variant::Upright });
         return Node::Fraction { numerator_align: None, num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
     }
-    Node::Number { value, group: false, thousands: None }
+    Node::Number { value, group: false, thousands: None, variant: Variant::Upright }
 }
 
 /// Charge or oxidation state: `2-` → 2−, `.-` → •− (radical), `II` → II.
 fn charge(payload: &str) -> Node {
     if !payload.is_empty() && payload.chars().all(|x| x.is_ascii_digit()) {
-        return Node::Number { value: payload.to_string(), group: false, thousands: None };
+        return Node::Number { value: payload.to_string(), group: false, thousands: None, variant: Variant::Upright };
     }
     let text: String = payload
         .chars()
@@ -4117,6 +4133,9 @@ fn box_length(m: &str) -> Option<BoxLength> {
 
 fn measure_em(m: &str) -> Option<f32> {
     let m = m.trim().replace(',', ".");
+    if let Some((factor, register)) = m.split_once('\\') {
+        return muskip_em(factor.trim(), register.trim());
+    }
     let units = [("em", 1.0), ("ex", 0.45), ("pt", 0.1), ("mu", 1.0 / 18.0), ("cm", 2.845), ("mm", 0.2845), ("in", 7.227), ("px", 0.075)];
     for (u, f) in units {
         if let Some(v) = m.strip_suffix(u) {
@@ -4126,7 +4145,61 @@ fn measure_em(m: &str) -> Option<f32> {
     None
 }
 
+/// #206: plain TeX's math glue (plain.tex: `\thinmuskip=3mu`, `\medmuskip=4mu plus 2mu minus 4mu`,
+/// `\thickmuskip=5mu plus 5mu`; the stretch and shrink are ignored), times a factor (`2\thinmuskip`).
+fn muskip_em(factor: &str, register: &str) -> Option<f32> {
+    let mu = match register {
+        "thinmuskip" => 3.0,
+        "medmuskip" => 4.0,
+        "thickmuskip" => 5.0,
+        _ => return None,
+    };
+    let factor = match factor {
+        "" | "+" => 1.0,
+        "-" => -1.0,
+        f => f.parse::<f32>().ok().filter(|f| f.is_finite())?,
+    };
+    Some(factor * mu / 18.0)
+}
+
 impl Reader<'_> {
+    /// #206: the width of `\mskip`, `\hskip`, `\mspace`, `\kern`…; a measure mathra cannot read is no space
+    /// in tolerant mode (E-REC-9) and an error in strict mode.
+    #[inline(never)]
+    fn space_measure(&mut self, measure: &str, col: usize) -> R<Option<f32>> {
+        match measure_em(measure) {
+            Some(em) => Ok(Some(em)),
+            None => {
+                self.tolerate(rules::E_REC_9, col, format!("unrecognized measure: {}", measure.trim()), "no space")?;
+                Ok(None)
+            }
+        }
+    }
+
+    /// #206: `\thinmuskip`, `\medmuskip` or `\thickmuskip` outside a skip: an assignment (`\thinmuskip=2mu`),
+    /// which mathra does not honor, read and ignored in tolerant mode (E-REC-9); an error in strict mode.
+    #[inline(never)]
+    fn muskip_assignment(&mut self, name: &str, col: usize) -> R<()> {
+        self.skip_spaces();
+        let value = if self.current() == Some('=') {
+            self.pos += 1;
+            let mut value = self.raw_measure();
+            // the stretch and shrink of the glue: `plus 2mu minus 4mu`
+            for word in ["plus", "minus"] {
+                self.skip_spaces();
+                let w: Vec<char> = word.chars().collect();
+                if self.c[self.pos..].starts_with(&w) {
+                    self.pos += w.len();
+                    value = format!("{value} {word} {}", self.raw_measure());
+                }
+            }
+            format!("={value}")
+        } else {
+            String::new()
+        };
+        self.tolerate(rules::E_REC_9, col, format!("\\{name}{value}: math glue is not changed"), "ignored")
+    }
+
     /// `\class{…}{…}` and its kin: the content with the attributes [`html_attributes`] keeps.
     fn html_attributes_command(&mut self, name: &str, col: usize) -> R<Node> {
         let value = self.raw_text()?;
@@ -4192,7 +4265,7 @@ impl Reader<'_> {
                         format!("\\Newextarrow{{\\{target}}}: U+{:04X} has no extensible form in mathra", symbol as u32),
                         "drawn with its labels over and under it, not stretched",
                     )?;
-                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{{:X}}}}}}}}}", symbol as u32)
+                    format!("\\mathrel{{\\overset{{#2}}{{\\underset{{#1}}{{\\unicode{{x{:X}}}}}}}}}", symbol as u32)
                 } else {
                     format!("\\{known}[#1]{{#2}}")
                 };
@@ -4360,7 +4433,7 @@ fn siunitx_uncertainty(raw: &str) -> Option<(Node, bool)> {
     let at = children.iter().position(|n| matches!(n, Node::Number { .. }))? + 1;
     let compact = [
         Node::Operator { symbol: '(', class: Class::Open },
-        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None },
+        Node::Number { value: uncertainty.replace(',', "."), group: false, thousands: None, variant: Variant::Upright },
         Node::Operator { symbol: ')', class: Class::Close },
     ];
     children.splice(at..at, compact);
@@ -4386,7 +4459,7 @@ fn siunitx_number(raw: &str, group: bool) -> Option<Node> {
     if let Some(s) = sign {
         children.push(Node::Operator { symbol: if s == '-' { '−' } else { '+' }, class: Class::Ord });
     }
-    children.push(Node::Number { value, group, thousands: None });
+    children.push(Node::Number { value, group, thousands: None, variant: Variant::Upright });
     if let Some(e) = exponent {
         let (sign_e, digits) = match e.strip_prefix(['-', '+']) {
             Some(d) => (e.starts_with('-'), d.to_string()),
@@ -4399,10 +4472,10 @@ fn siunitx_number(raw: &str, group: bool) -> Option<Node> {
         if sign_e {
             exp.push(Node::Operator { symbol: '−', class: Class::Ord });
         }
-        exp.push(Node::Number { value: digits, group: false, thousands: None });
+        exp.push(Node::Number { value: digits, group: false, thousands: None, variant: Variant::Upright });
         children.push(Node::Operator { symbol: '×', class: Class::Bin });
         children.push(Node::Scripts {
-            base: Box::new(Node::Number { value: "10".into(), group: false, thousands: None }),
+            base: Box::new(Node::Number { value: "10".into(), group: false, thousands: None, variant: Variant::Upright }),
             sup: Some(Box::new(Node::row(exp).simplify())),
             sub: None,
         });
@@ -4910,7 +4983,7 @@ impl Reader<'_> {
                     }
                     let c = self.current().ok_or(Error::Syntax { column: col, message: "\\char` without a character".into() })?;
                     self.pos += 1;
-                    return Ok(Some(format!("\\unicode{{{:X}}}", c as u32)));
+                    return Ok(Some(format!("\\unicode{{x{:X}}}", c as u32)));
                 }
                 let (radix, digits): (u32, fn(char) -> bool) = match self.current() {
                     Some('"') => (16, |c| c.is_ascii_hexdigit()),
@@ -4923,7 +4996,7 @@ impl Reader<'_> {
                 let code: String = self.c[self.pos..].iter().take_while(|c| digits(**c)).collect();
                 self.pos += code.chars().count();
                 match u32::from_str_radix(&code, radix).ok().and_then(char::from_u32).filter(|c| !c.is_control()) {
-                    Some(c) => format!("\\unicode{{{:X}}}", c as u32),
+                    Some(c) => format!("\\unicode{{x{:X}}}", c as u32),
                     None => return self.error(col, format!("\\char needs a character code, not \"{code}\"")),
                 }
             }
@@ -4985,9 +5058,9 @@ impl Reader<'_> {
                 }
             }
             // physics' vector calculus: the nabla in bold (U+1D6C1), like the package
-            "grad" | "gradient" => "\\unicode{1D6C1} ".into(),
-            "divergence" => "\\unicode{1D6C1} \\cdot ".into(),
-            "curl" | "rot" => "\\unicode{1D6C1} \\times ".into(),
+            "grad" | "gradient" => "\\unicode{x1D6C1} ".into(),
+            "divergence" => "\\unicode{x1D6C1} \\cdot ".into(),
+            "curl" | "rot" => "\\unicode{x1D6C1} \\times ".into(),
             "laplacian" => "\\nabla^{2} ".into(),
             "cross" | "crossproduct" | "cp" => "\\times ".into(),
             "vdot" | "dotproduct" => "\\cdot ".into(),
@@ -5253,7 +5326,7 @@ impl Reader<'_> {
             "asin" | "acos" | "atan" | "acsc" | "asec" | "acot" => format!("\\operatorname{{{name}}}"),
             "asine" | "acosine" | "atangent" | "acosecant" | "asecant" | "acotangent" => format!("\\operatorname{{a{}}}", physics_long_name(&name[1..]).unwrap_or_default()),
             // physics' bold nabla (its default, bolddel), as \grad draws it
-            "vnabla" | "gradientnabla" => "\\unicode{1D6C1} ".into(),
+            "vnabla" | "gradientnabla" => "\\unicode{x1D6C1} ".into(),
             // the upright d of the package's default (uprightdiff)
             "diffd" => "\\mathrm{d}".into(),
             // physics' \real and \imaginary are LaTeX's \Re and \Im (ℜ, ℑ), kept by the package when it
@@ -5709,4 +5782,17 @@ fn comments(s: &str) -> (String, Vec<usize>) {
         }
     }
     (output, starts)
+}
+
+/// #204: the code point of `\unicode{…}`, as MathJax reads it: decimal (`8918`), hexadecimal after `x` or
+/// `0x` (`x22D6`, `0x22D6`); `U+22D6` and `#22D6` stay hexadecimal, as mathra read them before.
+#[inline(never)]
+fn unicode_code_point(raw: &str) -> Option<char> {
+    let code = raw.trim();
+    let hex = ["0x", "0X", "x", "X", "U+", "u+", "#"].iter().find_map(|p| code.strip_prefix(p));
+    match hex {
+        Some(h) => u32::from_str_radix(h, 16).ok(),
+        None => code.parse::<u32>().ok(),
+    }
+    .and_then(char::from_u32)
 }
