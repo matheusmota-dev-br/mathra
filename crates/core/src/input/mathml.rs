@@ -1,6 +1,9 @@
 //! Reader for presentation MathML, the markup Word, Google Docs, MathType, LibreOffice and MathJax export.
 //! It builds the same tree of meaning as the LaTeX reader, so layout, speech and text are shared.
-//! Content MathML (`<apply>`, `<ci>`) is meaning without a drawing: it is outside this reader.
+//! Content MathML (`<apply>`, `<ci>`), meaning without a drawing, is read by `content` as the LaTeX an
+//! author would write for it.
+
+mod content;
 
 use roxmltree::{Document, Node as Xml, ParsingOptions};
 
@@ -137,10 +140,7 @@ impl Reader<'_> {
                 };
                 self.paint(node, base)
             }
-            "semantics" => match Self::elements(node).into_iter().find(|c| !c.tag_name().name().starts_with("annotation")) {
-                Some(first) => self.element(first, variant)?,
-                None => Node::row(vec![]),
-            },
+            "semantics" => self.semantics(node, variant)?,
             "annotation" | "annotation-xml" | "none" | "mprescripts" | "malignmark" | "maligngroup" => Node::row(vec![]),
             "maction" => {
                 let children = Self::elements(node);
@@ -211,18 +211,37 @@ impl Reader<'_> {
                 // a row outside a table: its cells side by side
                 self.row(node, variant)?
             }
+            other if content::is_content(other) => self.content(node)?,
             other => {
-                let problem = if matches!(other, "apply" | "ci" | "cn" | "csymbol" | "bind" | "bvar") {
-                    format!("content MathML <{other}> is not supported (only presentation MathML)")
-                } else {
-                    format!("unknown MathML element <{other}>")
-                };
-                self.tolerate(node, problem, "its children read as a row")?;
+                self.tolerate(node, format!("unknown MathML element <{other}>"), "its children read as a row")?;
                 self.row(node, variant)?
             }
         };
         // mstyle already painted itself, around its style
         Ok(if name == "mstyle" { node_out } else { self.paint(node, node_out) })
+    }
+
+    /// `<semantics>`: the presentation, when there is one (its first child, or an `annotation-xml` in
+    /// presentation MathML); otherwise the content (its first child, or an `annotation-xml` in content
+    /// MathML). Other annotations (TeX, OpenMath) are ignored.
+    fn semantics(&mut self, node: Xml, variant: Variant) -> R<Node> {
+        let children = Self::elements(node);
+        let first = children.iter().copied().find(|c| !c.tag_name().name().starts_with("annotation"));
+        let annotation = |kind: &str| {
+            children.iter().copied().find(|c| {
+                c.tag_name().name() == "annotation-xml"
+                    && c.attribute("encoding")
+                        .is_some_and(|e| e.to_ascii_lowercase().replace('_', "-").contains(&format!("mathml-{kind}")) || e == format!("application/mathml-{kind}+xml"))
+            })
+        };
+        let is_content = |n: Xml| content::is_content(n.tag_name().name());
+        match (first, annotation("presentation"), annotation("content")) {
+            (Some(f), _, _) if !is_content(f) => self.element(f, variant),
+            (_, Some(p), _) => self.row(p, variant),
+            (Some(f), None, _) => self.element(f, variant),
+            (None, None, Some(c)) => self.row(c, variant),
+            (None, None, None) => Ok(Node::row(vec![])),
+        }
     }
 
     /// `mathcolor` and `mathbackground`, on any element that carries them.

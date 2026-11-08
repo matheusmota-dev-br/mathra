@@ -105,7 +105,7 @@ mathra: warning E-REC-1: column 1: unsupported command: \vertA; read as \vert A
 
 ## LaTeX, MathML and AsciiMath
 
-LaTeX is the default. MathML (what Word, Google Docs, MathType and MathJax export) and AsciiMath (`sum_(i=1)^n i^2`) are read into the same tree of meaning, so they come out with the same drawing and the same speech. MathML passed as LaTeX, starting with `<math`, is recognized on its own. What each notation covers is in [`spec/input.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/input.md), and the [reference page](https://matheusmota-dev-br.github.io/mathra/reference.html) shows every construction, in AsciiMath (the tables of asciimath.org), LaTeX (by topic, as Overleaf's Mathematics articles), the science packages and MathML, each drawn and in braille, live in the browser.
+LaTeX is the default. MathML (what Word, Google Docs, MathType and MathJax export, and the content MathML of Maple and other CAS) and AsciiMath (`sum_(i=1)^n i^2`) are read into the same tree of meaning, so they come out with the same drawing and the same speech. MathML passed as LaTeX, starting with `<math`, is recognized on its own. What each notation covers is in [`spec/input.md`](https://github.com/matheusmota-dev-br/mathra/blob/main/spec/input.md), and the [reference page](https://matheusmota-dev-br.github.io/mathra/reference.html) shows every construction, in AsciiMath (the tables of asciimath.org), LaTeX (by topic, as Overleaf's Mathematics articles), the science packages and MathML, each drawn and in braille, live in the browser.
 
 ```console
 $ mathra 'sum_(i=1)^n i^2 = (n(n+1)(2n+1))/6' --from asciimath -o sum.svg
@@ -234,7 +234,7 @@ To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a c
 - commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
 
 ## Benchmark
 
