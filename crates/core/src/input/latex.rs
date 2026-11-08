@@ -774,6 +774,13 @@ impl Reader<'_> {
                 self.environment(col)?
             }
             "intertext" | "shortintertext" => return Ok(Some(Some(Stop::Intertext(self.text()?)))),
+            // amsmath, for a line of multline: the line at the left or right margin (the optional
+            // [length] away from it, which mathra, with no margin to measure from, leaves out)
+            "shoveleft" | "shoveright" => {
+                self.raw_optional();
+                let alignment = if name == "shoveleft" { 'l' } else { 'r' };
+                Node::Multicolumn { columns: 1, alignment, base: Box::new(self.argument()?) }
+            }
             _ => return Ok(None),
         };
         items.push(node);
@@ -1794,7 +1801,10 @@ impl Reader<'_> {
             self.array_columns(&spec, &mut columns, &mut verticals, &mut dashed, &mut between, col)?;
         }
 
-        let (rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        let (mut rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        if base == "multline" {
+            multline_alignments(&mut rows);
+        }
         if !columns.is_empty() && kind != TableKind::Array {
             // pmatrix*[r]: the same alignment in every column
             let a = columns[0];
@@ -3188,6 +3198,24 @@ fn math_in_text(name: &str) -> Option<&'static str> {
         "operatorname" => "*{",
         _ => return None,
     })
+}
+
+/// amsmath's `multline`: the first line at the left, the last at the right, the ones between
+/// centered, except a line in `\shoveleft{…}` or `\shoveright{…}` (already a one-column
+/// `Multicolumn` with its alignment). One line alone stays as it is.
+fn multline_alignments(rows: &mut [Vec<Node>]) {
+    let last = rows.len().saturating_sub(1);
+    if last == 0 {
+        return;
+    }
+    for (i, alignment) in [(0, 'l'), (last, 'r')] {
+        if let [cell] = rows[i].as_mut_slice() {
+            if !matches!(cell, Node::Multicolumn { .. }) {
+                let base = std::mem::replace(cell, Node::row(vec![]));
+                *cell = Node::Multicolumn { columns: 1, alignment, base: Box::new(base) };
+            }
+        }
+    }
 }
 
 /// Environments that start math, read in text: `Some(true)` for the displays, which TeX allows in a

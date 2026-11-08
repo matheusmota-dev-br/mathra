@@ -220,7 +220,7 @@ To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a c
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
 - `\left … \middle … \right`, `\big` and family, delimiters assembled from parts
-- Matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `smallmatrix`), `cases`, `rcases`, `aligned`, `align`, `gathered`, `split`, `array` with `|`, `@{}`, `\hline`, `\cline`, arydshln's dashed `:`, `\hdashline` and `\cdashline`, and `\arraystretch`
+- Matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `smallmatrix`), `cases`, `rcases`, `aligned`, `align`, `gathered`, `split`, `multline` (with `\shoveleft` and `\shoveright`), `array` with `|`, `@{}`, `\hline`, `\cline`, arydshln's dashed `:`, `\hdashline` and `\cdashline`, and `\arraystretch`
 - What LaTeX's own packages add to the KaTeX list: the colons of mathtools and colonequals (`\coloneqq`, `\Colonsim`…), `\varGamma` and family, `\injlim`, `\intop`, `\lgroup`, `\char`, `\xtwoheadrightarrow` and family, text symbols (`\AE`, `\H{o}`, `\textdollar`), `\url` and `\href`; TeX's `\mathchoice`, `\vcenter` and `\above`, and graphicx's `\reflectbox`
 - Accents (`\hat`, `\vec`, `\bar`, `\dot`, `\widehat`, `\overrightarrow`, `\arc`…), `\underrightarrow` and family, `\overline`, `\underline`, `\overbrace`/`\underbrace` and `\overbracket`/`\underbracket` with labels, `\xrightarrow` and family, `\overset`, `\underset`, `\stackrel`
 - The amssymb symbols, negations included (`\nleq`, `\nsim`, `\nRightarrow`, `\lneqq`…), and integrals up to `\iiiint`, `\idotsint` and `\varoiint`
