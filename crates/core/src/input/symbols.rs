@@ -836,6 +836,11 @@ pub fn delimiter_command(name: &str) -> Option<Option<char>> {
         "Arrowvert" => '‖',
         "bracevert" => '⎪',
         "backslash" => '\\',
+        // amssymb's corners (U+231C–231F), which STIX draws in one size
+        "ulcorner" => '⌜',
+        "urcorner" => '⌝',
+        "llcorner" => '⌞',
+        "lrcorner" => '⌟',
         _ => return None,
     }))
 }

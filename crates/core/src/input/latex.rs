@@ -13,6 +13,7 @@ use super::symbols::{self, Symbol};
 mod chemistry;
 mod color;
 mod diagram;
+mod tex;
 
 pub fn read(tex: &str, locale: Locale, registry: &mut Registry) -> Result<Node, Error> {
     read_with(tex, locale, registry, true)
@@ -1054,41 +1055,9 @@ impl Reader<'_> {
                 });
                 return Ok(Some(Some(p)));
             }
-            "over" | "choose" | "atop" | "brack" | "brace" | "above" => {
-                let num = Node::row(std::mem::take(items));
-                // \above<dimen>: TeX reads a dimension, written bare (2pt) or, as KaTeX allows, braced
-                let thickness = if name == "above" {
-                    self.skip_spaces();
-                    let raw = if self.current() == Some('{') {
-                        self.raw_text()?
-                    } else {
-                        let start = self.pos;
-                        while self.current().is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')) {
-                            self.pos += 1;
-                        }
-                        while self.current().is_some_and(|c| c.is_ascii_alphabetic()) && self.pos - start < 12 {
-                            self.pos += 1;
-                            if measure_em(&self.c[start..self.pos].iter().collect::<String>()).is_some() {
-                                break;
-                            }
-                        }
-                        self.c[start..self.pos].iter().collect()
-                    };
-                    Some(measure_em(&raw).ok_or(Error::Syntax { column: col, message: format!("\\above needs a dimension, not {raw:?}") })?.max(0.0))
-                } else {
-                    None
-                };
-                let (remainder, p) = self.list()?;
-                let den = Node::row(remainder);
-                let rule = matches!(name, "over" | "above");
-                let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
-                items.push(match name {
-                    "choose" => Node::Delimited { open: Some('('), close: Some(')'), parts: vec![fraction], middles: vec![] },
-                    "brack" => Node::Delimited { open: Some('['), close: Some(']'), parts: vec![fraction], middles: vec![] },
-                    "brace" => Node::Delimited { open: Some('{'), close: Some('}'), parts: vec![fraction], middles: vec![] },
-                    _ => fraction,
-                });
-                return Ok(Some(Some(p)));
+            // generalized fractions, out of line (tex.rs): the rest of the group is their denominator
+            "over" | "choose" | "atop" | "brack" | "brace" | "above" | "overwithdelims" | "atopwithdelims" | "abovewithdelims" => {
+                return self.generalized_fraction(name, col, items).map(|p| Some(Some(p)));
             }
             "bf" | "rm" | "it" | "sf" | "tt" | "cal" | "mit" | "boldmath" | "unboldmath" | "normalfont" => {
                 self.variant = match name {
@@ -1797,7 +1766,7 @@ impl Reader<'_> {
                 let points = (0..n.clamp(1, 50) * 3).flat_map(|_| [Node::Operator { symbol: '.', class: Class::Ord }, Node::Space { em: 0.35 }]).collect();
                 Node::Multicolumn { columns: n.clamp(1, 50), alignment: 'c', base: Box::new(Node::row(points)) }
             }
-            _ => return Ok(None),
+            _ => return self.tex_command(name, items),
         };
         items.push(node);
         Ok(Some(None))
@@ -3455,6 +3424,8 @@ fn natural_class(node: &Node) -> Class {
     match node {
         Node::Operator { class, .. } => *class,
         Node::LargeOperator { .. } | Node::Function { .. } => Class::Op,
+        // \overset{a}{\underset{b}{=}}: the class the inner command gave
+        Node::ForcedClass { class, .. } => *class,
         _ => Class::Ord,
     }
 }
@@ -4254,6 +4225,9 @@ impl Reader<'_> {
             }
             s
         };
+        if let Some(text) = self.tex_expansion(name, col)? {
+            return Ok(Some(text));
+        }
         Ok(Some(match name {
             "fdv" | "functionalderivative" => {
                 let f = self.raw_text()?;
