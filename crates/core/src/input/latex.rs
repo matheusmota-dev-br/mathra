@@ -1092,7 +1092,7 @@ impl Reader<'_> {
                 let (remainder, p) = self.list()?;
                 let den = Node::row(remainder);
                 let rule = matches!(name, "over" | "above");
-                let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
+                let fraction = Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
                 items.push(match name {
                     "choose" => Node::Delimited { open: Some('('), close: Some(')'), parts: vec![fraction], middles: vec![] },
                     "brack" => Node::Delimited { open: Some('['), close: Some(']'), parts: vec![fraction], middles: vec![] },
@@ -1162,9 +1162,7 @@ impl Reader<'_> {
         let node: Node = match name {
             // fractions, roots, binomials
             "frac" | "dfrac" | "tfrac" | "cfrac" => {
-                if name == "cfrac" {
-                    self.raw_optional();
-                }
+                let numerator_align = if name == "cfrac" { self.cfrac_alignment() } else { None };
                 let num = self.argument()?;
                 let den = self.argument()?;
                 let style = match name {
@@ -1172,7 +1170,7 @@ impl Reader<'_> {
                     "tfrac" => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: true, thickness: None }
+                Node::Fraction { numerator_align, num: Box::new(num), den: Box::new(den), style, rule: true, thickness: None }
             }
             "binom" | "dbinom" | "tbinom" => {
                 let num = self.argument()?;
@@ -1182,7 +1180,7 @@ impl Reader<'_> {
                     "tbinom" => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule: false, thickness: None };
+                let f = Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style, rule: false, thickness: None };
                 Node::Delimited { open: Some('('), close: Some(')'), parts: vec![f], middles: vec![] }
             }
             "sqrt" | "root" => {
@@ -1215,7 +1213,14 @@ impl Reader<'_> {
                     "textit" | "emph" => (ITALIC_START, ITALIC_CORRECTED_END),
                     _ => (MONO_START, MONO_END),
                 };
-                match self.text()? {
+                // typewriter type has no dash ligatures: the text reader sees the variant
+                let variant = self.variant;
+                if name == "texttt" {
+                    self.variant = Variant::Monospace;
+                }
+                let text = self.text();
+                self.variant = variant;
+                match text? {
                     Node::Text { parts } => Node::Text {
                         parts: parts
                             .into_iter()
@@ -1421,7 +1426,8 @@ impl Reader<'_> {
             "bbox" => self.bbox(col)?,
             // MathJax: \enclose{notation}[attributes]{math}, drawn as MathML's menclose
             "enclose" => self.enclose(col)?,
-            // \centernot (centernot package) is drawn like \not
+            // \centernot (centernot package) negates like \not; without a negated symbol, its slash is centered
+            // (the reading stays in this arm: a function of its own costs a frame at every level of \not)
             "not" | "centernot" => {
                 self.skip_spaces();
                 let mut following = Vec::new();
@@ -1432,12 +1438,13 @@ impl Reader<'_> {
                 } else if self.current().is_some() {
                     following.extend(self.atom()?);
                 }
+                let shape = if name == "centernot" { Cancel::CenterNot } else { Cancel::Bar };
                 match following.pop() {
                     Some(Node::Operator { symbol, class }) => match negate(symbol) {
                         Some(n) => Node::Operator { symbol: n, class },
-                        None => Node::Canceled { base: Box::new(Node::Operator { symbol, class }), shape: Cancel::Bar },
+                        None => Node::Canceled { base: Box::new(Node::Operator { symbol, class }), shape },
                     },
-                    Some(other) => Node::Canceled { base: Box::new(other), shape: Cancel::Bar },
+                    Some(other) => Node::Canceled { base: Box::new(other), shape },
                     None => return self.error(col, "\\not with no symbol after it"),
                 }
             }
@@ -1610,8 +1617,13 @@ impl Reader<'_> {
         let _ = (col, start, star);
         let node: Node = match name {
             "unicode" => {
+                // MathJax: \unicode[height,depth][font]{…} or \unicode[font]{…}; the font is MathJax's
+                // way to find a glyph its own fonts lack, and mathra has its own fallback fonts
+                if self.raw_optional().is_some() {
+                    self.raw_optional();
+                }
                 let raw = self.raw_text()?;
-                let code = raw.trim().trim_start_matches(['x', 'X', '#', 'U', '+']);
+                let code = raw.trim().trim_start_matches("0x").trim_start_matches(['x', 'X', '#', 'U', '+']);
                 let c = u32::from_str_radix(code, 16).ok().and_then(char::from_u32);
                 match c {
                     Some(c) => Node::Operator { symbol: c, class: Class::Ord },
@@ -1649,7 +1661,7 @@ impl Reader<'_> {
                 let rule = !thickness.trim().trim_start_matches(['0', '.']).trim_end_matches(char::is_alphabetic).is_empty() || thickness.trim().is_empty();
                 // an empty thickness is the font's; a given one is drawn as given
                 let given = measure_em(&thickness).filter(|_| rule);
-                let f = Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule, thickness: given };
+                let f = Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style, rule, thickness: given };
                 let delim = |t: &str| -> Option<char> {
                     let t = t.trim();
                     match t.strip_prefix('\\') {
@@ -2171,6 +2183,16 @@ impl Reader<'_> {
         let raw = self.environment_body(name, col)?;
         let base = name.trim_end_matches('*');
         self.sub_reader(&format!("\\begin{{{base}}}{}\\end{{{base}}}", text_second_column(&raw)), self.variant)
+    }
+
+    /// amsmath's `\cfrac[l]` and `\cfrac[r]`: where the numerator goes; `[c]` or no option centers it.
+    #[inline(never)]
+    fn cfrac_alignment(&mut self) -> Option<char> {
+        self.raw_optional().and_then(|a| match a.trim() {
+            "l" => Some('l'),
+            "r" => Some('r'),
+            _ => None,
+        })
     }
 
     /// `\arraystretch` as the input defined it (`\def`, `\renewcommand`), or 1.
@@ -2758,6 +2780,15 @@ impl Reader<'_> {
                         }
                     }
                 }
+                // L-TXT-1: TeX's dash ligatures in text: -- and --- become – and —, except in typewriter
+                // type, whose font has none (KaTeX takes them apart in \texttt too)
+                '-' if c.get(i + 1) == Some(&'-') && self.variant != Variant::Monospace && !open_until.iter().any(|&(_, end)| end == MONO_END) => {
+                    let em_dash = c.get(i + 2) == Some(&'-');
+                    let dash = if em_dash { '—' } else { '–' };
+                    self.registry.note(rules::L_TXT_1, format!("{} written as {dash}", if em_dash { "---" } else { "--" }));
+                    current.push(dash);
+                    i += if em_dash { 3 } else { 2 };
+                }
                 // L-TXT-1: TeX's quote ligatures in text: `` '' ` ' become “ ” ‘ ’
                 q @ ('`' | '\'') => {
                     let double = c.get(i + 1) == Some(&q);
@@ -3209,7 +3240,7 @@ impl Reader<'_> {
             ("frac", [a, b, ..]) => {
                 let num = self.chemistry(a, col)?.simplify();
                 let den = self.chemistry(b, col)?.simplify();
-                Ok(Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true, thickness: None })
+                Ok(Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule: true, thickness: None })
             }
             _ => {
                 let raw: String = c[start..*i].iter().collect();
@@ -3375,7 +3406,7 @@ fn chemical_coefficient(c: &[char], i: &mut usize) -> Node {
         *i += 1;
         let den = digits(i);
         let number = |v: String| Box::new(Node::Number { value: v, group: false, thousands: None });
-        return Node::Fraction { num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
+        return Node::Fraction { numerator_align: None, num: number(value), den: number(den), style: FractionStyle::Row, rule: true, thickness: None };
     }
     Node::Number { value, group: false, thousands: None }
 }

@@ -275,7 +275,7 @@ let svg = mathra::convert(r"\text{面积} = \pi r^2", &options)?.svg;
 
 In each package: `--fallback-font file.otf` (repeatable) in the terminal, `loadFallbackFont(bytes)` and `{ fallbackFonts: [font] }` in JavaScript, `mathra.load_fallback_font(path)` and `fallback_fonts=[font]` in Python; a math font loaded as above can be a fallback too. The terminal and Python try yours first, then the embedded Noto Emoji; the npm package embeds no emoji font, so pass one there.
 
-- Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
+- Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac` with its `[l]`/`[r]`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
 - `\left … \middle … \right`, `\big` and family, delimiters assembled from parts
 - Matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`, `smallmatrix`, and their starred forms with a column alignment, `pmatrix*[r]`, `smallmatrix*[r]`), `cases`, `rcases`, mathtools' `cases*`, `dcases*`, `rcases*` and `drcases*` (the second column in text, `$…$` for math), `aligned`, `align`, `gathered`, `split`, `multline` (with `\shoveleft` and `\shoveright`), `array` with `|`, `@{}`, `\hline`, `\cline`, arydshln's dashed `:`, `\hdashline` and `\cdashline`, and `\arraystretch`

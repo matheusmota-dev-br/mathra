@@ -1758,7 +1758,8 @@ fn mathtools_colon_equals_and_centernot() {
     has(&tree(r"A \coloneq B \eqcolon C \eqqcolon D \Coloneqq E"), &["'≔'", "'≕'", "'⩴'"]);
     // \centernot reads like \not: a negated relation when one exists, a slash otherwise
     assert_eq!(tree(r"a \centernot= b"), tree(r"a \not= b"));
-    assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b"));
+    // without a negated symbol, \not crosses the arrow out and \centernot sets its slash over the middle (#164)
+    assert_eq!(tree(r"a \centernot\implies b"), tree(r"a \not\implies b").replace("shape: Bar", "shape: CenterNot"));
 }
 
 #[test]

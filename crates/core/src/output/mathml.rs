@@ -327,7 +327,7 @@ impl Writer {
             Node::FixedDelimiter { symbol, class, size } => self.fixed_delimiter(*symbol, *class, *size),
             Node::LargeOperator { symbol, limits } => self.large_operator(*symbol, *limits),
             Node::Row { children } => self.single_row(children),
-            Node::Fraction { num, den, style, rule, thickness } => self.fraction(num, den, *style, *rule, *thickness),
+            Node::Fraction { .. } => self.fraction(n),
             Node::Root { radicand, index } => self.root(radicand, index.as_deref()),
             Node::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref()),
             Node::Delimited { open, close, parts, middles } => self.delimited(*open, *close, parts, middles),
@@ -562,8 +562,16 @@ impl Writer {
     }
 
     #[inline(never)]
-    fn fraction(&mut self, num: &Node, den: &Node, style: FractionStyle, rule: bool, thickness: Option<f32>) {
+    fn fraction(&mut self, fraction: &Node) {
+        let Node::Fraction { num, den, style, rule, thickness, numerator_align } = fraction else { unreachable!("a fraction") };
+        let (style, rule, thickness) = (*style, *rule, *thickness);
         self.start("mfrac");
+        // \cfrac[l], \cfrac[r]: MathML's numalign, as MathJax writes it
+        match numerator_align {
+            Some('l') => self.attr("numalign", "left"),
+            Some('r') => self.attr("numalign", "right"),
+            _ => {}
+        }
         if !rule {
             self.attr("linethickness", "0");
         } else if let Some(t) = thickness {

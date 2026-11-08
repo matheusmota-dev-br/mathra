@@ -101,9 +101,9 @@ An equation is converted alone, so the numbers of the document around it come fr
 - `\tag{3}` numbers the line it is on (in `equation`, `align`, `gather`, `multline`, `flalign`, `alignat`, `eqnarray` or a loose `\\` line), and a `\label` on the same line takes that number: `\ref` shows the tag as written, `\eqref` in parentheses. The labels an equation numbers this way come back in `Output::labels`, and in `--batch` they count for the lines after it. A `\label` with no `\tag` would take the automatic number of `equation` or `align`, which mathra does not give: equations are not numbered on their own.
 - A key with no number is `??` (`(??)` for `\eqref`) or `?` inside the citation's brackets, as on LaTeX's first run, with an E-REC-9 warning; strict mode refuses it.
 
-### L-TXT-1 · Quotes in text
+### L-TXT-1 · Quotes and dashes in text
 
-Inside `\text{…}` (and every text argument), TeX's quote ligatures become typographic quotes: ``` `` ``` → “, `''` → ”, `` ` `` → ‘, `'` → ’. In math mode `'` is still a prime.
+Inside `\text{…}` (and every text argument), TeX's quote ligatures become typographic quotes: ``` `` ``` → “, `''` → ”, `` ` `` → ‘, `'` → ’. In math mode `'` is still a prime. The dash ligatures too, as LaTeX and KaTeX set them: `--` → – (en dash), `---` → — (em dash); not in typewriter type (`\texttt`, `\ttfamily`), whose font has no ligatures.
 
 ### L-TXT-2 · Math inside text
 

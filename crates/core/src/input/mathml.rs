@@ -210,7 +210,12 @@ impl Reader<'_> {
                     Some("false") => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule, thickness }
+                let numerator_align = match node.attribute("numalign") {
+                    Some("left") => Some('l'),
+                    Some("right") => Some('r'),
+                    _ => None,
+                };
+                Node::Fraction { numerator_align, num: Box::new(num), den: Box::new(den), style, rule, thickness }
             }
             "msqrt" => Node::Root { radicand: Box::new(self.row(node, variant)?), index: None },
             "mroot" => {
