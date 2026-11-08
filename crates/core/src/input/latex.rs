@@ -1067,7 +1067,15 @@ impl Reader<'_> {
                     self.pos += 1;
                 }
                 let measure = if self.c.get(self.pos).is_some_and(|c| *c == '{') || name.starts_with('h') && name != "hskip" { self.raw_text()? } else { self.raw_measure() };
-                Node::Space { em: measure_em(&measure).ok_or(Error::Syntax { column: col, message: format!("unrecognized measure: {measure}") })? }
+                match self.space_measure(&measure, col)? {
+                    Some(em) => Node::Space { em },
+                    None => return Ok(Some(None)),
+                }
+            }
+            // #206: plain TeX's math glue registers, which only an assignment names outside a skip
+            "thinmuskip" | "medmuskip" | "thickmuskip" => {
+                self.muskip_assignment(name, col)?;
+                return Ok(Some(None));
             }
             _ => return Ok(None),
         };
@@ -1944,6 +1952,16 @@ impl Reader<'_> {
     fn raw_measure(&mut self) -> String {
         self.skip_spaces();
         let mut s = String::new();
+        // #206: a glue register, maybe with a factor: \thinmuskip, 2\medmuskip, -\thickmuskip
+        let factor: String = self.c[self.pos..].iter().take_while(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-')).collect();
+        let at = self.pos + factor.chars().count();
+        if self.c.get(at) == Some(&'\\') {
+            let name: String = self.c[at + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
+            if !name.is_empty() {
+                self.pos = at + 1 + name.chars().count();
+                return format!("{factor}\\{name}");
+            }
+        }
         while let Some(c) = self.current() {
             if c.is_ascii_digit() || c == '.' || c == '-' || c == ',' || (c.is_ascii_alphabetic() && s.len() < 12) {
                 s.push(c);
@@ -4115,6 +4133,9 @@ fn box_length(m: &str) -> Option<BoxLength> {
 
 fn measure_em(m: &str) -> Option<f32> {
     let m = m.trim().replace(',', ".");
+    if let Some((factor, register)) = m.split_once('\\') {
+        return muskip_em(factor.trim(), register.trim());
+    }
     let units = [("em", 1.0), ("ex", 0.45), ("pt", 0.1), ("mu", 1.0 / 18.0), ("cm", 2.845), ("mm", 0.2845), ("in", 7.227), ("px", 0.075)];
     for (u, f) in units {
         if let Some(v) = m.strip_suffix(u) {
@@ -4124,7 +4145,61 @@ fn measure_em(m: &str) -> Option<f32> {
     None
 }
 
+/// #206: plain TeX's math glue (plain.tex: `\thinmuskip=3mu`, `\medmuskip=4mu plus 2mu minus 4mu`,
+/// `\thickmuskip=5mu plus 5mu`; the stretch and shrink are ignored), times a factor (`2\thinmuskip`).
+fn muskip_em(factor: &str, register: &str) -> Option<f32> {
+    let mu = match register {
+        "thinmuskip" => 3.0,
+        "medmuskip" => 4.0,
+        "thickmuskip" => 5.0,
+        _ => return None,
+    };
+    let factor = match factor {
+        "" | "+" => 1.0,
+        "-" => -1.0,
+        f => f.parse::<f32>().ok().filter(|f| f.is_finite())?,
+    };
+    Some(factor * mu / 18.0)
+}
+
 impl Reader<'_> {
+    /// #206: the width of `\mskip`, `\hskip`, `\mspace`, `\kern`…; a measure mathra cannot read is no space
+    /// in tolerant mode (E-REC-9) and an error in strict mode.
+    #[inline(never)]
+    fn space_measure(&mut self, measure: &str, col: usize) -> R<Option<f32>> {
+        match measure_em(measure) {
+            Some(em) => Ok(Some(em)),
+            None => {
+                self.tolerate(rules::E_REC_9, col, format!("unrecognized measure: {}", measure.trim()), "no space")?;
+                Ok(None)
+            }
+        }
+    }
+
+    /// #206: `\thinmuskip`, `\medmuskip` or `\thickmuskip` outside a skip: an assignment (`\thinmuskip=2mu`),
+    /// which mathra does not honor, read and ignored in tolerant mode (E-REC-9); an error in strict mode.
+    #[inline(never)]
+    fn muskip_assignment(&mut self, name: &str, col: usize) -> R<()> {
+        self.skip_spaces();
+        let value = if self.current() == Some('=') {
+            self.pos += 1;
+            let mut value = self.raw_measure();
+            // the stretch and shrink of the glue: `plus 2mu minus 4mu`
+            for word in ["plus", "minus"] {
+                self.skip_spaces();
+                let w: Vec<char> = word.chars().collect();
+                if self.c[self.pos..].starts_with(&w) {
+                    self.pos += w.len();
+                    value = format!("{value} {word} {}", self.raw_measure());
+                }
+            }
+            format!("={value}")
+        } else {
+            String::new()
+        };
+        self.tolerate(rules::E_REC_9, col, format!("\\{name}{value}: math glue is not changed"), "ignored")
+    }
+
     /// `\class{…}{…}` and its kin: the content with the attributes [`html_attributes`] keeps.
     fn html_attributes_command(&mut self, name: &str, col: usize) -> R<Node> {
         let value = self.raw_text()?;

@@ -216,9 +216,11 @@ fn measured_spaces() {
     ] {
         has(&tree(tex), &["Space"]);
     }
-    assert!(always_error(r"a\hspace{3qq}b").contains("unrecognized measure"));
+    // a measure it cannot read: no space, with a warning (#206); strict mode refuses
+    assert!(!recovers(r"a\hspace{3qq}b", "E-REC-9").contains("Space"));
     // a space before the unit ends the measure
-    assert!(always_error(r"a\kern 3 pt b").contains("unrecognized measure"));
+    recovers(r"a\kern 3 pt b", "E-REC-9");
+    assert!(strict_error(r"a\kern 3 pt b").contains("unrecognized measure"));
 }
 
 #[test]
