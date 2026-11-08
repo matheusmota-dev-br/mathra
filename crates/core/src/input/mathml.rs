@@ -184,6 +184,8 @@ impl Reader<'_> {
             "merror" => Node::Colored { color: "#c0392b".into(), base: Box::new(self.row(node, variant)?) },
             "mphantom" => Node::Phantom { base: Box::new(self.row(node, variant)?), width: true, height: true },
             "mi" => self.identifier(node, variant),
+            // KaTeX writes \mathbb{1} as <mn mathvariant="double-struck">1</mn>: the symbol 𝟙, as from LaTeX
+            "mn" if variant == Variant::DoubleStruck && text_of(node).trim().len() == 1 => self.identifier(node, variant),
             "mn" => self.number(node),
             "mo" => match spaced(node, operator(&text_of(node))) {
                 // a word with limits that move aside in inline style: \operatorname*{argmax}

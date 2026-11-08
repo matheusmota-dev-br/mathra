@@ -123,7 +123,8 @@ What mathra does now is in brackets.
 2. A word in bold or double-struck letters (`\mathbf{AB}`): [a typeform indicator before each letter]. §7 also has single-word typeform indicators.
 3. Bold italic Greek (`\boldsymbol\alpha`): [⠸⠨⠁]. MathCAT writes ⠸⠨⠨⠁.
 4. The signs inferred from a rule (⊗, ⪯ ⪰, \ddot, \boxed, ∭), listed in `spec/braille.md`.
-5. Chemistry: H₂O as ⠠⠓⠆⠠⠕ (a numeric subscript of an upright letter, no indicator) and bonds ⠸⠇ (≡) spaced as comparison signs. Is the transcription of chemistry in Nemeth the right model, or should it follow the BANA chemistry guidelines?
+5. The double-struck one of the indicator function (`\mathbb{1}`, 𝟙): [the digit ⠼⠂, without a typeform]. Should it take the double-struck typeform ⠠⠸, and how does a typeform combine with the numeric indicator?
+6. Chemistry: H₂O as ⠠⠓⠆⠠⠕ (a numeric subscript of an upright letter, no indicator) and bonds ⠸⠇ (≡) spaced as comparison signs. Is the transcription of chemistry in Nemeth the right model, or should it follow the BANA chemistry guidelines?
 
 **CMU**
 1. The signs the 2006 edition does not have and mathra writes as ⠿: hat, cancellation, framed expression, horizontal braces, floor and ceiling, ≅, ↑ ↓, ≺ ≻, labeled arrows. Is there a Brazilian practice for them? Should mathra take the CIB 2024 signs?
@@ -133,3 +134,4 @@ What mathra does now is in brackets.
 5. The evaluation bar `|ₓ₌₀`: [⠸, a blank, then the subscript]. Is the blank right before an index?
 6. Nabla: [⠈⠻]. Does the `ï` of the 2006 text mean 12456?
 7. Do variant letters inside a word (`\mathbb{AaBbCc}`) each take ⠠ or ⠰ [yes]? Is a double-struck C inside a word still ℂ ⠸⠉ [it is, today]?
+8. The double-struck one of the indicator function (`\mathbb{1}`, 𝟙): [the digit ⠼⠁, without a variant prefix]. Is there a sign for it?

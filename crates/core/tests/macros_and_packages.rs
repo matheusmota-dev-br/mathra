@@ -227,6 +227,26 @@ fn bold_nabla() {
     assert_eq!(en(r"\nabla").text, "∇");
 }
 
+/// The double-struck one of the indicator function and the identity (#159): 𝟙 (U+1D7D9) from dsfont's
+/// \mathds, bbm's \mathbbm and \mathbb, which MathJax draws as 𝟙 too (its font data maps a double-struck
+/// digit to U+1D7D8…U+1D7E1).
+#[test]
+fn double_struck_one() {
+    assert_eq!(en(r"\mathds{1}_A(x)").text, "𝟙_A(x)");
+    assert_eq!(en(r"U^\dagger U = \mathbbm{1}").text, "U^†U = 𝟙");
+    assert_eq!(en(r"\mathbb{1}").text, "𝟙");
+    assert_eq!(en(r"\mathbb{10}").text, "𝟙𝟘");
+    // a symbol, not a number: an identifier, spoken with its alphabet
+    assert!(matches!(en(r"\mathbb{1}").tree.children(), [Node::Identifier { name, .. }] if name == "1"), "{:?}", en(r"\mathbb{1}").tree);
+    assert_eq!(en(r"\mathds{1}_A").speech, "double-struck 1 sub A");
+    assert_eq!(pt(r"\mathbb{1}").speech, "1 duplo");
+    // the braille stays the digit it was (its typeform is a question for a transcriber)
+    assert_eq!(en(r"\mathbb{1}").braille, en("1").braille);
+    // other alphabets leave numbers alone, and \mathbb still makes ℝ
+    assert_eq!(en(r"\mathbf{1}").text, "1");
+    assert_eq!(en(r"\mathbb{R}").speech, "the real numbers");
+}
+
 #[test]
 fn physics_derivatives_differentials_and_evaluation() {
     assert_eq!(en(r"\fdv{F}{\phi}").text, "(δF)/(δϕ)");

@@ -600,7 +600,15 @@ impl Reader<'_> {
         })
     }
 
+    #[inline(never)]
     fn number(&mut self) -> Node {
+        // \mathbb{1}, \mathds{1}, \mathbbm{1}: the double-struck digit 𝟙 (U+1D7D9), a symbol, not a number
+        if self.variant == Variant::DoubleStruck {
+            if let Some(digit) = self.current().filter(char::is_ascii_digit) {
+                self.pos += 1;
+                return Node::Identifier { name: digit.to_string(), variant: Variant::DoubleStruck };
+            }
+        }
         if let Some(node) = self.number_with_thousands() {
             return node;
         }
