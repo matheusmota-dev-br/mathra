@@ -18,7 +18,7 @@ Presentation MathML, as Word, Google Docs, LibreOffice, MathType and MathJax exp
 | `munder`, `mover`, `munderover` | limits over a large operator or a function; an accent, a bar, an arrow, a brace or a bracket when the script is that single mark (`→` over a letter is the vector accent); a brace's label in the outer element, as MathJax writes it; anything else stacked |
 | `mtable`, `mtr`, `mlabeledtr`, `mtd` | a table; `columnalign`, `columnlines` and `rowlines` are kept; the label of `mlabeledtr` goes at the end of its row |
 | `mfenced`, fences in `mrow` | an `mrow` that starts with an opening fence and ends with a closing one stretches them (`\left…\right`) when the inside is balanced; around a table they make a matrix (`(` `[` `|` `‖` `{…}`), `{` alone makes `cases` and `}` alone `rcases` |
-| `menclose` | `box`/`roundedbox`, `circle`, the strikes, `top`, `bottom`, `radical` |
+| `menclose` | `box`/`roundedbox`, `circle`, the strikes, `top`, `bottom`, `radical`; LaTeX's `\enclose{notation}[mathcolor=…]{…}` (MathJax) reads the same notations into the same tree |
 | `semantics`, `maction`, `merror`, `mphantom` | the presentation child (annotations are ignored); the selected child; content in red; space without drawing |
 
 ### L-ENT-4 · MathML pasted as LaTeX

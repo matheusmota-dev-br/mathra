@@ -1009,7 +1009,7 @@ impl Reader<'_> {
             "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textsf" | "textmd" | "textsl" | "fbox" | "framebox" => {
                 let text = self.text()?;
                 if matches!(name, "fbox" | "framebox") {
-                    Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None }
+                    Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None, padding: None, thickness: None }
                 } else {
                     text
                 }
@@ -1176,7 +1176,7 @@ impl Reader<'_> {
                 let base = self.argument()?;
                 Node::Scripts { base: Box::new(Node::Canceled { base: Box::new(base), shape: Cancel::Bar }), sup: Some(Box::new(value)), sub: None }
             }
-            "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle, background: None, border: None },
+            "boxed" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Rectangle, background: None, border: None, padding: None, thickness: None },
             // steinmetz: \phase[style]{angle}, the angle in text style unless [0] to [3] say otherwise
             // (display, text, script, scriptscript); any other option leaves the current style, as
             // the package's \ifcase does
@@ -1187,7 +1187,7 @@ impl Reader<'_> {
                     Some(level) => Node::Style { level, base: Box::new(angle) },
                     None => angle,
                 };
-                Node::Framed { base: Box::new(base), shape: Frame::Phase, background: None, border: None }
+                Node::Framed { base: Box::new(base), shape: Frame::Phase, background: None, border: None, padding: None, thickness: None }
             }
             // actuarialangle: \angl{n}, and \angln, \anglr, \anglk for the common durations
             "angl" | "angln" | "anglr" | "anglk" => {
@@ -1195,9 +1195,9 @@ impl Reader<'_> {
                     "angl" => self.argument()?,
                     _ => Node::Identifier { name: name[4..].to_string(), variant: Variant::Italic },
                 };
-                Node::Framed { base: Box::new(base), shape: Frame::ActuarialAngle, background: None, border: None }
+                Node::Framed { base: Box::new(base), shape: Frame::ActuarialAngle, background: None, border: None, padding: None, thickness: None }
             }
-            "textcircled" | "circled" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None },
+            "textcircled" | "circled" => Node::Framed { base: Box::new(self.argument()?), shape: Frame::Circle, background: None, border: None, padding: None, thickness: None },
             "phantom" | "hphantom" | "vphantom" => Node::Phantom { base: Box::new(self.argument()?), width: name != "vphantom", height: name != "hphantom" },
             "textcolor" => {
                 let color = self.color()?;
@@ -1210,13 +1210,18 @@ impl Reader<'_> {
             // the color is the background, not the content's: the text keeps the page color
             "colorbox" => {
                 let background = self.color()?;
-                Node::Framed { base: Box::new(self.text()?), shape: Frame::Fill, background, border: None }
+                Node::Framed { base: Box::new(self.text()?), shape: Frame::Fill, background, border: None, padding: None, thickness: None }
             }
             "fcolorbox" => {
                 let border = self.color()?;
                 let background = self.color()?;
-                Node::Framed { base: Box::new(self.text()?), shape: Frame::Rectangle, background, border }
+                Node::Framed { base: Box::new(self.text()?), shape: Frame::Rectangle, background, border, padding: None, thickness: None }
             }
+            // MathJax: \bbox[background,padding,border:…]{math}, a \colorbox or \fcolorbox around math
+            // (read in functions of their own: this match's frame is on the stack at every level of \not)
+            "bbox" => self.bbox(col)?,
+            // MathJax: \enclose{notation}[attributes]{math}, drawn as MathML's menclose
+            "enclose" => self.enclose(col)?,
             // \centernot (centernot package) is drawn like \not
             "not" | "centernot" => {
                 self.skip_spaces();
@@ -1724,12 +1729,86 @@ impl Reader<'_> {
             // a model's value as #rrggbb; a value that does not fit stays invalid, with its model
             Some(m) => color::model(m, &raw).map_or_else(|| format!("[{m}]{{{raw}}}"), color::hex),
         };
+        self.checked_color(color, col)
+    }
+
+    /// `color` when it is a color mathra can write into the SVG; None in tolerant mode otherwise.
+    fn checked_color(&mut self, color: String, col: usize) -> R<Option<String>> {
         let valid = color.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c)) && !color.is_empty() && color.len() < 40;
         if valid {
             return Ok(Some(color));
         }
         self.tolerate(rules::E_REC_9, col, format!("invalid color: {color}"), "drawn without color")?;
         Ok(None)
+    }
+
+    /// `\bbox[…]` (MathJax): the parts, separated by commas, are a background color, a padding (`5px`)
+    /// and CSS styles, of which mathra draws `border:` (width, style and color).
+    fn bbox(&mut self, col: usize) -> R<Node> {
+        let spec = self.raw_optional().unwrap_or_default();
+        let base = self.argument()?;
+        let (mut background, mut padding, mut border, mut thickness, mut framed) = (None, None, None, None, false);
+        for part in spec.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            if let Some(em) = measure_em(part).filter(|v| v.is_finite() && *v >= 0.0) {
+                padding = Some(em);
+            } else if let Some((property, value)) = part.split_once(':') {
+                if !property.trim().eq_ignore_ascii_case("border") {
+                    self.tolerate(rules::E_REC_9, col, format!("\\bbox style not drawn: {part}"), "ignored")?;
+                    continue;
+                }
+                framed = true;
+                for word in value.split_whitespace() {
+                    if let Some(em) = measure_em(word).filter(|v| v.is_finite() && *v >= 0.0) {
+                        thickness = Some(em);
+                    } else if matches!(word, "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset") {
+                        if word != "solid" {
+                            self.tolerate(rules::E_REC_9, col, format!("\\bbox border style not drawn: {word}"), "drawn solid")?;
+                        }
+                    } else {
+                        border = self.checked_color(word.to_string(), col)?;
+                    }
+                }
+            } else if background.is_none() {
+                background = self.checked_color(part.to_string(), col)?;
+            } else {
+                self.tolerate(rules::E_REC_9, col, format!("\\bbox part not understood: {part}"), "ignored")?;
+            }
+        }
+        let shape = if framed { Frame::Rectangle } else { Frame::Fill };
+        // MathJax adds no space of its own: without a padding the background fits the content
+        Ok(Node::Framed { base: Box::new(base), shape, background, border, padding: Some(padding.unwrap_or(0.0)), thickness })
+    }
+
+    /// `\enclose{notation}[attributes]{…}` (MathJax): the same tree as MathML's `menclose`, with its
+    /// `mathcolor` and `mathbackground` attributes.
+    fn enclose(&mut self, col: usize) -> R<Node> {
+        let notation = self.raw_text()?;
+        let attributes = self.raw_optional();
+        let base = self.argument()?;
+        for n in notation.split(|c: char| c.is_whitespace() || c == ',').filter(|n| !n.is_empty()) {
+            if !super::mathml::ENCLOSE_NOTATIONS.contains(&n) {
+                self.tolerate(rules::E_REC_9, col, format!("\\enclose notation not drawn: {n}"), "ignored")?;
+            }
+        }
+        let mut out = super::mathml::enclose(base, &notation);
+        for attribute in attributes.as_deref().unwrap_or_default().split(',').map(str::trim).filter(|a| !a.is_empty()) {
+            let (name, value) = attribute.split_once('=').unwrap_or((attribute, ""));
+            let value = value.trim().trim_matches(['"', '\'']).to_string();
+            match name.trim() {
+                "mathcolor" => {
+                    if let Some(color) = self.checked_color(value, col)? {
+                        out = Node::Colored { color, base: Box::new(out) };
+                    }
+                }
+                "mathbackground" => {
+                    if let Some(background) = self.checked_color(value, col)? {
+                        out = Node::Framed { base: Box::new(out), shape: Frame::Fill, background: Some(background), border: None, padding: None, thickness: None };
+                    }
+                }
+                _ => self.tolerate(rules::E_REC_9, col, format!("\\enclose attribute not drawn: {attribute}"), "ignored")?,
+            }
+        }
+        Ok(out)
     }
 
     fn delimiter(&mut self) -> R<Option<char>> {
