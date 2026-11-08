@@ -844,6 +844,9 @@ fn large_operator(c: char) -> Option<char> {
             | '∳'
             | '⨏'
             | '⨖'
+            // #176: stmaryrd's \bigsqcap and \biginterleave
+            | '⨅'
+            | '⫼'
     )
     .then_some(c)
 }
