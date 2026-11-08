@@ -119,3 +119,20 @@ fn fallback_fonts_by_id() {
     assert!(mathra_wasm::convert_full("x", None, true, false, None, None, false, false, None, None, &[999], None, None).unwrap_err().contains("no fallback font loaded"));
     assert!(mathra_wasm::pen_svg_with(r"\text{中}", None, true, None, None, None, &[id as i32]).is_ok());
 }
+
+/// The JavaScript order of the trailing parameters: `font`, `max_width`, `fallback_fonts`, `labels`,
+/// `citations` (the older ones first, so earlier positional callers keep working).
+#[test]
+fn every_trailing_parameter_in_order() {
+    let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../core/tests/fonts/fallback-a.ttf")).unwrap();
+    let (id, _) = mathra_wasm::load_fallback_font_bytes(bytes).unwrap();
+    let tex = r"\text{中} = \eqref{eq:a} + b + c + d + e + f + g + h \cite{knuth}";
+    let (labels, citations) = (Some(r#"{"eq:a": 3}"#.to_string()), Some(r#"{"knuth": 1}"#.to_string()));
+    let svg = tex_to_svg(tex, None, None, Some(true), None, None, None, None, None, Some(4.0), Some(vec![id as i32]), labels.clone(), citations.clone()).unwrap();
+    assert!(svg.contains(r#"<g data-line="1">"#) && svg.contains("M100 -100 L900 -100"));
+    let json = mathra_wasm::render(tex, None, None, Some(true), None, None, None, None, None, Some(4.0), Some(vec![id as i32]), labels, citations).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let text = json["text"].as_str().unwrap();
+    assert!(text.contains("(3)") && text.contains("[1]"), "{text}");
+    assert!(json["mathml"].as_str().unwrap().starts_with("<math"));
+}

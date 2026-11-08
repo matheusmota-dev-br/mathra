@@ -951,6 +951,21 @@ impl Reader<'_> {
         Ok(Some(None))
     }
 
+    /// TeX's "Extra alignment tab has been changed to \cr": a row of an `array` with more cells than its
+    /// columns declare (E-REC-9; refused in strict mode). Out of line, so the frame of the environment
+    /// reader, on the path of nested environments, does not grow.
+    #[inline(never)]
+    fn extra_cells(&mut self, rows: &[Vec<Node>], declared: usize, intertexts: &[usize], name: &str, col: usize) -> R<()> {
+        let span = |cell: &Node| if let Node::Multicolumn { columns, .. } = cell { *columns } else { 1 };
+        for (r, row) in rows.iter().enumerate() {
+            let cells: usize = row.iter().map(span).sum();
+            if cells > declared && !intertexts.contains(&r) {
+                self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
+            }
+        }
+        Ok(())
+    }
+
     /// mathtools' `\vdotswithin` and `\shortvdotswithin`, asked by `mod_command`: not in `structure_command`,
     /// which is on the path of every nested environment, where arms widen its stack frame.
     fn vdots_command(&mut self, name: &str, col: usize, start: usize, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
@@ -2121,15 +2136,7 @@ impl Reader<'_> {
             multline_alignments(&mut rows);
         }
         if kind == TableKind::Array {
-            // TeX: "Extra alignment tab has been changed to \cr"
-            let span = |cell: &Node| if let Node::Multicolumn { columns, .. } = cell { *columns } else { 1 };
-            for (r, row) in rows.iter().enumerate() {
-                let cells: usize = row.iter().map(span).sum();
-                if cells > columns.len() && !intertexts.contains(&r) {
-                    let declared = columns.len();
-                    self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
-                }
-            }
+            self.extra_cells(&rows, columns.len(), &intertexts, &name, col)?;
         }
         if !columns.is_empty() && kind != TableKind::Array {
             // pmatrix*[r]: the same alignment in every column

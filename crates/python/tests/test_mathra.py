@@ -268,3 +268,11 @@ def test_png_takes_fallback_fonts():
     assert png.startswith(b"\x89PNG")
     # the emoji too, from the embedded Noto Emoji
     assert mathra.tex_to_png("😀", strict=True).startswith(b"\x89PNG")
+
+
+def test_png_takes_labels_and_citations():
+    # strict refuses an unknown key; the numbers make it valid
+    with pytest.raises(ValueError, match="no number"):
+        mathra.tex_to_png(r"\eqref{eq:a} \cite{knuth}", strict=True)
+    png = mathra.tex_to_png(r"\eqref{eq:a} \cite{knuth}", strict=True, labels={"eq:a": 3}, citations={"knuth": 1})
+    assert png.startswith(b"\x89PNG")
