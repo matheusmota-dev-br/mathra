@@ -368,7 +368,8 @@ fn physics_operators_aliases_and_long_names() {
     assert_eq!(en(r"\PV{f}").text, "P.V.f");
     assert_eq!(en(r"\op{a}{b}").text, en(r"\dyad{a}{b}").text);
     assert_eq!(en(r"\vev{\phi}").text, "⟨0 | ϕ | 0⟩");
-    assert_eq!(en(r"\flatfrac{a}{b}").text, "a / b");
+    assert_eq!(en(r"\flatfrac{a}{b}").text, "a/b");
+    assert_eq!(en(r"\flatfrac{\mathrm{d} f}{\mathrm{d} x}").tree, en(r"\dv*{f}{x}").tree);
     assert_eq!(en(r"a \cp b").text, "a × b");
     assert_eq!(en(r"\Trace\rho").text, "Tr ρ");
     assert_eq!(en(r"\absolutevalue{x}").text, "|x|");

@@ -5242,10 +5242,11 @@ impl Reader<'_> {
             "op" => "\\dyad".into(),
             // the vacuum expectation value ⟨0|x|0⟩
             "vev" => format!("\\expval{{{}}}{{0}}", self.raw_text()?),
+            // the same flat fraction as \dv* (#157)
             "flatfrac" => {
                 let a = self.raw_text()?;
                 let b = self.raw_text()?;
-                format!("\\left. {a} \\middle/ {b} \\right.")
+                physics_fraction(true, a, b)
             }
             "Trace" => "\\operatorname{Tr}".into(),
             "Residue" => "\\operatorname{Res}".into(),

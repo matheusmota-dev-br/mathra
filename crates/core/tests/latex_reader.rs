@@ -1361,15 +1361,17 @@ fn unknown_negation_of_a_known_relation_reads_as_not() {
 /// name is a LaTeX text command, or a longer run when the input shows another JSON escape.
 #[test]
 fn unknown_commands_starting_with_n_r_t_are_not_json() {
-    for name in ["real", "rrceil", "rArr", "rowcolor", "refeq", "newcolumntype", "numberwithin", "th", "raise", "noexpand", "reals"] {
+    // (\real, \rArr, \reals, \th, \rowcolor, \newcolumntype and \refeq, the first examples, are read
+    // since the enhancements of 2026-11b: unknown names of the same shapes take their place)
+    for name in ["raisetag", "rrceil", "rescale", "nonscript", "rowsep", "nobreak", "numberwithin", "ng", "raise", "noexpand", "tabcolsep"] {
         let tex = format!(r"x \{name}");
         let (_, warnings) = tolerant(&tex);
         assert!(!warnings.iter().any(|w| w.starts_with("E-REC-2")), "{tex}: {warnings:?}");
         assert!(warnings.iter().any(|w| w.starts_with("E-REC-1")), "{tex}: {warnings:?}");
         assert!(strict_error(&tex).contains("unsupported command"), "{tex}");
     }
-    // \real{z} keeps its first letter: drawn in red, not "ealz"
-    has(&recovers(r"\real{z}", "E-REC-1"), &["\\\\real", "\"z\""]);
+    // \raisetag{z} keeps its first letter: drawn in red, not "aisetagz"
+    has(&recovers(r"\raisetag{z}", "E-REC-1"), &["\\\\raisetag", "\"z\""]);
     // the message names the escape that was read
     let (_, warnings) = tolerant(r"x\rb");
     assert!(warnings.iter().any(|w| w.contains(r"JSON '\r' read as a line break")), "{warnings:?}");
