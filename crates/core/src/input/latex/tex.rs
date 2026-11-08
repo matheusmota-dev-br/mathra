@@ -3,6 +3,10 @@
 //! `\skew`, `\overunderset`, `\vline` and the `xalignat`, `xxalignat` and `darray` environments.
 //! Except for the fractions and `\overunderset`, each one is written through commands mathra already
 //! reads.
+//!
+//! Also plain TeX's small fonts (`\sevenrm`, `\fiverm`, `\sevenbf`, `\fivebf`), the size commands
+//! written as environments in math (`\begin{tiny}…\end{tiny}`) and youngtab's `\yng`, which mathra
+//! leaves out (spec/boundary.md).
 
 use super::*;
 
@@ -121,10 +125,45 @@ impl Reader<'_> {
                 let class = natural_class(&base);
                 Node::ForcedClass { class, base: Box::new(Node::Stacked { base: Box::new(base), above: Some(Box::new(above)), below: Some(Box::new(below)) }) }
             }
-            _ => return Ok(None),
+            _ => return self.plain_font_or_young(name, items),
         };
         items.push(node);
         Ok(Some(None))
+    }
+
+    /// Plain TeX's font switches of its smaller sizes, for the rest of the group: `\sevenrm` (cmr7, the
+    /// 7-point roman beside 10-point text) is `\scriptstyle\rm`, `\fiverm` (cmr5) `\scriptscriptstyle\rm`,
+    /// and `\sevenbf`, `\fivebf` the same in bold (plain.tex, "\font\sevenrm=cmr7" and its kin).
+    /// youngtab's `\yng(2,1)` is outside mathra (spec/boundary.md): an error in strict mode; in
+    /// tolerant mode its row lengths are read with it and the command is written in red (E-REC-1).
+    /// None when `name` is neither, with nothing read. Out of line, asked last by `tex_command`.
+    #[inline(never)]
+    fn plain_font_or_young(&mut self, name: &str, items: &mut Vec<Node>) -> R<Option<Option<Stop>>> {
+        let (level, variant) = match name {
+            "sevenrm" => (2, Variant::Upright),
+            "fiverm" => (3, Variant::Upright),
+            "sevenbf" => (2, Variant::Bold),
+            "fivebf" => (3, Variant::Bold),
+            "yng" => return self.young_diagram(items).map(|()| Some(None)),
+            _ => return Ok(None),
+        };
+        self.variant = variant;
+        let (remainder, p) = self.list()?;
+        items.push(Node::Style { level, base: Box::new(Node::row(remainder)) });
+        Ok(Some(Some(p)))
+    }
+
+    /// youngtab's `\yng(row lengths)`: a Young diagram, rows of boxes sharing their sides. No node of
+    /// mathra draws it as the package does (a table's vertical rules run the whole column, and a
+    /// `\multicolumn` carries none), so it is left out (spec/boundary.md) rather than drawn otherwise.
+    fn young_diagram(&mut self, items: &mut Vec<Node>) -> R<()> {
+        let col = self.column();
+        self.skip_spaces();
+        let lengths = if self.current() == Some('(') { Some(self.raw_delimited('(', ')')) } else { None };
+        let written = format!("\\yng({})", lengths.unwrap_or_default());
+        self.tolerate(rules::E_REC_1, col, format!("unsupported command: {written} (youngtab's Young diagrams are outside mathra)"), "drawn in red")?;
+        items.push(Node::Colored { color: "#c0392b".into(), base: Box::new(Node::Text { parts: vec![TextPart::Text(written)] }) });
+        Ok(())
     }
 
     /// The raw text up to the control word `\word` outside braces (which is consumed); None, with
@@ -210,9 +249,13 @@ impl Reader<'_> {
     fn tex_environment(&mut self, col: usize) -> R<Option<String>> {
         let saved = self.pos;
         let name = self.raw_text()?.trim().to_string();
-        if !matches!(name.as_str(), "xalignat" | "xalignat*" | "xxalignat" | "darray") || self.macros.environments.contains_key(&name) {
+        let size = matches!(name.as_str(), "tiny" | "scriptsize" | "footnotesize" | "small" | "normalsize" | "large" | "Large" | "LARGE" | "huge" | "Huge");
+        if !(size || matches!(name.as_str(), "xalignat" | "xalignat*" | "xxalignat" | "darray")) || self.macros.environments.contains_key(&name) {
             self.pos = saved;
             return Ok(None);
+        }
+        if size {
+            return self.size_environment(&name, col).map(Some);
         }
         let star = name.ends_with('*') || name == "xxalignat";
         let argument = self.raw_text()?;
@@ -223,6 +266,16 @@ impl Reader<'_> {
             let alignat = if star { "alignat*" } else { "alignat" };
             format!("\\begin{{{alignat}}}{{{argument}}}{body}\\end{{{alignat}}}")
         }))
+    }
+}
+
+impl Reader<'_> {
+    /// `\begin{tiny}…\end{tiny}` in math: the size command over the body, which L-ENT-3 ignores. Out of
+    /// line, so the frame of `tex_environment`, asked at every `\begin`, does not grow.
+    #[inline(never)]
+    fn size_environment(&mut self, name: &str, col: usize) -> R<String> {
+        let body = self.environment_body(name, col)?;
+        Ok(format!("{{\\{name} {body}}}"))
     }
 }
 
