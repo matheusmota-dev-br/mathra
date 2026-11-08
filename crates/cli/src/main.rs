@@ -21,6 +21,7 @@ OPTIONS
       --strict            refuse invalid LaTeX, like TeX (the default recovers and warns)
       --font <file>       set the equation in this OpenType math font (.otf or .ttf with a
                           MATH table); the default is STIX Two Math
+                          (math fonts to download: https://matheusmota-dev-br.github.io/mathfonts/)
       --animate           the SVG writes itself in the browser, in the order the layout set it
       --steps             each element numbered by its step (data-step), with no animation
       --explain           show the tree, the speech and the rules applied

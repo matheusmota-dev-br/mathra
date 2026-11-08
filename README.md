@@ -215,6 +215,8 @@ let svg = mathra::convert(r"e^{i\pi} + 1 = 0", &mathra::Options { font, ..Defaul
 
 The same in each package: `--font file.otf` in the terminal, `loadFont(bytes)` and `{ font }` in JavaScript, `mathra.load_font(path)` and `font=` in Python. The [playground](https://matheusmota-dev-br.github.io/mathra/) loads one from your computer, and the file stays in your browser.
 
+To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a catalog of 30 math fonts that are free to share, each one checked with mathra and shown in it. The JavaScript and Python packages load one by its name, and the playground lists them all: `await loadFontFromCatalog("euler-math")` in JavaScript, `mathra.load_font_from_catalog("euler-math")` in Python (kept in `~/.cache/mathra`). A font is downloaded only when asked for, and only if it matches the catalog's sha256, so the same name always gives the same SVG. The Rust crate and the terminal do not download anything: download the file from the catalog and pass it as above.
+
 - Fractions (`\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\over`), binomials, roots with an index
 - Scripts, primes (`f'`), limits (`\lim`, `\sum`, `\prod`, `\int` and family, `\limits`)
 - `\left … \middle … \right`, `\big` and family, delimiters assembled from parts

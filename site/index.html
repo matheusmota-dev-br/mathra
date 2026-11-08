@@ -81,7 +81,9 @@
         <label class="lang">Font
           <select id="font" title="Any OpenType math font (.otf or .ttf with a MATH table)">
             <option value="">STIX Two Math</option>
+            <optgroup label="mathfonts" id="font-catalog" hidden></optgroup>
             <option value="load">Load a font…</option>
+            <option value="catalog">Browse mathfonts ↗</option>
           </select>
         </label>
         <input type="file" id="font-file" accept=".otf,.ttf,font/otf,font/ttf" hidden>
@@ -734,10 +736,55 @@ println!("{}", r.speech);</pre>
   // a font of the visitor's own: read in the browser, nothing is sent anywhere
   let fontChoice = "";
   $("font").addEventListener("change", () => {
+    if ($("font").value === "catalog") {
+      $("font").value = fontChoice;
+      window.open(MATHFONTS, "_blank", "noopener");
+      return;
+    }
+    if ($("font").value.startsWith("cat:")) { loadCatalogFont($("font").selectedOptions[0]); return; }
     if ($("font").value !== "load") { fontChoice = $("font").value; update(); return; }
     $("font").value = fontChoice;
     $("font-file").click();
   });
+  // the mathfonts catalog: its list is read once (a few KB); a font is downloaded only when picked,
+  // checked against the catalog's sha256 and then loaded like a file of the visitor's own
+  const MATHFONTS = "https://matheusmota-dev-br.github.io/mathfonts/";
+  async function loadCatalogList() {
+    const response = await fetch(MATHFONTS + "catalog.json");
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data?.version !== 1 || !Array.isArray(data.fonts)) return;
+    const group = $("font-catalog");
+    for (const f of data.fonts) {
+      if (f.slug === "stix-two-math") continue;
+      const o = new Option(f.name, `cat:${f.slug}`);
+      o.dataset.url = new URL(f.file, MATHFONTS).href;
+      o.dataset.sha256 = f.sha256;
+      o.title = `${f.style} · ${f.license} · ${Math.round(f.size / 1024)} KB · ${f.coverage}% of the symbols`;
+      group.append(o);
+    }
+    group.hidden = false;
+  }
+  async function loadCatalogFont(option) {
+    const name = option.textContent;
+    $("font").value = fontChoice;
+    option.textContent = `${name} (downloading…)`;
+    try {
+      const response = await fetch(option.dataset.url);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      if (digest !== option.dataset.sha256) throw new Error("the file does not match the catalog's sha256");
+      const { id } = JSON.parse(wasm_bindgen.loadFont(bytes));
+      option.value = String(id);
+      $("font").value = fontChoice = String(id);
+      update();
+    } catch (e) {
+      alert(`${name}: ${String(e.message ?? e)}`);
+    } finally {
+      option.textContent = name;
+    }
+  }
   $("font-file").addEventListener("change", async () => {
     const file = $("font-file").files[0];
     $("font-file").value = "";
@@ -863,6 +910,7 @@ println!("{}", r.speech);</pre>
       drawLogo();
       drawStatic();
       update();
+      loadCatalogList().catch(() => {});
     })
     .catch((e) => { preview.innerHTML = `<span class="status">Could not load WebAssembly: ${escape(String(e.message ?? e))}</span>`; });
 })();
