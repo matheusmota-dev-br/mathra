@@ -7,7 +7,8 @@ use crate::tree::*;
 pub fn linear(node: &Node, loc: Locale) -> String {
     let mut s = String::new();
     write_node(node, loc, &mut s);
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    // #176: a symbol drawn by composition, as the closest text Unicode has
+    crate::composite::spell(&s).split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn alone(node: &Node) -> bool {

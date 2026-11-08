@@ -28,6 +28,7 @@
 
 #[cfg(feature = "chem")]
 pub mod chem;
+pub mod composite;
 pub mod font;
 pub mod input;
 pub mod layout;
@@ -290,7 +291,10 @@ fn finish(
     let braille_code = options.braille.unwrap_or(BrailleCode::for_locale(options.locale));
     let braille = output::braille::transcribe(&tree, braille_code);
     for c in &braille.missing {
-        registry.note(rules::S_BRL_1, format!("no {braille_code} braille sign for '{c}' (U+{:04X}): written as the full cell ⠿", *c as u32));
+        match crate::composite::get(*c) {
+            Some(k) => registry.note(rules::S_BRL_1, format!("no {braille_code} braille sign for \\{}: written as the full cell ⠿", k.command)),
+            None => registry.note(rules::S_BRL_1, format!("no {braille_code} braille sign for '{c}' (U+{:04X}): written as the full cell ⠿", *c as u32)),
+        }
     }
     let mathml = mathml_output(&tree, options, tex, input, &mut registry);
     let tree_json = tree.to_json();

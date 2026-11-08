@@ -13,6 +13,10 @@ pub fn vertical(c: char, target: f32, e: Style) -> R<MathBox> {
     let f = e.font();
     let s = e.scale();
     if f.glyph(c).is_none() {
+        // #176: stmaryrd's doubled ceilings and floors, two of the single ones grown
+        if let Some(single) = crate::composite::doubled(c) {
+            return super::composite::doubled_delimiter(single, target, e);
+        }
         if let Some(parts) = moustache(c, f) {
             // as cmex draws it: the two halves at least, joined by extenders as tall as needed
             let least: f32 = parts.iter().filter(|p| !p.extender).map(|p| p.advance).sum::<f32>() - f.min_overlap();

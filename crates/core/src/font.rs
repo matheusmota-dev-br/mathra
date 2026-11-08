@@ -398,6 +398,15 @@ impl Font {
         f32::from(self.constants().display_operator_min_height())
     }
 
+    /// The height of the lowercase letters (OS/2's `sxHeight`); the MATH table's accent base height
+    /// when the font does not give it.
+    pub fn x_height(&self) -> f32 {
+        match self.face.tables().os2.and_then(|t| t.x_height()) {
+            Some(h) if h > 0 => f32::from(h),
+            _ => f32::from(self.constants().accent_base_height().value),
+        }
+    }
+
     pub fn radical_degree_raise(&self) -> f32 {
         f32::from(self.constants().radical_degree_bottom_raise_percent()) / 100.0
     }

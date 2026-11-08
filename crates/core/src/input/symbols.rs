@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use crate::composite;
 use crate::tree::{Class, Variant};
 
 /// The 118 element symbols, and D and T (hydrogen's isotopes, written as elements): what mhchem's
@@ -691,6 +692,43 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("notdivides", '∤', Rel),
         ("leftsquigarrow", '⇜', Rel),
         ("Sun", '☉', Ord),
+        // mathabx.dcl's \curvearrowbotright: the curved arrow under, to the right, which is Unicode's
+        // BOTTOM ARC ANTICLOCKWISE ARROW (mathtest.pdf and STIX Two Math draw the same arc and head)
+        ("curvearrowbotright", '⤻', Rel),
+        // #176: stmaryrd's \varo… forms are its circle operators drawn circular and with the rule's pen
+        // (stmaryjg.mf's begincircle) where Computer Modern's are hairline; STIX Two Math and Latin
+        // Modern Math already draw these circular, at their rule thickness, with the same inner stroke
+        ("varotimes", '⊗', Bin),
+        ("varoplus", '⊕', Bin),
+        ("varominus", '⊖', Bin),
+        ("varodot", '⊙', Bin),
+        ("varoslash", '⊘', Bin),
+        ("varobslash", '⦸', Bin),
+        ("varobar", '⦶', Bin),
+        ("varoast", '⊛', Bin),
+        ("varbigcirc", '◯', Bin),
+        // and the ones Unicode has no character for, drawn by composition (composite.rs)
+        ("llceil", composite::LLCEIL, Open),
+        ("rrceil", composite::RRCEIL, Close),
+        ("llfloor", composite::LLFLOOR, Open),
+        ("rrfloor", composite::RRFLOOR, Close),
+        ("varocircle", composite::VAROCIRCLE, Bin),
+        ("varolessthan", composite::VAROLESSTHAN, Bin),
+        ("varogreaterthan", composite::VAROGREATERTHAN, Bin),
+        ("varovee", composite::VAROVEE, Bin),
+        ("varowedge", composite::VAROWEDGE, Bin),
+        ("Ydown", composite::YDOWN, Bin),
+        ("Yleft", composite::YLEFT, Bin),
+        ("Yright", composite::YRIGHT, Bin),
+        ("shortleftarrow", composite::SHORTLEFTARROW, Rel),
+        ("shortrightarrow", composite::SHORTRIGHTARROW, Rel),
+        ("shortuparrow", composite::SHORTUPARROW, Rel),
+        ("shortdownarrow", composite::SHORTDOWNARROW, Rel),
+        ("nnearrow", composite::NNEARROW, Rel),
+        ("arrownot", composite::ARROWNOT, Rel),
+        ("mapsfromchar", composite::MAPSFROMCHAR, Rel),
+        ("trianglelefteqslant", composite::TRIANGLELEFTEQSLANT, Rel),
+        ("inplus", composite::INPLUS, Rel),
         // marvosym: its lightning, for a contradiction as stmaryrd's
         ("Lightning", '↯', Ord),
         // wasysym
@@ -1000,7 +1038,7 @@ pub fn function(name: &str) -> Option<(&'static str, bool)> {
 /// A large operator that takes its limits under and over in display style when nothing says otherwise
 /// (∑, ⋃), as [`large_operator`] gives them; the integrals take them at the side.
 pub fn limits_by_default(c: char) -> bool {
-    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄' | '⨅' | '⫼' | '⨉')
+    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄' | '⨅' | '⫼' | '⨉') || composite::get(c).is_some_and(|k| k.class == Class::Op)
 }
 
 /// Large operators and whether, by default, they take limits below and above in display style.
@@ -1039,6 +1077,15 @@ pub fn large_operator(name: &str) -> Option<(char, bool)> {
         // #176: stmaryrd's (unicode-math-table.tex: \bigsqcap, \biginterleave)
         "bigsqcap" => ('⨅', true),
         "biginterleave" => ('⫼', true),
+        // drawn by composition (composite.rs): stmaryrd's and mathabx's
+        "bigbox" => (composite::BIGBOX, true),
+        "bigparallel" => (composite::BIGPARALLEL, true),
+        "bignplus" => (composite::BIGNPLUS, true),
+        "bigcurlyvee" => (composite::BIGCURLYVEE, true),
+        "bigcurlywedge" => (composite::BIGCURLYWEDGE, true),
+        "bigboxplus" => (composite::BIGBOXPLUS, true),
+        "bigominus" => (composite::BIGOMINUS, true),
+        "bigoslash" => (composite::BIGOSLASH, true),
         _ => return None,
     })
 }
@@ -1076,6 +1123,12 @@ pub fn delimiter_command(name: &str) -> Option<Option<char>> {
         "Rbag" => '⟆',
         "llparenthesis" => '⦇',
         "rrparenthesis" => '⦈',
+        // #176: stmaryrd declares its doubled ceilings and floors as symbols, not delimiters; grown here
+        // as two of the single ones, as \Lbag and \llparenthesis are
+        "llceil" => composite::LLCEIL,
+        "rrceil" => composite::RRCEIL,
+        "llfloor" => composite::LLFLOOR,
+        "rrfloor" => composite::RRFLOOR,
         // #177: unicode-math's double angle brackets
         "lAngle" => '⟪',
         "rAngle" => '⟫',

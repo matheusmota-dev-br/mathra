@@ -55,6 +55,9 @@ pub fn generate(tree: &Node, locale: Locale, display: bool, source: &str, input:
     MathMl { text: w.out, fallback }
 }
 
+/// Why a stmaryrd or mathabx symbol drawn by composition (#176) makes the MathML a fallback.
+const COMPOSITE: &str = "a stmaryrd or mathabx symbol drawn by composition";
+
 /// The first node MathML Core has no drawing for. Walks the tree with its own stack, so a deep tree
 /// costs heap, not call stack.
 fn needs_fallback(tree: &Node) -> Option<&'static str> {
@@ -74,6 +77,9 @@ fn needs_fallback(tree: &Node) -> Option<&'static str> {
             Node::Framed { .. } => Some("framed content"),
             Node::Rotated { .. } | Node::Reflected { .. } | Node::Scaled { .. } | Node::Resized { .. } => Some("graphicx box"),
             Node::Choice { .. } => Some("\\mathchoice"),
+            // #176: drawn by composition, with no character of its own
+            Node::Operator { symbol, .. } | Node::FixedDelimiter { symbol, .. } | Node::LargeOperator { symbol, .. } if crate::composite::is(*symbol) => Some(COMPOSITE),
+            Node::Delimited { open, close, .. } if open.is_some_and(crate::composite::is) || close.is_some_and(crate::composite::is) => Some(COMPOSITE),
             _ => None,
         };
         if reason.is_some() {
@@ -528,6 +534,11 @@ impl Writer {
     }
 
     fn char_leaf_text(&mut self, c: char) {
+        // #176: a symbol drawn by composition, as its closest text (the equation is a fallback)
+        if let Some(k) = crate::composite::get(c) {
+            self.text(k.text);
+            return;
+        }
         let mut b = [0; 4];
         self.text(c.encode_utf8(&mut b));
     }
