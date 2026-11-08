@@ -657,6 +657,8 @@ pub fn class_of(node: &Node) -> Option<Class> {
         Node::Choice { branches } => return branches.get(1).and_then(class_of),
         Node::Scripts { base, .. } => return class_of(base),
         Node::Arrow { .. } => Class::Rel,
+        // #205: a long arrow after \not or \centernot stays a relation, spaced as one
+        Node::Canceled { base, shape: Cancel::Bar | Cancel::CenterNot } if is_long_arrow(base) => Class::Rel,
         Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::Style { base, .. } => match base.as_ref() {
             Node::Row { children } if children.len() == 1 => return class_of(&children[0]),
             Node::Row { .. } => Class::Ord,
@@ -1356,6 +1358,9 @@ fn compose_canceled(base: &Node, kind: Cancel, e: Style, ctx: &mut Context) -> R
     if kind == Cancel::Slash {
         return slashed(b, e);
     }
+    if kind == Cancel::Bar && is_long_arrow(base) {
+        return not_long_arrow(b, e, ctx);
+    }
     let t = k(e, |c| c.fraction_rule_thickness());
     let slack = em(e, 0.05);
     let (x0, x1, y0, y1) = (-slack, b.width + slack, -b.depth - slack, b.height + slack);
@@ -1389,6 +1394,25 @@ fn slashed(b: MathBox, e: Style) -> R<MathBox> {
     let lift = ((b.height - b.depth) - (slash.height - slash.depth)) / 2.0;
     math_box.place(&slash, (width - slash_width) / 2.0, lift);
     math_box.width = width;
+    Ok(math_box)
+}
+
+/// #205: a long arrow (U+27F5…U+27FF: `\longrightarrow`, `\Longrightarrow`, `\longmapsto`…) as a relation,
+/// which `\not` does not cross out whole. `\cancel{\longrightarrow}` has an ordinary arrow (a group) and
+/// stays crossed out.
+fn is_long_arrow(base: &Node) -> bool {
+    matches!(base, Node::Operator { symbol: '\u{27F5}'..='\u{27FF}', class: Class::Rel })
+}
+
+/// #205: `\not` before a long arrow, as TeX sets it: `\not` is a relation of zero width whose slash
+/// overlaps the left part of the next character (plain.tex, fontmath.ltx), so the slash stands over the
+/// arrow's start, where it would cross an `=`, and the arrow keeps its length. The slash is `\centernot`'s.
+#[inline(never)]
+fn not_long_arrow(mut math_box: MathBox, e: Style, ctx: &mut Context) -> R<MathBox> {
+    let equals = glyph('=', e)?;
+    let slash = compose(&Node::Operator { symbol: '⧸', class: Class::Ord }, e, ctx)?;
+    math_box.single_glyph = false;
+    math_box.place(&slash, (equals.width - slash.width) / 2.0, 0.0);
     Ok(math_box)
 }
 
