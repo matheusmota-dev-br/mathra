@@ -1221,6 +1221,9 @@
      "tex": "\\backepsilon \\gtreqqless \\lesseqqgtr \\circledcirc \\circledR \\maltese"
     },
     {
+     "tex": "a \\minuso b \\quad \\bigsqcap_{i} A_i \\quad f \\leftsquigarrow g \\quad a \\ndivides b \\quad A \\subsetplus B \\quad x \\leftarrowtriangle y"
+    },
+    {
      "tex": "A \\xrightleftharpoons[\\text{below}]{\\text{above}} B \\xtwoheadrightarrow{f} C \\xhookleftarrow{g} D"
     }
    ]

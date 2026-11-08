@@ -579,6 +579,26 @@ const COMMANDS: &[(&str, char, Class)] = {
         ("Rbag", '⟆', Close),
         ("llparenthesis", '⦇', Open),
         ("rrparenthesis", '⦈', Close),
+        // #176: the rest of stmaryrd that Unicode has a character for, in the class stmaryrd.dtx declares;
+        // the characters from unicode-math-table.tex (same names), unimathsymbols.txt (Günter Milde) or,
+        // for \minuso, KaTeX's macros.ts
+        ("minuso", '⦵', Bin),
+        ("Yup", '⅄', Bin),
+        ("boxbar", '◫', Bin),
+        ("leftslice", '⪦', Bin),
+        ("rightslice", '⪧', Bin),
+        ("binampersand", '&', Open),
+        ("bindnasrepma", '⅋', Close),
+        ("subsetplus", '⪿', Rel),
+        ("supsetplus", '⫀', Rel),
+        ("leftarrowtriangle", '⇽', Rel),
+        ("rightarrowtriangle", '⇾', Rel),
+        ("leftrightarrowtriangle", '⇿', Rel),
+        // and of mathabx (mathabx.dcl: \notdivides, aliased \ndivides, is the negated \divides)
+        ("ndivides", '∤', Rel),
+        ("notdivides", '∤', Rel),
+        ("leftsquigarrow", '⇜', Rel),
+        ("Sun", '☉', Ord),
         // marvosym: its lightning, for a contradiction as stmaryrd's
         ("Lightning", '↯', Ord),
         // wasysym
@@ -759,7 +779,7 @@ pub fn function(name: &str) -> Option<(&'static str, bool)> {
 /// A large operator that takes its limits under and over in display style when nothing says otherwise
 /// (∑, ⋃), as [`large_operator`] gives them; the integrals take them at the side.
 pub fn limits_by_default(c: char) -> bool {
-    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄')
+    matches!(c, '∑' | '∏' | '∐' | '⋃' | '⋂' | '⨁' | '⨂' | '⨀' | '⋁' | '⋀' | '⨆' | '⨄' | '⨅' | '⫼')
 }
 
 /// Large operators and whether, by default, they take limits below and above in display style.
@@ -792,6 +812,9 @@ pub fn large_operator(name: &str) -> Option<(char, bool)> {
         "ointctrclockwise" => ('∳', false),
         "fint" => ('⨏', false),
         "sqint" => ('⨖', false),
+        // #176: stmaryrd's (unicode-math-table.tex: \bigsqcap, \biginterleave)
+        "bigsqcap" => ('⨅', true),
+        "biginterleave" => ('⫼', true),
         _ => return None,
     })
 }
