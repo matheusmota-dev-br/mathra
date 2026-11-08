@@ -1961,6 +1961,15 @@ impl Reader<'_> {
             let name: String = self.c[at + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
             if !name.is_empty() {
                 self.pos = at + 1 + name.chars().count();
+                // #213: a box dimension takes its register, a number or a name (\wd0, \ht\mybox)
+                if matches!(name.as_str(), "wd" | "ht" | "dp") {
+                    let rest = &self.c[self.pos..];
+                    let digits = rest.iter().take_while(|c| c.is_ascii_digit()).count();
+                    let len = if digits == 0 && rest.first() == Some(&'\\') { 1 + rest[1..].iter().take_while(|c| c.is_ascii_alphabetic()).count() } else { digits };
+                    let register: String = rest[..len].iter().collect();
+                    self.pos += len;
+                    return format!("{factor}\\{name}{register}");
+                }
                 return format!("{factor}\\{name}");
             }
         }
@@ -5388,6 +5397,11 @@ impl Reader<'_> {
                 return Ok(None);
             }
         }
+        if let Some(accent) = self.text_accent_in_math(name) {
+            self.tolerate(rules::E_REC_1, col, format!("text accent '\\{name}' in math"), &format!("read as \\{accent}"))?;
+            self.inject(start, &format!("\\{accent} "), col)?;
+            return Ok(None);
+        }
         if name.chars().count() == 1 && !name.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) {
             self.tolerate(rules::E_REC_1, col, format!("'\\{name}'"), "backslash before a symbol ignored")?;
             self.inject(start, name, col)?;
@@ -5422,6 +5436,26 @@ fn physics_fraction(flat: bool, numerator: String, denominator: String) -> Strin
         format!("{{{numerator}}}/{{{denominator}}}")
     } else {
         format!("\\frac{{{numerator}}}{{{denominator}}}")
+    }
+}
+
+impl Reader<'_> {
+    /// #213: a text accent (`\'`, `` \` ``, `\^`, `\"`, `\~`, `\=`, `\.`) before a letter in math, an error
+    /// in TeX: the math accent KaTeX reads it as (`\'e` is `\acute e`).
+    #[inline(never)]
+    fn text_accent_in_math(&self, name: &str) -> Option<&'static str> {
+        let accent = match name {
+            "'" => "acute",
+            "`" => "grave",
+            "^" => "hat",
+            "\"" => "ddot",
+            "~" => "tilde",
+            "=" => "bar",
+            "." => "dot",
+            _ => return None,
+        };
+        let next = self.c[self.pos..].iter().find(|c| !matches!(c, ' ' | '{'))?;
+        next.is_alphabetic().then_some(accent)
     }
 }
 

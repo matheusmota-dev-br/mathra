@@ -1260,7 +1260,9 @@ fn json_escapes_and_backslashes_before_symbols() {
     has(&recovers(r"x\u00b2", "E-REC-2"), &["'²'"]);
     // \u without four hex digits is not an escape
     has(&recovers(r"\u12", "E-REC-1"), &["\\\\u"]);
-    has(&recovers(r#"\"a"#, "E-REC-1"), &["\"a\""]);
+    // a text accent before a letter is its math accent (#213); before anything else the backslash is dropped
+    has(&recovers(r#"\"a"#, "E-REC-1"), &["Accent", "\"a\""]);
+    has(&recovers(r#"\"5"#, "E-REC-1"), &["\"5\""]);
     has(&recovers(r"\5", "E-REC-1"), &["\"5\""]);
     // JSON \t only when the name is short: \tx is tab + x, \txyz is an unknown command
     has(&recovers(r"a\tx", "E-REC-2"), &["\"x\""]);

@@ -450,3 +450,36 @@ fn line_breaks_and_tabs_in_text_are_spaces() {
         assert_eq!(strict(tex).unwrap().tree, out.tree, "{tex:?}");
     }
 }
+
+/// #213: a text accent on a letter in math is an error in TeX; tolerant mode draws the accented letter, as
+/// KaTeX does (`\'e` as `\acute e`), with E-REC-1; strict mode refuses it.
+#[test]
+fn text_accents_in_math_draw_the_accented_letter() {
+    let out = tolerant(r"X_{\'etale}");
+    // e and the combining acute accent, not a prime
+    assert_eq!(out.text, "X_(e\u{301}tale)");
+    assert_eq!(out.tree, tolerant(r"X_{\acute{e}tale}").tree);
+    assert_eq!(warning_rules(r"X_{\'etale}"), ["E-REC-1"]);
+    assert!(strict(r"X_{\'etale}").is_err());
+    for (tex, meant) in
+        [(r"\'{e}", r"\acute{e}"), (r"\`e", r"\grave e"), (r"\^o", r"\hat o"), (r#"\"a"#, r"\ddot a"), (r"\~n", r"\tilde n"), (r"\=x", r"\bar x"), (r"\.y", r"\dot y")]
+    {
+        assert_eq!(tolerant(tex).tree, tolerant(meant).tree, "{tex}");
+        assert!(strict(tex).is_err(), "{tex}");
+    }
+    // not before a letter: the backslash is dropped, as before
+    assert_eq!(tolerant(r"f\'(x)").text, "f′(x)");
+}
+
+/// #213: the width, height or depth of a box register (`\wd0`, from the classic `\dashint` macro) cannot
+/// be measured: no space with a warning in tolerant mode (the register is part of the measure, not a digit
+/// drawn after it), refused in strict mode.
+#[test]
+fn a_box_dimension_is_no_space_in_tolerant_mode() {
+    for tex in [r"a\kern-.6\wd0 b", r"a\kern\ht2 b", r"a\mskip\dp12 b", r"a\hskip\wd\mybox b", r"a\hspace{\wd0} b"] {
+        let out = tolerant(tex);
+        assert_eq!(out.text, "ab", "{tex}");
+        assert_eq!(warning_rules(tex), ["E-REC-9"], "{tex}");
+        assert!(strict(tex).unwrap_err().to_string().contains("unrecognized measure"), "{tex}");
+    }
+}
