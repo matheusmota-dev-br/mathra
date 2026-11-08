@@ -184,6 +184,18 @@ def tex_to_svg(tex: str, locale: str = "en", *, display: bool = True, strict: bo
     return _mathra.tex_to_svg(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font))
 
 
+def tex_to_png(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, font: Optional[Font] = None, dpi: float = 300, background: Optional[str] = None, color: str = "#111") -> bytes:
+    """Converts an equation to PNG, as bytes.
+
+    ``dpi`` is the resolution over a 12pt body: an em is ``dpi * 12 / 72`` pixels (50 at 300 dpi), and
+    each side is the SVG's size in em times that, rounded up to a whole pixel. ``background`` is a CSS
+    color (``"white"``, ``"#fff"``); the default None leaves it transparent. ``color`` is the ink, a CSS
+    color; colors set in the equation (``\\color``) keep their own. The other arguments are those of
+    :func:`tex_to_svg`. Raises ValueError on input it cannot read or a color it does not know.
+    """
+    return _mathra.tex_to_png(tex, locale, display=display, strict=strict, input=input, braille=braille, font=_font_id(font), dpi=dpi, background=background, color=color)
+
+
 def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None) -> str:
     """The tree of meaning, as a JSON string."""
     return _mathra.tex_to_tree(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font))
@@ -199,4 +211,4 @@ def locales() -> List[Language]:
     return [{"code": code, "name": name} for code, name in _mathra.locales()]
 
 
-__all__ = ["CATALOG", "CatalogFont", "Font", "Language", "Result", "Rule", "__version__", "catalog_fonts", "core_version", "load_font", "load_font_from_catalog", "locales", "render", "tex_to_svg", "tex_to_tree"]
+__all__ = ["CATALOG", "CatalogFont", "Font", "Language", "Result", "Rule", "__version__", "catalog_fonts", "core_version", "load_font", "load_font_from_catalog", "locales", "render", "tex_to_png", "tex_to_svg", "tex_to_tree"]

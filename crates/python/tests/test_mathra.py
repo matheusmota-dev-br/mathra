@@ -1,6 +1,7 @@
 """The Python package, used the way someone who installed it would."""
 
 import json
+import math
 import pathlib
 
 import pytest
@@ -17,6 +18,29 @@ def test_svg_with_default_locale():
 def test_svg_in_portuguese():
     assert "3,14" in mathra.tex_to_svg("3,14", locale="pt-BR")
     assert "um meio" in mathra.tex_to_svg(r"\frac{1}{2}", locale="pt-BR")
+
+
+def _png_size(data):
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+
+
+def test_png():
+    svg = mathra.tex_to_svg(r"\frac{1}{2}")
+    width_em = float(svg.split(' width="', 1)[1].split("em", 1)[0])
+    height_em = float(svg.split(' height="', 1)[1].split("em", 1)[0])
+    png = mathra.tex_to_png(r"\frac{1}{2}")
+    assert isinstance(png, bytes)
+    # 300 dpi over a 12pt body: 50 pixels per em, rounded up
+    assert _png_size(png) == (math.ceil(width_em * 50 - 1e-3), math.ceil(height_em * 50 - 1e-3))
+    assert _png_size(mathra.tex_to_png(r"\frac{1}{2}", dpi=72)) == (math.ceil(width_em * 12 - 1e-3), math.ceil(height_em * 12 - 1e-3))
+    assert mathra.tex_to_png(r"\frac{1}{2}", background="white", color="#c00") != png
+    with pytest.raises(ValueError, match="not a color"):
+        mathra.tex_to_png("x", color="nope")
+    with pytest.raises(ValueError, match="dpi"):
+        mathra.tex_to_png("x", dpi=0)
+    with pytest.raises(ValueError):
+        mathra.tex_to_png(r"\frac{1}", strict=True)
 
 
 def test_tree_is_json():

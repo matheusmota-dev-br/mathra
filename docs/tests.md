@@ -8,6 +8,7 @@ Every case here is an invented equation, written to exercise a construction or a
 cargo test --workspace --exclude mathra-python              # core, CLI and wasm (native)
 cargo test -p mathra --features latin-modern                # also the second font (tests/fonts.rs)
 cargo test -p mathra --no-default-features                 # without structural chemistry (the `chem` feature)
+cargo test -p mathra-cli --no-default-features             # a terminal without PNG output (the `png` feature) refuses .png
 cargo test -p mathra-wasm --target wasm32-unknown-unknown   # wasm on Node (needs wasm-bindgen-cli)
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -53,17 +54,18 @@ cargo llvm-cov report --summary-only        # or --html
 | `crates/core/tests/braille.rs` | 17 | Braille (`spec/braille.md`): the examples of the Nemeth code (BANA 2022) and of the CMU (MEC 2006), each cited by section or example number; the code chosen by the locale; braille in the SVG and the JSON; S-BRL-1; the whole corpus in both codes; the signs settled by the review against MathCAT (`docs/braille-review.md`). |
 | `crates/core/tests/reference.rs` | 5 | The reference page (`site/reference.html`, data in `corpus/reference.json`): every row converts in strict mode with no warning, each AsciiMath and MathML row has the same speech as its LaTeX column, every row has braille in both codes. |
 | `crates/core/tests/fonts.rs` | 6 | The font an equation is set in: STIX Two Math by default; with the `latin-modern` feature, Latin Modern Math with its own metrics and its own word space (a third of an em). The embedded fonts against the originals in `tools/fonts`: every character keeps its glyph ID, outline, advance and MATH data, and so do its size variants and assembly parts. |
+| `crates/core/tests/png.rs` | 10 | PNG output (`png` feature): the PNG's size is the SVG's in em times dpi × 12 / 72, rounded up; transparent corners and `#111` ink by default, the background and ink options, `\textcolor` keeping its own, no text drawn (no font is loaded), the animation's CSS left out, an empty equation, bad options refused. |
 | `crates/core/tests/banner.rs` | 1 | The README banner (`examples/banner.rs`) is deterministic and matches `docs/banner.svg`. |
 | `crates/core/tests/examples.rs` | 4 | The README gallery (famous equations, big equations, constructions): every equation is accepted in strict mode, each `docs/examples/*.svg` matches what the code draws, and no stray file sits in that folder. The site's gallery page (`corpus/gallery.json`): every README example is on it, as the same equation, and every row converts in strict mode. `CHANGELOG.md`: releases newest first, each with a date and a headline, and every equation it shows a gallery name or LaTeX that converts in strict mode. |
 | `crates/core/src/input/asciimath.rs` (unit) | 1 | Every AsciiMath symbol's LaTeX spelling is valid LaTeX in strict mode. |
 | `crates/core/src/chem/chemfig.rs` (unit) | 3 | The chemfig reader on its own: labels split into atoms, angle syntax, Lewis marks. |
 | `crates/core/src/chem/formula.rs` (unit) | 2 | Molecular formulas: atoms counted in labels, Hill order without carbon. |
 | `crates/core/src/font.rs` (unit) | 2 | A glyph without an outline and a quadratic curve, which the embedded font does not have. |
-| `crates/cli/tests/cli.rs` | 18 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes. |
+| `crates/cli/tests/cli.rs` | 22 | The binary run as a process: arguments, `--from`, `--braille`, stdin, `--batch`, writing files, exit codes; PNG by extension and by `--png`, `--dpi`, colors, `--batch --png`. Built without the `png` feature (20 tests), the refusal of `.png`. |
 | `crates/wasm/tests/native.rs` | 7 | Exported functions outside the browser, and the errors before they become a `JsError`. |
 | `crates/wasm/tests/web.rs` | 2 | The same functions inside wasm, on Node, including the `JsError`. |
 | `npm/test/*.test.*` | 10 | The npm package as published: packed, installed in a scratch project, imported with ESM and `require`; options, `render`, strict errors, locales, input notations, braille. Run with `npm/build.sh && npm/test/run.sh`. |
-| `crates/python/tests/test_mathra.py` | 14 | The installed Python package: SVG, tree, `render`, `locales`, `display`, `strict`, `input` and `braille`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
+| `crates/python/tests/test_mathra.py` | 17 | The installed Python package: SVG, PNG (`tex_to_png`), tree, `render`, `locales`, `display`, `strict`, `input` and `braille`, locale, `ValueError`, versions. CI runs it on the wheel of each platform and on the sdist (`.github/workflows/pypi.yml`). |
 
 ## Coverage
 

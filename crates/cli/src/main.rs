@@ -1,3 +1,5 @@
+use std::io::Write;
+use std::path::Path;
 use std::process::ExitCode;
 use std::{env, fs, io};
 
@@ -12,7 +14,8 @@ USAGE
   echo '<equation>' | mathra [options]
 
 OPTIONS
-  -o, --output <file>     write the SVG to a file instead of printing it
+  -o, --output <file>     write the SVG to a file instead of printing it; a .png file
+                          gets a PNG
   -l, --locale <code>     en (default), pt-BR, es, fr, de, it, ru, zh, ja, ko, hi, ar,
                           id, tr, nl or pl; a region is accepted (es-MX, zh-CN)
   -f, --from <format>     latex (default), mathml or asciimath; MathML pasted as
@@ -24,6 +27,11 @@ OPTIONS
                           (math fonts to download: https://matheusmota-dev-br.github.io/mathfonts/)
       --animate           the SVG writes itself in the browser, in the order the layout set it
       --steps             each element numbered by its step (data-step), with no animation
+      --png               write a PNG instead of the SVG (to --output, or to stdout)
+      --dpi <n>           PNG resolution over a 12pt body: an em is n × 12 / 72 pixels
+                          (default 300, 50 pixels per em)
+      --background <c>    PNG background, a CSS color (white, #fff); default transparent
+      --color <c>         PNG ink, a CSS color; default #111 (\\color keeps its own)
       --explain           show the tree, the speech and the rules applied
       --tree              print only the tree of meaning as JSON
       --speech            print only the screen reader phrase
@@ -32,12 +40,14 @@ OPTIONS
       --braille-code <c>  cmu or nemeth; the default follows the locale
                           (CMU in pt-BR and es, Nemeth elsewhere)
       --batch             read one equation per input line; with --output <folder>,
-                          write 1.svg, 2.svg…; print ok, warning<TAB>… or error<TAB>… per line
+                          write 1.svg, 2.svg… (1.png, 2.png… with --png);
+                          print ok, warning<TAB>… or error<TAB>… per line
   -V, --version           show the version
   -h, --help              show this help
 
 EXAMPLES
   mathra '3.14' -o pi.svg
+  mathra 'e^{i\\pi} + 1 = 0' -o euler.png --dpi 600 --background white
   mathra '3,14' --locale pt-BR --explain
   mathra '\\frac{3}{4}' --locale fr --speech
   mathra '\\sin^2 x' --speech
@@ -69,6 +79,11 @@ struct Args {
     steps: bool,
     font: MathFont,
     mode: Mode,
+    /// `--png`: PNG in place of the SVG, also in a batch's folder.
+    png: bool,
+    dpi: f32,
+    background: Option<String>,
+    color: String,
 }
 
 impl Args {
@@ -85,6 +100,45 @@ impl Args {
             ..Default::default()
         }
     }
+
+    /// The SVG of the equation goes out as a PNG: `--png`, or an output file named `.png`.
+    fn wants_png(&self) -> bool {
+        match self.mode {
+            Mode::Svg => self.png || self.output.as_deref().is_some_and(|p| Path::new(p).extension().is_some_and(|e| e.eq_ignore_ascii_case("png"))),
+            Mode::Batch => self.png,
+            _ => false,
+        }
+    }
+
+    #[cfg(feature = "png")]
+    fn png_options(&self) -> mathra::PngOptions {
+        mathra::PngOptions { dpi: self.dpi, background: self.background.clone(), color: self.color.clone() }
+    }
+}
+
+/// What a build without the `png` feature says, instead of writing an SVG into a .png file.
+#[cfg(not(feature = "png"))]
+const PNG_UNSUPPORTED: &str = "PNG output is not supported in this build; use .svg";
+
+/// The PNG options can be used: checked before converting anything.
+fn check_png(args: &Args) -> Result<(), String> {
+    #[cfg(feature = "png")]
+    return args.png_options().check().map_err(|e| e.to_string());
+    #[cfg(not(feature = "png"))]
+    {
+        let _ = args;
+        Err(PNG_UNSUPPORTED.into())
+    }
+}
+
+fn png(svg: &str, args: &Args) -> Result<Vec<u8>, String> {
+    #[cfg(feature = "png")]
+    return mathra::output::png::from_svg(svg, &args.png_options()).map_err(|e| e.to_string());
+    #[cfg(not(feature = "png"))]
+    {
+        let _ = (svg, args);
+        Err(PNG_UNSUPPORTED.into())
+    }
 }
 
 fn read_args() -> Result<Option<Args>, String> {
@@ -100,6 +154,10 @@ fn read_args() -> Result<Option<Args>, String> {
         steps: false,
         font: MathFont::default(),
         mode: Mode::Svg,
+        png: false,
+        dpi: 300.0,
+        background: None,
+        color: "#111".into(),
     };
     let mut it = env::args().skip(1);
     while let Some(a) = it.next() {
@@ -131,6 +189,13 @@ fn read_args() -> Result<Option<Args>, String> {
             "--braille" => args.mode = Mode::Braille,
             "--braille-code" => args.braille = Some(it.next().ok_or("missing code after --braille-code")?.parse()?),
             "--batch" => args.mode = Mode::Batch,
+            "--png" => args.png = true,
+            "--dpi" => {
+                let value = it.next().ok_or("missing number after --dpi")?;
+                args.dpi = value.parse().ok().filter(|d: &f32| d.is_finite() && *d > 0.0).ok_or(format!("--dpi takes a positive number, not {value}"))?;
+            }
+            "--background" => args.background = Some(it.next().ok_or("missing color after --background")?),
+            "--color" => args.color = it.next().ok_or("missing color after --color")?,
             option if option.starts_with("--") => return Err(format!("unknown option: {option} (see mathra --help)")),
             _ if args.tex.is_none() => args.tex = Some(a),
             _ => return Err("pass a single equation, in quotes".into()),
@@ -148,6 +213,13 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    if args.wants_png() {
+        if let Err(e) = check_png(&args) {
+            eprintln!("mathra: {e}");
+            return ExitCode::from(2);
+        }
+    }
 
     if let Mode::Batch = args.mode {
         return batch(&args);
@@ -178,6 +250,25 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         }
     };
+
+    if args.wants_png() {
+        let bytes = match png(&result.svg, &args) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("mathra: {e}");
+                return ExitCode::from(1);
+            }
+        };
+        let written = match &args.output {
+            Some(path) => fs::write(path, bytes).map_err(|e| format!("could not write {path}: {e}")),
+            None => io::stdout().lock().write_all(&bytes).map_err(|e| format!("could not write the PNG: {e}")),
+        };
+        if let Err(e) = written {
+            eprintln!("mathra: {e}");
+            return ExitCode::from(1);
+        }
+        return ExitCode::SUCCESS;
+    }
 
     let text = match args.mode {
         Mode::Svg | Mode::Batch => result.svg,
@@ -227,7 +318,7 @@ fn main() -> ExitCode {
 }
 
 fn batch(args: &Args) -> ExitCode {
-    use std::io::{BufRead, Write};
+    use std::io::BufRead;
     let options = args.options();
     let mut output = io::BufWriter::new(io::stdout().lock());
     for (i, line) in io::stdin().lock().split(b'\n').enumerate() {
@@ -249,8 +340,16 @@ fn batch_status(tex: &str, i: usize, args: &Args, options: &Options) -> String {
         Err(e) => return format!("error\t{e}"),
     };
     if let Some(folder) = &args.output {
-        let path = format!("{folder}/{}.svg", i + 1);
-        if let Err(e) = fs::write(&path, &r.svg) {
+        let (path, written) = if args.png {
+            let path = format!("{folder}/{}.png", i + 1);
+            let written = png(&r.svg, args).and_then(|bytes| fs::write(&path, bytes).map_err(|e| e.to_string()));
+            (path, written)
+        } else {
+            let path = format!("{folder}/{}.svg", i + 1);
+            let written = fs::write(&path, &r.svg).map_err(|e| e.to_string());
+            (path, written)
+        };
+        if let Err(e) = written {
             return format!("error\tcould not write {path}: {e}");
         }
     }

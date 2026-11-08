@@ -138,6 +138,18 @@ With `--animate` (`{ animate: true }` in JavaScript, `animate=True` in Python, `
 $ mathra 'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}' --animate -o quadratic.svg
 ```
 
+### PNG
+
+Where SVG is not accepted (e-mail, some editors and LMSs), the terminal and the Python package write a PNG of the same drawing, rasterized in Rust with [resvg](https://github.com/linebender/resvg): `-o file.png` or `--png` in the terminal, `mathra.tex_to_png(tex)` in Python (bytes), `Output::png` in Rust with the `png` feature. The size is `--dpi` (`dpi=`, 300 by default) over a 12pt body, so an em is dpi × 12 / 72 pixels (50 at 300 dpi), and each side is the SVG's size in em times that, rounded up to a whole pixel. The background is transparent and the ink `#111`, as in a standalone SVG; `--background` and `--color` (`background=`, `color=` in Python) take any CSS color, and colors set in the equation keep their own. A PNG is only the drawing, with no speech, source or text layer: give it the speech as its alt text. The npm package leaves it out, since a browser draws the SVG on a canvas itself.
+
+```console
+$ mathra 'e^{i\pi} + 1 = 0' -o euler.png
+$ mathra 'e^{i\pi} + 1 = 0' --png --dpi 600 --background white > euler.png
+$ mathra --batch --png -o out/ < equations.txt      # 1.png, 2.png…
+```
+
+The `png` feature adds about 1.2 MB to the terminal's release binary (3.2 MB without it, 4.4 MB with it; 2.9 and 3.9 MB stripped) and 0.5 MB to the Python wheel (1.6 MB to 2.2 MB; its module from 3.3 to 4.5 MB), measured on macOS arm64. It is off by default in the Rust crate, on in `mathra-cli`; `cargo install mathra-cli --no-default-features` builds a terminal without it, which refuses a `.png` file instead of writing an SVG into it.
+
 What changed in each release is in [`CHANGELOG.md`](CHANGELOG.md), and on the site's [evolution page](https://matheusmota-dev-br.github.io/mathra/changelog.html) with the equations drawn live.
 
 ## Install and use
@@ -174,6 +186,7 @@ r["speech"]                                               # 'trois quarts'
 mathra.tex_to_svg(r"\vertA\vert", strict=True)            # ValueError, like TeX
 mathra.render("sqrt(x)/2", input="asciimath")             # also input="mathml"
 mathra.render("x^2", locale="pt-BR")["braille"]           # '⠭⠡⠼⠃' (CMU); braille="nemeth" forces the code
+png = mathra.tex_to_png(r"e^{i\pi} + 1 = 0", dpi=300)       # bytes; background=None (transparent), color="#111"
 ```
 
 Types included; more on [PyPI](https://pypi.org/project/mathra/).
@@ -182,6 +195,7 @@ Types included; more on [PyPI](https://pypi.org/project/mathra/).
 
 ```console
 $ mathra 'x \le 2.75; y \ge 1' -o inequality.svg
+$ mathra 'e^{i\pi} + 1 = 0' -o euler.png --background white
 $ mathra '3,14 + \sin x' --locale pt-BR
 $ mathra 'x = -1' --speech        # x equals negative 1
 $ echo 'a + b' | mathra --tree
@@ -198,7 +212,12 @@ println!("{}", r.svg);
 println!("{}", r.speech);
 ```
 
-Structural chemistry is the `chem` feature, on by default; `mathra = { version = "…", default-features = false }` leaves it out of a build that only needs equations.
+Structural chemistry is the `chem` feature, on by default; `mathra = { version = "…", default-features = false }` leaves it out of a build that only needs equations. PNG output is the `png` feature, off by default:
+
+```rust
+// mathra = { version = "…", features = ["png"] }
+let png: Vec<u8> = r.png(&mathra::PngOptions { dpi: 300.0, background: Some("white".into()), ..Default::default() })?;
+```
 
 ## What it converts
 
@@ -235,7 +254,7 @@ To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a c
 - commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML output (MathML input is supported).
 
 ## Benchmark
 
@@ -272,7 +291,7 @@ KaTeX is faster and lighter to ship, but its output is HTML that needs its style
 ```
 crates/core          tree, rules, layout, embedded fonts, outputs
 crates/core/src/input     readers: LaTeX, MathML, AsciiMath (spec/input.md)
-crates/core/src/output    SVG, speech, text and braille (CMU and Nemeth, spec/braille.md)
+crates/core/src/output    SVG, speech, text, braille (CMU and Nemeth, spec/braille.md) and PNG (`png` feature)
 crates/core/src/locales   the 16 languages, one JSON file each (spec/locales.md)
 crates/core/src/chem      structural chemistry: chemfig, schemes, mechanisms (spec/chemistry.md, `chem` feature)
 crates/core/examples bench (the benchmark above) and banner (the image above)

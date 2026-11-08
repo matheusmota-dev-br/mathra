@@ -18,6 +18,9 @@ check_rust() {
   cargo fmt --all --check
   cargo clippy --workspace --exclude "$name-python" --all-targets -- -D warnings
   cargo test --workspace --exclude "$name-python"
+  # the command line without the png feature refuses .png (the workspace build turns the feature on)
+  cargo clippy -p "$name-cli" --no-default-features --all-targets -- -D warnings
+  cargo test -p "$name-cli" --no-default-features
 }
 
 check_wasm() {
