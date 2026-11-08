@@ -11,7 +11,11 @@ fn mathra(args: &[&str], input: Option<&[u8]>) -> Output {
     {
         let mut stdin = child.stdin.take().unwrap();
         if let Some(e) = input {
-            stdin.write_all(e).unwrap();
+            // a command that refuses its arguments exits without reading stdin: the pipe closes
+            // under the write, and the exit code and stderr are what the test checks
+            if let Err(err) = stdin.write_all(e) {
+                assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe, "{err}");
+            }
         }
     }
     child.wait_with_output().unwrap()
