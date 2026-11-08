@@ -379,6 +379,11 @@ impl Writer {
     }
 
     fn identifier(&mut self, name: &str, variant: Variant, ctx: &Ctx) {
+        // the double-struck one (\mathbb{1}, 𝟙): the digit, as before it was a symbol; its typeform is an
+        // open question for a transcriber (docs/braille-review.md)
+        if name.len() == 1 && name.as_bytes()[0].is_ascii_digit() {
+            return self.number(name, ctx);
+        }
         let mut chars = name.chars();
         let (Some(c), None) = (chars.next(), chars.next()) else {
             if matches!(variant, Variant::Italic | Variant::Upright) {

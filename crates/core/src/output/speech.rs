@@ -559,13 +559,14 @@ fn large_operator(c: char, loc: Locale) -> String {
     loc.phrase(&key).to_string()
 }
 
-/// L-LET-2: the Latin capital of a double-struck letter, written with `\mathbb` or as the Unicode
-/// character (ℝ, 𝔸).
+/// L-LET-2: the Latin capital of a double-struck letter, or the digit of a double-struck digit (𝟙, the
+/// indicator function), written with `\mathbb` or as the Unicode character (ℝ, 𝔸, 𝟙).
 fn double_struck(name: &str, variant: Variant) -> Option<String> {
     let mut chars = name.chars();
     let (c, None) = (chars.next()?, chars.next()) else { return None };
     let capital = match c {
-        'A'..='Z' if variant == Variant::DoubleStruck => c,
+        'A'..='Z' | '0'..='9' if variant == Variant::DoubleStruck => c,
+        '\u{1D7D8}'..='\u{1D7E1}' => char::from_u32('0' as u32 + (c as u32 - 0x1D7D8))?,
         'ℂ' => 'C',
         'ℍ' => 'H',
         'ℕ' => 'N',

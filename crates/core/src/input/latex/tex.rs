@@ -43,7 +43,7 @@ impl Reader<'_> {
         let (remainder, p) = self.list()?;
         let den = Node::row(remainder);
         let rule = matches!(base, "over" | "above");
-        let fraction = Node::Fraction { num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
+        let fraction = Node::Fraction { numerator_align: None, num: Box::new(num), den: Box::new(den), style: FractionStyle::Auto, rule, thickness };
         let delimiters = match base {
             "choose" => Some((Some('('), Some(')'))),
             "brack" => Some((Some('['), Some(']'))),

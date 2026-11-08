@@ -843,6 +843,40 @@ fn shortvdotswithin_is_a_row_of_its_own_set_closer() {
     assert!((dots[0].0 - symbols[0].0).abs() < 1.0, "⋮ at {}, = at {}", dots[0].0, symbols[0].0);
 }
 
+/// Small reading slips found against the KaTeX and MathJax command lists (#164).
+#[test]
+fn text_dashes_cfrac_alignment_unicode_font_and_centernot() {
+    // LaTeX's (and KaTeX's) dash ligatures in text; typewriter type has none
+    assert_eq!(read(r"\text{a -- b --- c}").text, "a – b — c");
+    assert_eq!(read(r"\text{x - y}").text, "x - y");
+    assert_eq!(read(r"\texttt{a -- b}").text, "a -- b");
+    assert_eq!(read(r"\text{\ttfamily a -- b}").text, "a -- b");
+    // \cfrac[l], \cfrac[r]: the numerator at one side (MathML's numalign, as MathJax writes it)
+    let one = |tex: &str| glyph_middles(&math_box(tex), '1')[0].0;
+    let (left, center, right) = (one(r"\cfrac[l]{1}{x+x+x}"), one(r"\cfrac{1}{x+x+x}"), one(r"\cfrac[r]{1}{x+x+x}"));
+    assert!(left < center - 300.0 && right > center + 300.0, "{left} {center} {right}");
+    assert_eq!(one(r"\cfrac[c]{1}{x+x+x}"), center);
+    for (tex, align) in [(r"\cfrac[l]{1}{1+x}", "left"), (r"\cfrac[r]{1}{1+x}", "right")] {
+        let r = read(tex);
+        assert!(r.mathml.contains(&format!(r#"numalign="{align}""#)), "{}", r.mathml);
+        let back = convert(&r.mathml, &Options { input: mathra::Input::MathMl, ..Options::default() }).unwrap();
+        assert_eq!(back.tree, r.tree, "{tex}");
+    }
+    // MathJax's \unicode[font]{…} and \unicode[height,depth][font]{…}: the code point, the font ignored
+    for tex in [r"\unicode[Arial]{x22D6}", r"\unicode[1,0.2][Arial]{x22D6}", r"\unicode{0x22D6}"] {
+        assert_eq!(read(tex).tree, read(r"\unicode{x22D6}").tree, "{tex}");
+    }
+    // \centernot: \not's own slash over the middle, not a slash as long as the arrow
+    let r = read(r"A \centernot\longrightarrow B");
+    assert!(format!("{:?}", r.tree).contains("CenterNot"), "{:?}", r.tree);
+    let b = math_box(r"\centernot\longrightarrow");
+    let (slash, arrow) = (glyph_middles(&b, '⧸'), glyph_middles(&b, '⟶'));
+    assert_eq!(slash.len(), 1);
+    assert!((slash[0].0 - arrow[0].0).abs() < 1.0, "⧸ at {}, ⟶ at {}", slash[0].0, arrow[0].0);
+    // a negated symbol stays the symbol, as with \not
+    assert_eq!(read(r"a \centernot= b").tree, read(r"a \not= b").tree);
+}
+
 #[test]
 fn a_tree_node_stays_small() {
     // every level of nesting holds nodes on the stack: a bigger node makes the deep-nesting cases

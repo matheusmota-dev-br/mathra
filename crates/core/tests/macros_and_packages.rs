@@ -214,6 +214,61 @@ fn physics_vector_calculus() {
     assert_eq!(en(r"6 \div 3").text, "6 ÷ 3");
 }
 
+/// \bm and \boldsymbol make ∇ bold, the upright 𝛁 of TeX's bold symbol font and of physics' \grad (#158).
+#[test]
+fn bold_nabla() {
+    assert_eq!(en(r"\bm{\nabla}\times\bm{\sigma}").text, "𝛁 × 𝝈");
+    assert_eq!(en(r"\boldsymbol{\nabla}\cdot\boldsymbol{E}").text, "𝛁 · 𝑬");
+    assert_eq!(en(r"\vb*{\nabla}").text, "𝛁");
+    assert_eq!(en(r"\boldsymbol\nabla f").tree, en(r"\grad f").tree);
+    assert_eq!(en(r"\bm{\nabla} f").speech, "nabla f");
+    // \mathbf changes letters and digits only, as in TeX
+    assert_eq!(en(r"\mathbf{\nabla}").text, "∇");
+    assert_eq!(en(r"\nabla").text, "∇");
+}
+
+/// The double-struck one of the indicator function and the identity (#159): 𝟙 (U+1D7D9) from dsfont's
+/// \mathds, bbm's \mathbbm and \mathbb, which MathJax draws as 𝟙 too (its font data maps a double-struck
+/// digit to U+1D7D8…U+1D7E1).
+#[test]
+fn double_struck_one() {
+    assert_eq!(en(r"\mathds{1}_A(x)").text, "𝟙_A(x)");
+    assert_eq!(en(r"U^\dagger U = \mathbbm{1}").text, "U^†U = 𝟙");
+    assert_eq!(en(r"\mathbb{1}").text, "𝟙");
+    assert_eq!(en(r"\mathbb{10}").text, "𝟙𝟘");
+    // a symbol, not a number: an identifier, spoken with its alphabet
+    assert!(matches!(en(r"\mathbb{1}").tree.children(), [Node::Identifier { name, .. }] if name == "1"), "{:?}", en(r"\mathbb{1}").tree);
+    assert_eq!(en(r"\mathds{1}_A").speech, "double-struck 1 sub A");
+    assert_eq!(pt(r"\mathbb{1}").speech, "1 duplo");
+    // the braille stays the digit it was (its typeform is a question for a transcriber)
+    assert_eq!(en(r"\mathbb{1}").braille, en("1").braille);
+    // other alphabets leave numbers alone, and \mathbb still makes ℝ
+    assert_eq!(en(r"\mathbf{1}").text, "1");
+    assert_eq!(en(r"\mathbb{R}").speech, "the real numbers");
+}
+
+/// mathtools' cases* (and dcases*, rcases*, drcases*): the second column is text, `$…$` for math in it;
+/// smallmatrix*[r] aligns its columns as pmatrix*[r] does (#160).
+#[test]
+fn mathtools_starred_cases_and_smallmatrix() {
+    let starred = en(r"f(x)=\begin{cases*} 1 & if $x>0$ \\ 0 & otherwise \end{cases*}");
+    assert_eq!(starred.text, "f(x) = {1, if x > 0; 0, otherwise");
+    assert_eq!(starred.tree, en(r"f(x)=\begin{cases} 1 & \text{if $x>0$} \\ 0 & \text{otherwise} \end{cases}").tree);
+    assert_eq!(
+        en(r"\begin{dcases*} \frac12 & when $n$ is even \\ 0 & otherwise \end{dcases*}").tree,
+        en(r"\begin{dcases} \frac12 & \text{when $n$ is even} \\ 0 & \text{otherwise} \end{dcases}").tree
+    );
+    assert_eq!(en(r"\begin{rcases*} a & first \\ b & second \end{rcases*}").tree, en(r"\begin{rcases} a & \text{first} \\ b & \text{second} \end{rcases}").tree);
+    assert_eq!(en(r"\begin{drcases*} a & first \end{drcases*}").tree, en(r"\begin{drcases} a & \text{first} \end{drcases}").tree);
+    // nested environments and \& stay where they are: only the row's own & starts the text
+    assert_eq!(en(r"\begin{cases*} \begin{matrix} a & b \end{matrix} & x \& y \\ x^{2} & z \end{cases*}").text, "{[[a, b]], x & y; x^2, z");
+    // smallmatrix*[r]: the alignment, not a cell
+    let tree = format!("{:?}", en(r"\begin{smallmatrix*}[r] -1 & 2 \\ 3 & -40 \end{smallmatrix*}").tree);
+    assert!(tree.contains("shape: SmallMatrix") && tree.contains("columns: ['r', 'r']"), "{tree}");
+    assert_eq!(en(r"\begin{smallmatrix*}[r] -1 & 2 \\ 3 & -40 \end{smallmatrix*}").text, "[[−1, 2], [3, −40]]");
+    assert_eq!(en(r"\begin{smallmatrix*} a & b \end{smallmatrix*}").tree, en(r"\begin{smallmatrix} a & b \end{smallmatrix}").tree);
+}
+
 #[test]
 fn physics_derivatives_differentials_and_evaluation() {
     assert_eq!(en(r"\fdv{F}{\phi}").text, "(δF)/(δϕ)");
@@ -362,6 +417,48 @@ fn physics_operators_aliases_and_long_names() {
     assert_eq!(en(r"\real z + \imaginary z").text, "ℜz + ℑz");
     assert_eq!(en(r"\Re z + \Im z").text, "ℜz + ℑz");
     assert!(en(r"\real z").warnings.is_empty());
+}
+
+/// physics' starred forms (#157): brackets that keep the text size, the derivative as a flat fraction;
+/// and the optional power of the functions, `\sin[2](x)`. Strict and tolerant read them alike.
+#[test]
+fn physics_starred_and_optional_forms() {
+    // the star is not drawn: \abs* is the same bars, at the text size (a \vphantom keeps the height)
+    for (tex, text) in [
+        (r"\abs*{\frac{a}{b}}", "|a/b|"),
+        (r"\norm*{\frac12}", "‖1/2‖"),
+        (r"\pqty*{x}", "(x)"),
+        (r"\comm*{A}{B}", "[A, B]"),
+        (r"\ket*{\psi}", "|ψ⟩"),
+        (r"\braket*{a}{b}", "⟨a | b⟩"),
+        (r"\expval*{A}{\psi}", "⟨ψ | A | ψ⟩"),
+        (r"\expval**{A}{\psi}", "⟨ψ | A | ψ⟩"),
+        (r"\mel*{n}{H}{m}", "⟨n | H | m⟩"),
+    ] {
+        assert_eq!(en(tex).text, text, "{tex}");
+    }
+    let starred = en(r"\abs*{\frac{a}{b}}");
+    assert!(matches!(starred.tree.children(), [Node::Phantom { width: false, height: true, .. }, Node::Delimited { .. }]), "{:?}", starred.tree);
+    assert!(format!("{:?}", starred.tree.children()[1]).contains("Smashed"), "{:?}", starred.tree);
+    // unstarred, the bars grow with the content; doubly starred \expval** resizes too
+    assert!(matches!(en(r"\abs{\frac{a}{b}}").tree.children(), [Node::Delimited { .. }]));
+    assert!(matches!(en(r"\expval**{A}{\psi}").tree.children(), [Node::Delimited { .. }]));
+    // \dv*, \pdv*, \fdv*: physics' \flatfrac, a slash between the two
+    assert_eq!(en(r"\dv*{f}{x}").text, "df/dx");
+    assert_eq!(en(r"\dv*{x}").text, "d/dx");
+    assert_eq!(en(r"\pdv*{f}{x}").text, "∂f/∂x");
+    assert_eq!(en(r"\pdv*[2]{f}{x}").text, "∂^2f/∂x^2");
+    assert_eq!(en(r"\fdv*{F}{g}").text, "δF/δg");
+    assert_eq!(en(r"\dv*{f}{x}").speech, en(r"\mathrm{d} f / \mathrm{d} x").speech);
+    // the fraction stays a fraction without the star
+    assert_eq!(en(r"\dv{f}{x}").text, "(df)/(dx)");
+    // \sin[2](x): the power on the function; physics leaves the brackets as written without parentheses
+    assert_eq!(en(r"\sin[2](\omega t)").text, en(r"\sin^{2}(\omega t)").text);
+    assert_eq!(en(r"\sin[2](x)").speech, en(r"\sin^2(x)").speech);
+    assert_eq!(en(r"\log[2](x)").text, en(r"\log^{2}(x)").text);
+    assert_eq!(en(r"\sin[2] x").text, "sin [2]x");
+    // the parentheses grow with the argument, as physics' \argopen…\argclose
+    assert!(format!("{:?}", en(r"\cos[2](\frac{a}{b})").tree).contains("Delimited"));
 }
 
 /// physics' \qty sizes brackets; siunitx's \qty{value}{unit} is a quantity. Two braced groups decide.

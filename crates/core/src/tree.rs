@@ -62,6 +62,9 @@ pub enum Node {
         /// The rule's thickness in em when the input gives one (`\above`, `\genfrac`); the font's otherwise.
         #[serde(skip_serializing_if = "Option::is_none")]
         thickness: Option<f32>,
+        /// `\cfrac[l]`, `\cfrac[r]`: the numerator at the left (`'l'`) or the right (`'r'`); centered otherwise.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        numerator_align: Option<char>,
     },
     Root {
         radicand: Box<Node>,
@@ -423,6 +426,8 @@ pub enum Cancel {
     /// The Feynman slash of slashed.sty (`\slashed{D}`): a "/" over the base, which keeps its width.
     /// Notation, not a cancellation.
     Slash,
+    /// centernot's `\centernot`: the slash of `\not`, at its own size, over the middle of the base.
+    CenterNot,
 }
 
 /// Horizontal table rule before row `row`, covering columns `from..=to` (0-based).

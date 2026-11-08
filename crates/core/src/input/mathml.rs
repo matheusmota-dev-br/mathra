@@ -184,6 +184,8 @@ impl Reader<'_> {
             "merror" => Node::Colored { color: "#c0392b".into(), base: Box::new(self.row(node, variant)?) },
             "mphantom" => Node::Phantom { base: Box::new(self.row(node, variant)?), width: true, height: true },
             "mi" => self.identifier(node, variant),
+            // KaTeX writes \mathbb{1} as <mn mathvariant="double-struck">1</mn>: the symbol 𝟙, as from LaTeX
+            "mn" if variant == Variant::DoubleStruck && text_of(node).trim().len() == 1 => self.identifier(node, variant),
             "mn" => self.number(node),
             "mo" if slashed(&text_of(node)).is_some() => slashed_symbol(&text_of(node)),
             "mo" => match spaced(node, operator(&text_of(node))) {
@@ -209,7 +211,12 @@ impl Reader<'_> {
                     Some("false") => FractionStyle::Row,
                     _ => FractionStyle::Auto,
                 };
-                Node::Fraction { num: Box::new(num), den: Box::new(den), style, rule, thickness }
+                let numerator_align = match node.attribute("numalign") {
+                    Some("left") => Some('l'),
+                    Some("right") => Some('r'),
+                    _ => None,
+                };
+                Node::Fraction { numerator_align, num: Box::new(num), den: Box::new(den), style, rule, thickness }
             }
             "msqrt" => Node::Root { radicand: Box::new(self.row(node, variant)?), index: None },
             "mroot" => {
