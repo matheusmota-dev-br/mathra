@@ -172,6 +172,36 @@ fn e_rec_3_script_mark_as_the_argument_of_a_script() {
 }
 
 #[test]
+fn e_rec_2_unicode_script_after_a_script_mark() {
+    // the glyph is read as its plain character: the same tree as the LaTeX the author meant
+    for (pasted, meant) in [
+        (r"A = 9\,\text{cm}^²", r"A = 9\,\text{cm}^2"),
+        (r"a_₂ + a_₃", r"a_2 + a_3"),
+        (r"x^ⁿ", r"x^n"),
+        (r"x_ᵢ", r"x_i"),
+        (r"A^⁻¹", r"A^{-1}"),
+        (r"10^⁻³", r"10^{-3}"),
+        (r"x^⁽²⁾", r"x^{(2)}"),
+        (r"e^ˣ", r"e^x"),
+        (r"x_₁^²", r"x_1^2"),
+    ] {
+        let r = tolerant(pasted);
+        assert_eq!(r.tree.to_json(), tolerant(meant).tree.to_json(), "{pasted}");
+        assert_eq!(warning_rules(pasted).iter().filter(|w| **w == "E-REC-2").count(), pasted.matches(['^', '_']).count(), "{pasted}");
+        assert!(strict(pasted).is_err(), "{pasted}");
+    }
+    // a run stops where the kind changes: ^²₁ is ^2 and a subscript glyph after it
+    assert_eq!(tolerant(r"x^²₁").tree.to_json(), tolerant(r"x^2₁").tree.to_json());
+    // without ^ or _ the glyph stays as it was, in both modes
+    for tex in [r"x²", r"a₂ + b"] {
+        assert!(tolerant(tex).warnings.is_empty(), "{tex}");
+        assert_eq!(strict(tex).unwrap().tree.to_json(), tolerant(tex).tree.to_json(), "{tex}");
+    }
+    // the ordinal indicators are not script characters
+    assert!(!warning_rules(r"30^º").contains(&"E-REC-2"));
+}
+
+#[test]
 fn e_rec_9_misplaced_and_extra_alignment_tabs() {
     // TeX: "Misplaced alignment tab character &"
     assert_eq!(tolerant(r"u & v").text, "u v");

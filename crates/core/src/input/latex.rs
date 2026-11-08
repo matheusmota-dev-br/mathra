@@ -615,17 +615,41 @@ impl Reader<'_> {
         self.nested(|this| this.scripts_unguarded(items))
     }
 
-    /// `y__k`, `x^_2`: a script whose argument is itself `^` or `_`. TeX stops ("Missing { inserted");
-    /// tolerant mode draws the mark as the script, as before, with a warning.
-    fn script_mark_as_argument(&mut self, mark: char) -> R<()> {
+    /// The argument of the script `mark` (`^` or `_`) TeX refuses, before it is read:
+    /// - `y__k`, `x^_2`: the argument is itself `^` or `_`. TeX stops ("Missing { inserted"); tolerant
+    ///   mode draws the mark as the script, as before, with a warning (E-REC-3).
+    /// - `^²`, `_₂`: a Unicode superscript or subscript, pasted from an editor, would be shrunk and
+    ///   raised twice; tolerant mode reads it as its plain character (`^2`, `_2`; a run of them as a
+    ///   group, `^⁻¹` as `^{-1}`), with a warning (E-REC-2).
+    fn check_script_argument(&mut self, mark: char) -> R<()> {
         let saved = self.pos;
         self.skip_spaces();
         let col = self.column();
-        let found = self.current().filter(|c| matches!(c, '^' | '_'));
+        let found = self.current();
+        let at = self.pos;
         self.pos = saved;
-        if let Some(second) = found {
-            let which = if mark == '^' { "superscript" } else { "subscript" };
-            self.tolerate(rules::E_REC_3, col, format!("'{second}' right after '{mark}': the {which} has no argument"), &format!("'{second}' drawn as the {which}"))?;
+        let which = if mark == '^' { "superscript" } else { "subscript" };
+        match found {
+            Some(second @ ('^' | '_')) => {
+                self.tolerate(rules::E_REC_3, col, format!("'{second}' right after '{mark}': the {which} has no argument"), &format!("'{second}' drawn as the {which}"))?;
+            }
+            Some(glyph) if plain_script_char(glyph).is_some() => {
+                // the whole run of the same kind is the script: ^⁻¹ is ^{-1}
+                let sub = is_subscript_char(glyph);
+                let run = self.c[at..].iter().take_while(|&&g| plain_script_char(g).is_some() && is_subscript_char(g) == sub).count();
+                let glyphs: String = self.c[at..at + run].iter().collect();
+                let plain: String = glyphs.chars().filter_map(plain_script_char).collect();
+                let argument = if run == 1 { plain } else { format!("{{{plain}}}") };
+                self.tolerate(
+                    rules::E_REC_2,
+                    col,
+                    format!("'{glyphs}' after '{mark}' is already a {}", if sub { "subscript" } else { "superscript" }),
+                    &format!("read as '{mark}{argument}'"),
+                )?;
+                self.c.splice(at..at + run, argument.chars());
+            }
+            Some(_) => {}
+            None => {}
         }
         Ok(())
     }
@@ -668,7 +692,7 @@ impl Reader<'_> {
                     }
                     Some('^') if sup.is_none() || only_primes(&sup) => {
                         self.pos += 1;
-                        self.script_mark_as_argument('^')?;
+                        self.check_script_argument('^')?;
                         let arg = self.argument()?;
                         sup = Some(match sup {
                             None => arg,
@@ -677,7 +701,7 @@ impl Reader<'_> {
                     }
                     Some('_') if sub.is_none() => {
                         self.pos += 1;
-                        self.script_mark_as_argument('_')?;
+                        self.check_script_argument('_')?;
                         sub = Some(self.argument()?);
                     }
                     Some(c @ ('^' | '_')) => {
@@ -4155,6 +4179,90 @@ fn repair_controls(s: &str) -> Option<String> {
         }
     }
     changed.then_some(output)
+}
+
+/// The plain character of a Unicode superscript or subscript: every character whose Unicode
+/// decomposition is `<super>` or `<sub>` of a Latin or Greek letter, a digit, `+ − = ( )`. The
+/// ordinal indicators `ª` and `º` are left out: they stand for other things (`º` for a degree).
+fn plain_script_char(c: char) -> Option<char> {
+    Some(match c {
+        '⁰' | '₀' => '0',
+        '¹' | '₁' => '1',
+        '²' | '₂' => '2',
+        '³' | '₃' => '3',
+        '⁴' | '₄' => '4',
+        '⁵' | '₅' => '5',
+        '⁶' | '₆' => '6',
+        '⁷' | '₇' => '7',
+        '⁸' | '₈' => '8',
+        '⁹' | '₉' => '9',
+        '⁺' | '₊' => '+',
+        '⁻' | '₋' => '-',
+        '⁼' | '₌' => '=',
+        '⁽' | '₍' => '(',
+        '⁾' | '₎' => ')',
+        'ᵃ' | 'ₐ' => 'a',
+        'ᵇ' => 'b',
+        'ᶜ' => 'c',
+        'ᵈ' => 'd',
+        'ᵉ' | 'ₑ' => 'e',
+        'ᶠ' => 'f',
+        'ᵍ' => 'g',
+        'ʰ' | 'ₕ' => 'h',
+        'ⁱ' | 'ᵢ' => 'i',
+        'ʲ' | 'ⱼ' => 'j',
+        'ᵏ' | 'ₖ' => 'k',
+        'ˡ' | 'ₗ' => 'l',
+        'ᵐ' | 'ₘ' => 'm',
+        'ⁿ' | 'ₙ' => 'n',
+        'ᵒ' | 'ₒ' => 'o',
+        'ᵖ' | 'ₚ' => 'p',
+        '𐞥' => 'q',
+        'ʳ' | 'ᵣ' => 'r',
+        'ˢ' | 'ₛ' => 's',
+        'ᵗ' | 'ₜ' => 't',
+        'ᵘ' | 'ᵤ' => 'u',
+        'ᵛ' | 'ᵥ' => 'v',
+        'ʷ' => 'w',
+        'ˣ' | 'ₓ' => 'x',
+        'ʸ' => 'y',
+        'ᶻ' => 'z',
+        'ᴬ' => 'A',
+        'ᴮ' => 'B',
+        'ꟲ' => 'C',
+        'ᴰ' => 'D',
+        'ᴱ' => 'E',
+        'ꟳ' => 'F',
+        'ᴳ' => 'G',
+        'ᴴ' => 'H',
+        'ᴵ' => 'I',
+        'ᴶ' => 'J',
+        'ᴷ' => 'K',
+        'ᴸ' => 'L',
+        'ᴹ' => 'M',
+        'ᴺ' => 'N',
+        'ᴼ' => 'O',
+        'ᴾ' => 'P',
+        'ꟴ' => 'Q',
+        'ᴿ' => 'R',
+        'ᵀ' => 'T',
+        'ᵁ' => 'U',
+        'ⱽ' => 'V',
+        'ᵂ' => 'W',
+        'ᵝ' | 'ᵦ' => 'β',
+        'ᵞ' | 'ᵧ' => 'γ',
+        'ᵟ' => 'δ',
+        'ᶿ' => 'θ',
+        'ᵨ' => 'ρ',
+        'ᵠ' | 'ᵩ' => 'φ',
+        'ᵡ' | 'ᵪ' => 'χ',
+        _ => return None,
+    })
+}
+
+/// The characters of [`plain_script_char`] that are subscripts (the rest are superscripts).
+fn is_subscript_char(c: char) -> bool {
+    matches!(c, '\u{2080}'..='\u{209C}' | '\u{1D62}'..='\u{1D6A}' | '\u{2C7C}')
 }
 
 /// TeX's comments: an unescaped `%` drops the rest of its line, the line break and the spaces that
