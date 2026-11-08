@@ -222,3 +222,83 @@ fn l_che_1_ce_and_pu_inside_text() {
     has(&t, &["Text(\"water, \")", "Math(Row { children: [Scripts", "Quantity"]);
     assert_eq!(en(r"\text{water, \ce{H2O}}").text, en(r"\text{water, }\ce{H2O}").text);
 }
+
+fn word(w: &str) -> Node {
+    Node::Text { parts: vec![TextPart::Text(w.into())] }
+}
+
+fn texts(node: &Node) -> Vec<Node> {
+    nodes(node).into_iter().filter(|n| matches!(n, Node::Text { .. })).cloned().collect()
+}
+
+#[test]
+fn l_che_1_words_are_text() {
+    // a capital and lowercase letters that are not an element symbol: one word, not a formula
+    let r = en(r"\ce{Hydrogen + Oxygen -> Water}");
+    assert_eq!(texts(&r.tree), [word("Hydrogen"), word("Oxygen"), word("Water")]);
+    assert_eq!(r.text, "Hydrogen + Oxygen → Water");
+    // the word is read as a word, not spelled
+    assert_eq!(r.speech, "Hydrogen plus Oxygen tends to Water");
+    // an element symbol stays an element, and a formula a formula
+    for (tex, pieces) in [(r"\ce{Co}", &["Co"][..]), (r"\ce{CO}", &["C", "O"]), (r"\ce{NaOH}", &["Na", "O", "H"]), (r"\ce{He}", &["He"])] {
+        assert_eq!(texts(&en(tex).tree), pieces.iter().map(|p| word(p)).collect::<Vec<_>>(), "{tex}");
+    }
+}
+
+#[test]
+fn l_che_1_words_written_apart_get_a_word_space() {
+    // mhchem's entitySkip: two formulas or words written apart, with no operator or arrow between
+    let r = en(r"\ce{sodium chloride -> sodium + chlorine}");
+    let row = r.tree.children().to_vec();
+    assert_eq!(row[..3], [word("sodium"), Node::Space { em: 0.333 }, word("chloride")]);
+    // around operators and arrows the spacing is theirs
+    assert_eq!(row.iter().filter(|n| matches!(n, Node::Space { em } if *em > 0.0)).count(), 1, "{row:?}");
+    assert_eq!(r.text, "sodium chloride → sodium + chlorine");
+    assert_eq!(r.speech, "sodium chloride tends to sodium plus chlorine");
+    assert_eq!(en(r"\ce{NaCl solution}").text, "NaCl solution");
+    // a coefficient keeps its small space, a state written apart and a bond get none
+    assert_eq!(en(r"\ce{CO2 + C -> 2 CO}").text, "CO_2 + C → 2 CO");
+    for tex in [r"\ce{CO2 (g) + 2 CO}", r"\ce{A \bond{-} B}", r"\ce{n H2O}", r"\ce{$x$ H2O}", r"\ce{AgCl v}"] {
+        let t = tree(tex);
+        assert!(!t.contains("0.333"), "{tex}: {t}");
+    }
+}
+
+#[test]
+fn l_che_1_carbon_monoxide_is_a_formula() {
+    let r = en(r"\ce{CO2 + C -> 2 CO}");
+    assert_eq!(r.speech, "C O sub 2 plus C tends to 2 C O");
+    assert!(!texts(&r.tree).contains(&word("CO")), "{:?}", r.tree);
+}
+
+#[test]
+fn l_che_1_state_of_aggregation_with_math_inside() {
+    let r = en(r"\ce{NaOH(aq,$\infty$)}");
+    let state = r.tree.children().last().cloned();
+    let Some(Node::Text { parts }) = state else { panic!("{:?}", r.tree) };
+    assert_eq!(parts.len(), 3, "{parts:?}");
+    assert_eq!(parts[0], TextPart::Text("(aq,".into()));
+    assert_eq!(parts[2], TextPart::Text(")".into()));
+    assert!(matches!(&parts[1], TextPart::Math(Node::Operator { symbol: '∞', .. })), "{parts:?}");
+    assert_eq!(r.text, "NaOH(aq,∞)");
+    assert!(r.speech.starts_with("Na O H (aq, infinity"), "{}", r.speech);
+    // a parenthesis that is not a state stays a group of the formula
+    has(&tree(r"\ce{Cu(en)2}"), &["Operator { symbol: '(', class: Open }"]);
+}
+
+#[test]
+fn l_che_1_amphoteric_hydroxide_with_a_word_label() {
+    let tex = r"\ce{Zn^2+  <=>[+ 2OH-][+ 2H+]  $\underset{\text{amphoteric hydroxide}}{\ce{Zn(OH)2 v}}$}";
+    let a = arrows(tex);
+    let [Node::Arrow { symbol: '⇌', above: Some(_), below: Some(_) }] = a.as_slice() else { panic!("{a:?}") };
+    let r = en(tex);
+    assert!(r.speech.ends_with("Zn open paren O H close paren sub 2 ↓ with amphoteric hydroxide below"), "{}", r.speech);
+    has(&format!("{:?}", r.tree), &["Text(\"amphoteric hydroxide\")"]);
+}
+
+#[test]
+fn l_che_1_words_in_other_languages() {
+    // a capital outside ASCII starts a word too: Água, not an operator Á
+    let r = read(r"\ce{Água + sódio}", Locale::PtBr);
+    assert_eq!(texts(&r.tree), [word("Água"), word("sódio")]);
+}

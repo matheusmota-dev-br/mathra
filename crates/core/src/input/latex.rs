@@ -2568,6 +2568,8 @@ impl Reader<'_> {
         let c: Vec<char> = raw.chars().collect();
         let mut children: Vec<Node> = Vec::new();
         let mut i = 0;
+        // whether the last token was a formula or a word, for the word space before the next one
+        let mut previous_entity = false;
         loop {
             while c.get(i).is_some_and(|x| x.is_whitespace()) {
                 i += 1;
@@ -2575,12 +2577,23 @@ impl Reader<'_> {
             if i >= c.len() {
                 break;
             }
+            let arrow = chemical_arrow(&c[i..]);
+            let entity = arrow.is_none() && chemical_entity(&chemical_token(&c, &mut i.clone()));
             if let Some(previous) = children.last() {
-                // a variable coefficient written apart ($x$ H2O, n H2O) gets the small space a number gets
+                // a variable coefficient written apart ($x$ H2O, n H2O) gets the small space a number gets;
+                // two formulas or words written apart get a word space, mhchem's entitySkip (sodium chloride)
                 let coefficient = matches!(previous.clone().simplify(), Node::Identifier { .. });
-                children.push(Node::Space { em: if coefficient { 2.0 / 18.0 } else { 0.0 } });
+                let em = if coefficient {
+                    2.0 / 18.0
+                } else if previous_entity && entity {
+                    CHEMICAL_WORD_SPACE
+                } else {
+                    0.0
+                };
+                children.push(Node::Space { em });
             }
-            if let Some((symbol, len)) = chemical_arrow(&c[i..]) {
+            previous_entity = entity;
+            if let Some((symbol, len)) = arrow {
                 i += len;
                 let above = bracketed(&c, &mut i);
                 let below = if above.is_some() { bracketed(&c, &mut i) } else { None };
@@ -2608,8 +2621,8 @@ impl Reader<'_> {
                 "→" | "⇌" | "←" => children.push(Node::Operator { symbol: token.chars().next().unwrap_or('→'), class: Class::Rel }),
                 // a variable as coefficient (x, n): italic, like in math
                 t if t.len() == 1 && t.chars().all(|x| x.is_ascii_lowercase()) => children.push(Node::Identifier { name: t.to_string(), variant: Variant::Italic }),
-                // a word (heat, light, catalyst): upright text
-                t if t.len() > 1 && t.chars().all(|x| x.is_alphabetic() && x.is_lowercase()) => children.push(Node::Text { parts: vec![TextPart::Text(t.to_string())] }),
+                // a word (heat, catalyst, Water, sodium): upright text, whole
+                t if chemical_word(t) => children.push(Node::Text { parts: vec![TextPart::Text(t.to_string())] }),
                 formula => children.push(self.chemical_formula(formula, col)?),
             }
         }
@@ -2681,9 +2694,21 @@ impl Reader<'_> {
                 // a charge at the end of the formula or before a closing bracket: Ag+, [H+], [A-]
                 attach_script(&mut children, Some(charge(&ch.to_string())), None);
                 i += 1;
-            } else if let Some(state) = ["(aq)", "(s)", "(l)", "(g)", "(sol)", "(cr)"].into_iter().find(|e| c[i..].iter().take(e.len()).copied().eq(e.chars())) {
+            } else if let Some(state) = CHEMICAL_STATES.into_iter().find(|e| c[i..].iter().take(e.len()).copied().eq(e.chars())) {
                 children.push(upright(state.to_string()));
                 i += state.chars().count();
+            } else if let Some((state, len)) = chemical_state(&c[i..]) {
+                // mhchem's state of aggregation with more inside: (aq,$\infty$)
+                let mut parts = Vec::new();
+                for (k, piece) in state.split('$').enumerate() {
+                    if k % 2 == 1 {
+                        parts.push(TextPart::Math(self.sub_reader(piece, Variant::Italic)?));
+                    } else if !piece.is_empty() {
+                        parts.push(TextPart::Text(piece.to_string()));
+                    }
+                }
+                children.push(Node::Text { parts });
+                i += len;
             } else if matches!(ch, '.' | '*' | '·') && i > 0 {
                 // hydrate or adduct: the dot is centered and a coefficient may follow
                 children.push(Node::Operator { symbol: '·', class: Class::Ord });
@@ -2784,6 +2809,57 @@ impl Reader<'_> {
             }
         }
     }
+}
+
+/// The space mhchem puts between two formulas or words written apart: its `entitySkip`, a `~`.
+const CHEMICAL_WORD_SPACE: f32 = 0.333;
+
+/// The states of aggregation `\ce` reads as upright text wherever they are.
+const CHEMICAL_STATES: [&str; 6] = ["(aq)", "(s)", "(l)", "(g)", "(sol)", "(cr)"];
+
+/// A token of `\ce` that is a word, kept whole as upright text: letters only, at least two, and either
+/// all lowercase (heat, sodium) or a capital followed by lowercase letters that is not an element
+/// symbol (Water, Hydrogen; Na and Co stay elements). mhchem draws any run of letters upright as
+/// written, so the drawing is the same; this decides how the tree keeps it (spec/chemistry.md).
+fn chemical_word(t: &str) -> bool {
+    let mut letters = t.chars();
+    let Some(first) = letters.next() else { return false };
+    let rest: Vec<char> = letters.collect();
+    if rest.is_empty() || !first.is_alphabetic() || !rest.iter().all(|x| x.is_alphabetic() && x.is_lowercase()) {
+        return false;
+    }
+    first.is_lowercase() || !symbols::ELEMENTS.contains(&t)
+}
+
+/// A token of `\ce` that is a formula or a word, which mhchem separates from the next one by a word
+/// space when they are written apart: it has a letter, and it is not an operator, a bond (`\bond{…}`),
+/// a coefficient (`n`, `$x$`) or a state of aggregation standing alone (`(g)`).
+fn chemical_entity(t: &str) -> bool {
+    if t.starts_with("\\bond") {
+        return false;
+    }
+    let c: Vec<char> = t.chars().collect();
+    let coefficient = (c.len() == 1 && c[0].is_ascii_lowercase()) || (c.len() > 1 && t.starts_with('$') && t.ends_with('$'));
+    let state = CHEMICAL_STATES.contains(&t) || chemical_state(&c).is_some_and(|(_, len)| len == c.len());
+    c.iter().any(|x| x.is_alphabetic()) && !coefficient && !state
+}
+
+/// mhchem's state of aggregation with more inside, `(aq,$\infty$)`: a parenthesis, one to three
+/// lowercase letters and a comma, up to the closing parenthesis, at the end of the formula or before a
+/// space or `,;)]}` (mhchem's pattern `state of aggregation $`). Its text and its length.
+fn chemical_state(c: &[char]) -> Option<(String, usize)> {
+    if c.first() != Some(&'(') {
+        return None;
+    }
+    let letters = c[1..].iter().take_while(|x| x.is_ascii_lowercase()).count();
+    if !(1..=3).contains(&letters) || c.get(1 + letters) != Some(&',') {
+        return None;
+    }
+    let close = c.iter().position(|&x| x == ')')?;
+    if c.get(close + 1).is_some_and(|x| !x.is_whitespace() && !",;)]}".contains(*x)) {
+        return None;
+    }
+    Some((c[..=close].iter().collect(), close + 1))
 }
 
 /// A chemical bond: drawn as its line, but it is not a minus, an equals or a congruence.

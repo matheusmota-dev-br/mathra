@@ -228,13 +228,13 @@ To find one, [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) is a c
 - `\cancel`, `\boxed`, `\textcircled`, `\phase` (steinmetz), `\angl` (actuarialangle), `\color`, `\colorbox`, `\fcolorbox`, `\phantom`, `\pmod`, `\operatorname`, spaces (`\,` `\quad` `\hspace`)
 - siunitx (`\SI`, `\qty`, `\si`, `\num`, `\ang` with minutes and seconds, ranges, lists and products), HTML entities coming from editors
 - structural chemistry (chemfig, the `chem` feature, on by default): `\chemfig{…}` with labels split into atoms, single, double and triple bonds, wedges and hashes, angles (`[2]`, `[:30]`, `[::60]`), branches, rings (aromatic, fused), distant bonds (`?`), Lewis marks (`\lewis`); reaction schemes (`\schemestart`, `\arrow{->[above][below]}` with every chemfig arrow and any angle, `\+`, `\chemname`); mechanisms (`\chemmove` with curved arrows and fishhooks between `@{hooks}`). Speech and text give each structure's molecular formula, counted from the graph with its implicit hydrogens
-- mhchem (`\ce`, `\pu`): formulas, charges, radicals, isotopes, hydrates, bonds, decimal and fractional coefficients, arrows with labels (`->[\Delta]`, `<=>[K_w]`), `\frac` with formulas
+- mhchem (`\ce`, `\pu`): formulas, charges, radicals, isotopes, hydrates, bonds, decimal and fractional coefficients, arrows with labels (`->[\Delta]`, `<=>[K_w]`), `\frac` with formulas, words as text (`\ce{Hydrogen + Oxygen -> Water}`)
 - Substitution macros: `\newcommand`, `\renewcommand`, `\def`, `\let`, `\DeclareMathOperator`, `\DeclarePairedDelimiter`, `\newenvironment`
 - Packages: physics (derivatives, `\dd`, `\eval`, `\expval`, `\mel`, `\comm`, `\grad`, `\curl`, `\laplacian`, `\vb`, `\vu`, `\order`, `\Tr`, `\qty`), braket (`\ket`, `\braket`, `\Set`), tensor (`\tensor`, `\indices`), mathtools (`\prescript`, `rcases`, `\overbracket`), xfrac, units, `\genfrac`, `\substack`, `\sideset`, `\smash`, `\mathclap`, `\multicolumn`, `\intertext`, `\hdotsfor`, `\raisebox`, `\scalebox`, `\rule`, `\verb`; old syntax `\cases`, `\matrix`, `\eqalign`
 - commutative diagrams: amscd (`\begin{CD}`), tikz-cd (`\begin{tikzcd}`, `\arrow[dr, "f"', dashed, bend left]`) and xymatrix (`\xymatrix{A \ar[r]^f & B}`): arrows in any direction, bent or shifted, with labels beside or on them, dashed, dotted, double, squiggly, hooked, two-headed, maps-to; pullback corners (`\lrcorner`)
 - mathra extensions: `\divchave{247}{5}` (long division, Brazilian layout) and `\contaarmada{+}{347}{285}` (column arithmetic), both computed
 
-Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML, mhchem's text mode (`\ce{Hydrogen + Oxygen -> Water}` is read as formulas).
+Out of scope, by the rule in `spec/boundary.md` (mathra is for equations): TikZ and TeX programming (`\ifx`, `\catcode`). Not yet: automatic line breaking, MathML and PNG output (MathML input is supported), content MathML.
 
 ## Benchmark
 
