@@ -131,7 +131,8 @@ fn table() -> &'static HashMap<Locale, Data> {
         SOURCES
             .iter()
             .map(|(locale, json)| {
-                let data: Data = serde_json::from_str(json).unwrap_or_else(|e| panic!("src/locales/{}.json: {e}", locale.code()));
+                let file = format!("src/locales/{}.json", locale.code());
+                let data: Data = serde_json::from_str(json).expect(&file);
                 assert_eq!(data.code, locale.code(), "the file of {locale:?} declares another code");
                 (*locale, data)
             })
