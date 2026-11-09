@@ -406,42 +406,65 @@ await check("A font from the mathfonts catalog (needs the network)", async () =>
   assert.equal(await page.evaluate(() => document.getElementById("editor").shadowRoot.querySelector(".settings-panel").hidden), true);
 });
 
+const dbar = ed.locator("mathra-field").locator(".dbar");
 const blockPanel = ed.locator("mathra-field").locator(".block");
 const blockSource = ed.locator("mathra-field").locator("textarea.src");
 
-await check("Chemistry: \\ce typed opens its LaTeX; the formula follows as it is typed", async () => {
+await check("Chemistry: \\ce typed makes a reaction of boxes; species, +, arrows and conditions typed in place", async () => {
   await setValue("");
   await focus();
-  await k.type("\\ce{");
-  assert.equal(await blockPanel.isVisible(), true);
-  assert.equal(await blockSource.inputValue(), "\\ce{}");
-  assert.equal(await blockSource.evaluate((t) => t.selectionStart), 4);
-  await k.type("2H2 + O2 -> 2H2O");
-  // drawn while typed
-  assert.equal(await value(), "\\ce{2H2 + O2 -> 2H2O}");
-  assert.match(await blockPanel.locator(".status").textContent(), /sem avisos/);
+  await k.type("\\ce ");
+  assert.equal(await blockPanel.isVisible(), false, "no LaTeX panel");
+  await k.type("2H2(g) + O2(g) ->[faísca] 2H2O(l)");
+  assert.equal(await value(), "\\ce{2 H2(g) + O2(g) ->[faísca] 2 H2O(l)}");
+  assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
+  // back into the last species: its bar, with the state pressed
+  await k.press("ArrowLeft");
+  assert.equal(await dbar.locator('[data-run="rxState:l"]').getAttribute("aria-pressed"), "true");
+  await dbar.locator('[data-run="rxState:aq"]').click();
+  assert.equal(await value(), "\\ce{2 H2(g) + O2(g) ->[faísca] 2 H2O(aq)}");
   await settle(page);
-  if (shots) await page.screenshot({ path: `${shots}/block.png` });
-  await k.press(`${mod}+Enter`);
-  assert.equal(await blockPanel.isVisible(), false);
-  // the cursor is after the reaction: typing goes on in math
-  await k.type("+x");
-  assert.equal(await value(), "\\ce{2H2 + O2 -> 2H2O}+x");
+  if (shots) await page.screenshot({ path: `${shots}/reaction.png` });
+  // the cursor is drawn inside the reaction, beside a letter
+  const c = await page.evaluate(() => { const f = document.getElementById("editor").field; const r = f.shadowRoot.querySelector(".caret").getBoundingClientRect(); const s = f.shadowRoot.querySelector(".drawing svg").getBoundingClientRect(); return [r.x, r.height, s.left, s.right]; });
+  assert.ok(c[0] > c[2] && c[0] <= c[3] + 4 && c[1] > 4, `caret ${c}`);
 });
 
-await check("Chemistry: a double click on a reaction edits it; the whole edit undoes in one step", async () => {
+await check("Chemistry: a click on an arrow, its kind changed from the bar; a condition below added", async () => {
   await setValue("\\ce{H2O -> H2 + O2}");
-  const svg = ed.locator("mathra-field").locator(".drawing svg");
-  const b = await svg.boundingBox();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-  assert.equal(await ed.locator("mathra-field").locator(".hover").isVisible(), true, "the block is outlined under the pointer");
-  await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2);
+  await focus();
+  const arrowAt = await page.evaluate(() => {
+    const f = document.getElementById("editor").field;
+    const e = document.getElementById("editor").editor;
+    const a = e.root.children[0].body.children.find((p) => p.kind === "rxarrow");
+    const r = f.boxes.get(a.id);
+    const svg = f.shadowRoot.querySelector(".drawing svg");
+    const vb = svg.viewBox.baseVal, s = svg.getBoundingClientRect();
+    return [s.left + ((r.x + r.width / 2 - vb.x) / vb.width) * s.width, s.top + ((r.y + r.height / 2 - vb.y) / vb.height) * s.height];
+  });
+  await page.mouse.click(arrowAt[0], arrowAt[1]);
+  await dbar.locator('[data-run="rxArrow:<=>"]').first().click().catch(async () => {
+    // the click put the cursor beside the arrow: the bar adds one; take the arrow from the model instead
+  });
+  assert.match(await value(), /<=>/);
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; const b = e.root.children[0].body; const i = b.children.findIndex((p) => p.kind === "rxarrow"); e.setCursor({ row: b.children[i].above, offset: 0 }); });
+  await dbar.locator('[data-run="rxPlace:below"]').click();
+  await k.type("Pt");
+  assert.match(await value(), /<=>\[\]\[Pt\]/);
+  await ed.locator('[data-act="undo"]').click();
+  assert.doesNotMatch(await value(), /Pt/);
+});
+
+await check("Chemistry: edit a reaction as LaTeX, and back to boxes when done", async () => {
+  await setValue("\\ce{H2O -> H2 + O2}");
+  await focus();
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[0].body, offset: 1 }); });
+  await dbar.locator('[data-run="editAsLatex"]').click();
   assert.equal(await blockPanel.isVisible(), true);
   await blockSource.fill("\\ce{2H2O -> 2H2 + O2}");
-  assert.equal(await value(), "\\ce{2H2O -> 2H2 + O2}");
-  await blockPanel.locator('[data-block="done"]').click();
-  await ed.locator('[data-act="undo"]').click();
-  assert.equal(await value(), "\\ce{H2O -> H2 + O2}");
+  await k.press(`${mod}+Enter`);
+  assert.equal(await value(), "\\ce{2 H2O -> 2 H2 + O2}");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.root.children[0].kind), "reaction");
 });
 
 await check("Chemistry: Esc takes the edit back; Enter beside a block opens it", async () => {
@@ -457,7 +480,6 @@ await check("Chemistry: Esc takes the edit back; Enter beside a block opens it",
   assert.equal(await blockPanel.isVisible(), false);
 });
 
-const dbar = ed.locator("mathra-field").locator(".dbar");
 
 await check("Diagrams by keyboard: a new one, Alt+arrow draws arrows, labels typed in place", async () => {
   await setValue("");

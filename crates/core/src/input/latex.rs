@@ -3255,7 +3255,8 @@ impl Reader<'_> {
             if let Some((command, value, inner, len)) = chemical_mark(&c[i..]) {
                 let spaced = i > before;
                 i += len;
-                let inner_chars: Vec<char> = inner.chars().collect();
+                // whether the piece is a formula or a word, read from its text without the marks inside
+                let inner_chars: Vec<char> = chemical_unmarked(&inner).chars().collect();
                 let mut k = 0;
                 while inner_chars.get(k).is_some_and(|x| x.is_whitespace()) {
                     k += 1;
@@ -3719,6 +3720,23 @@ fn braced_whole(t: &str) -> Option<String> {
     let mut i = 0;
     let inner = braced(&c, &mut i);
     (i == c.len() && c.last() == Some(&'}')).then_some(inner)
+}
+
+/// The text of a piece of `\ce` without the marks in it (`\htmlData{m=a}{Zn}(s)` → `Zn(s)`).
+fn chemical_unmarked(text: &str) -> String {
+    let c: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < c.len() {
+        if let Some((_, _, inner, len)) = chemical_mark(&c[i..]) {
+            out.push_str(&chemical_unmarked(&inner));
+            i += len;
+        } else {
+            out.push(c[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// A mark at the start of `c` inside `\ce`: `\htmlData{value}{inner}` (or `\class`, `\htmlClass`,

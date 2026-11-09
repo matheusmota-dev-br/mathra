@@ -3,6 +3,7 @@
 // an empty place and `#0` where the selection goes.
 
 import { readDiagram, type ArrowData, type DiagramEnv } from "./diagram.ts";
+import { readReaction } from "./reaction.ts";
 import {
   ACCENTS,
   CHAR_CLASS,
@@ -31,6 +32,8 @@ export type AtomSpec =
   | { kind: "style"; cmd: string; body: AtomSpec[] }
   | { kind: "matrix"; env: string; cells: AtomSpec[][][] }
   | { kind: "raw"; latex: string }
+  /** A reaction (mhchem's \ce): pieces, their texts as characters. */
+  | { kind: "reaction"; pieces: ({ kind: "species"; coef: string; formula: string; state: string } | { kind: "rxarrow"; arrow: string; above: string | null; below: string | null } | { kind: "rxtoken"; text: string })[] }
   /** A commutative diagram: cells and arrows, labels as atoms. */
   | { kind: "diagram"; env: DiagramEnv; cells: AtomSpec[][][]; arrows: ArrowData<AtomSpec[]>[] }
   | { kind: "command"; name: string }
@@ -271,6 +274,18 @@ class Reader {
       const color = this.peek() === "{" ? (this.pos++, this.rawGroup()) : "";
       const body = name === "color" ? this.list(["&", "\\\\", "\\right", "\\end"]) : this.argument();
       return void out.push({ kind: "style", cmd: `\\${name}{${color}}`, body });
+    }
+    // a reaction the editor can take apart becomes pieces; any other stays a block, as written
+    if (name === "ce") {
+      this.skipSpaces();
+      if (this.peek() === "{") {
+        const start = this.pos;
+        this.pos++;
+        const inner = this.rawGroup();
+        const pieces = /^\s*#[?0]?\s*$/.test(inner) ? [] : readReaction(inner);
+        out.push(pieces ? { kind: "reaction", pieces } : { kind: "raw", latex: `\\ce${this.src.slice(start, this.pos)}` });
+        return;
+      }
     }
     if (name === "xymatrix") {
       this.skipSpaces();

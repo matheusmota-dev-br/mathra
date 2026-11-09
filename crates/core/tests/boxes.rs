@@ -175,6 +175,7 @@ fn marks_inside_ce_move_nothing() {
             r"\ce{\htmlData{m=a}{6 CO2} + \htmlData{m=b}{6 H2O} \htmlData{m=r}{->[\text{light}][\text{chlorophyll}]} \htmlData{m=c}{C6H12O6} + \htmlData{m=d}{6 O2}}",
         ),
         (r"\ce{2 NO2(g) <=> N2O4(g)}", r"\ce{\htmlData{m=a}{2 NO2(g)} \htmlData{m=r}{<=>} \htmlData{m=b}{N2O4(g)}}"),
+        (r"\ce{Zn(s) | Zn^2+(aq) || Cu^2+(aq)}", r"\ce{\htmlData{m=a}{\htmlData{m=b}{Zn}\htmlData{m=c}{(s)}} \htmlData{m=d}{\htmlData{m=e}{|}} \htmlData{m=f}{Zn^2+(aq)} \htmlData{m=g}{\htmlData{m=h}{||}} Cu^2+(aq)}"),
         (r"\ce{Fe^3+ + e- -> Fe^2+}", r"\ce{\htmlData{m=a}{Fe^3+} + \htmlData{m=b}{e-} -> \htmlData{m=c}{Fe^2+}}"),
         (r"\ce{CaCO3(s) ->[\Delta] CaO(s) + CO2 ^}", r"\ce{\htmlData{m=a}{CaCO3(s)} \htmlData{m=r}{->[\Delta]} \htmlData{m=b}{CaO(s)} + \htmlData{m=c}{CO2} \htmlData{m=g}{^}}"),
     ];

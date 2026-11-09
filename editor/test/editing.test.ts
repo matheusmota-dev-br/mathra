@@ -254,33 +254,33 @@ test("a decimal comma: part of the number where the locale says so", () => {
   assert.match(e.toLatex({ marked: true }), /\\mathpunct\{\\htmlData\{m=n\d+\}\{,\}\}/);
 });
 
-test("blocks: \\ce typed opens one to edit as LaTeX; edits show at once and undo in one step", () => {
+test("blocks: \\pu typed opens one to edit as LaTeX; edits show at once and undo in one step", () => {
   const e = new Editor();
-  e.typeText("\\ce{");
+  e.typeText("\\pu{");
   const pending = e.takePendingBlock();
   assert.ok(pending, "the block asks for its editor");
-  assert.equal(pending.atom.latex, "\\ce{}");
+  assert.equal(pending.atom.latex, "\\pu{}");
   assert.equal(pending.caret, 4, "the cursor starts inside the braces");
   const s = e.editBlock(pending.atom, pending.caret);
-  s.update("\\ce{2H2 + O2 -> 2H2O");
+  s.update("\\pu{123 kJ/mol");
   // a brace still open while typing: closed in the LaTeX, so nothing else falls inside it
-  assert.equal(e.toLatex(), "\\ce{2H2 + O2 -> 2H2O}");
-  s.update("\\ce{2H2 + O2 -> 2H2O}");
+  assert.equal(e.toLatex(), "\\pu{123 kJ/mol}");
+  s.update("\\pu{123 kJ/mol}");
   s.commit();
-  assert.equal(e.toLatex(), "\\ce{2H2 + O2 -> 2H2O}");
+  assert.equal(e.toLatex(), "\\pu{123 kJ/mol}");
   e.undo();
-  assert.equal(e.toLatex(), "\\ce{}");
+  assert.equal(e.toLatex(), "\\pu{}");
 });
 
 test("blocks: cancel restores the LaTeX; an empty block just typed goes", () => {
-  const e = new Editor("\\ce{H2O} + x");
+  const e = new Editor("\\pu{1 mol} + x");
   const block = e.root.children[0];
   if (block.kind !== "raw") throw new Error("a raw block");
   const s = e.editBlock(block);
-  s.update("\\ce{D2O}");
-  assert.equal(e.toLatex(), "\\ce{D2O}+x");
+  s.update("\\pu{2 mol}");
+  assert.equal(e.toLatex(), "\\pu{2 mol}+x");
   s.cancel();
-  assert.equal(e.toLatex(), "\\ce{H2O}+x");
+  assert.equal(e.toLatex(), "\\pu{1 mol}+x");
   const f = new Editor();
   f.typeText("\\chemfig ");
   const p = f.takePendingBlock()!;
@@ -291,6 +291,7 @@ test("blocks: cancel restores the LaTeX; an empty block just typed goes", () => 
 test("blocks: the block beside the cursor; a diagram the editor cannot edit stays one", () => {
   const e = new Editor("a\\xymatrix{A \\rtwocell^{f}_{g}{\\alpha} & B}");
   assert.equal(e.blockAtCursor()?.latex, "\\xymatrix{A \\rtwocell^{f}_{g}{\\alpha} & B}");
-  const c = new Editor("\\ce{H2O}");
-  assert.equal(c.blockAtCursor()?.latex, "\\ce{H2O}");
+  // a reaction the editor cannot take apart (an alignment inside) stays a block
+  const c = new Editor("\\ce{A &-> B}");
+  assert.equal(c.blockAtCursor()?.latex, "\\ce{A &-> B}");
 });

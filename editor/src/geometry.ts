@@ -46,6 +46,8 @@ export function atomRect(atom: Atom, boxes: Map<string, Box>): Rect | null {
   if (own) return own;
   const inNumber = numberPart(atom, boxes);
   if (inNumber) return inNumber;
+  const inPiece = piecePart(atom, boxes);
+  if (inPiece) return inPiece;
   const parts: Rect[] = [];
   for (const id of [`${atom.id}l`, `${atom.id}r`]) {
     const b = boxes.get(id);
@@ -79,11 +81,45 @@ function numberPart(atom: Atom, boxes: Map<string, Box>): Rect | null {
   return null;
 }
 
+/** A character of a reaction's piece (mhchem draws the piece's text as one group): its share of the
+ * row's width, a digit in a formula (a subscript) narrower than a letter. */
+function piecePart(atom: Atom, boxes: Map<string, Box>): Rect | null {
+  const row = atom.parent;
+  const owner = row?.parent;
+  if (!row || atom.kind !== "char" || (owner?.kind !== "species" && owner?.kind !== "rxarrow")) return null;
+  const box = boxes.get(row.id);
+  if (!box) return null;
+  const subscript = owner.kind === "species" && row === owner.formula;
+  const weight = (a: Atom) => {
+    const ch = a.kind === "char" ? a.ch : "";
+    if (/[0-9]/.test(ch)) return subscript ? 0.6 : 1;
+    if (/[A-Z]/.test(ch)) return 1.2;
+    if (/[+\-]/.test(ch)) return subscript ? 0.6 : 1;
+    return 0.85;
+  };
+  const total = row.children.reduce((t, a) => t + weight(a), 0) || 1;
+  const before = row.children.slice(0, row.children.indexOf(atom)).reduce((t, a) => t + weight(a), 0);
+  const unit = box.width / total;
+  return { x: box.x + before * unit, y: box.y, width: weight(atom) * unit, height: box.height };
+}
+
 /** Where a row is drawn: its own box, or where its atoms are; an empty cell of a diagram, by its neighbours. */
 export function rowRect(row: Row, boxes: Map<string, Box>): Rect | null {
   const r = boxes.get(row.id) ?? union(row.children.map((a) => atomRect(a, boxes)).filter((r): r is Rect => !!r));
   if (r) return r;
   const d = row.parent;
+  // an empty optional place of a reaction (not drawn): beside the formula, over or under the arrow
+  if (d?.kind === "species" && row !== d.formula) {
+    const f = rowRect(d.formula, boxes) ?? boxes.get(d.id);
+    if (!f) return null;
+    return { x: row === d.coef ? f.x : f.x + f.width, y: f.y, width: 0, height: f.height };
+  }
+  if (d?.kind === "rxarrow") {
+    const a = boxes.get(d.id);
+    if (!a) return null;
+    const half = a.height / 2;
+    return { x: a.x, y: row === d.above ? a.y : a.y + half, width: a.width, height: half };
+  }
   if (d?.kind === "diagram") {
     for (let i = 0; i < d.cells.length; i++) {
       const j = d.cells[i].indexOf(row);

@@ -4,7 +4,7 @@
 import { init, render, type Options, type Result } from "@mathlabs/mathra";
 import { Editor, classOfTree, type ChangeKind } from "./model.ts";
 import { arrowAt, arrowPath, atomRect, blockAt, boxesById, caretRect, cellAt, cellRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
-import type { ArrowStyle, BlockSession, Diagram, Raw } from "./model.ts";
+import type { ArrowStyle, BlockSession, Diagram, Raw, Reaction } from "./model.ts";
 import { icon } from "./shared.ts";
 import { TOKENS, UI, say } from "./shared.ts";
 
@@ -413,11 +413,16 @@ export class MathraField extends HTMLElement {
       arrowRemove: () => e.removeArrow(),
       editAsLatex: () => {
         const at = e.matrixAtCursor();
-        const d = at?.matrix.kind === "diagram" ? at.matrix : null;
+        const d = at?.matrix.kind === "diagram" ? at.matrix : e.reactionAtCursor()?.reaction ?? null;
         if (!d) return;
         const raw = e.toBlock(d);
         if (raw) this.openBlock(raw);
       },
+      rxArrow: () => e.setReactionArrow(arg),
+      rxState: () => e.setSpeciesState(arg),
+      rxSign: () => e.addReactionSign(arg),
+      rxPlace: () => e.enterReactionPlace(arg as "above" | "below" | "coef" | "formula"),
+      rxRemove: () => e.removeReactionPiece(),
       editBlock: () => {
         const b = e.blockAtCursor();
         if (b) this.openBlock(b);
@@ -658,6 +663,26 @@ export class MathraField extends HTMLElement {
     const d = drag?.diagram ?? this.diagramAtCursor();
     if (!svg || !d || this.readOnly) {
       this.dgov.innerHTML = "";
+      const rx = svg && !this.readOnly ? this.editor.reactionAtCursor() : null;
+      if (rx && svg) {
+        // each piece of the reaction outlined, the one the cursor is on marked
+        const vb = svg.viewBox.baseVal;
+        const sr = svg.getBoundingClientRect();
+        const b = this.box.getBoundingClientRect();
+        this.dgov.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+        Object.assign(this.dgov.style, { left: `${sr.left - b.left + this.box.scrollLeft}px`, top: `${sr.top - b.top}px`, width: `${sr.width}px`, height: `${sr.height}px` });
+        const pad = 50;
+        this.dgov.innerHTML = rx.reaction.body.children
+          .filter((p) => p.kind !== "rxtoken")
+          .map((p) => {
+            const r = atomRect(p, this.boxes);
+            if (!r) return "";
+            const cls = p === rx.piece ? "cell here" : "cell";
+            return `<rect class="${cls}" x="${r.x - pad}" y="${r.y - pad}" width="${r.width + 2 * pad}" height="${r.height + 2 * pad}" rx="50"/>`;
+          })
+          .join("");
+        return this.paintReactionBar(rx.reaction);
+      }
       this.dbar.hidden = true;
       this.dbarKey = "";
       return;
@@ -733,6 +758,45 @@ export class MathraField extends HTMLElement {
     const all = [...cellRects, ...(own ? [own] : [])];
     const r = all.length ? { x: Math.min(...all.map((q) => q.x)), y: Math.min(...all.map((q) => q.y)), width: Math.max(...all.map((q) => q.x + q.width)) - Math.min(...all.map((q) => q.x)), height: Math.max(...all.map((q) => q.y + q.height)) - Math.min(...all.map((q) => q.y)) + 120 } : null;
     const p = r && this.toBox(r);
+    const host = this.getBoundingClientRect();
+    const box = this.box.getBoundingClientRect();
+    if (!p) return;
+    const width = this.dbar.offsetWidth;
+    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
+    left = Math.max(8, Math.min(left, host.width - width - 8));
+    let top = box.top - host.top + p.top + p.height + 14;
+    if (top + this.dbar.offsetHeight > host.height - 4) top = Math.max(4, box.top - host.top + p.top - this.dbar.offsetHeight - 14);
+    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
+  }
+
+  /** The bar of a reaction: the arrow's kind and conditions, a species' state, signs to add. */
+  private paintReactionBar(reaction: Reaction): void {
+    const l = this.locale;
+    const at = this.editor.reactionAtCursor();
+    const piece = at?.piece ?? null;
+    const arrow = piece?.kind === "rxarrow" ? piece.arrow : null;
+    const state = piece?.kind === "species" ? piece.state.children.map((c) => (c.kind === "char" ? c.ch : "")).join("") : null;
+    const key = `rx|${l}|${piece?.kind ?? ""}|${arrow}|${state}`;
+    if (key !== this.dbarKey) {
+      this.dbarKey = key;
+      const btn = (run: string, label: string, title: string, pressed?: boolean, text = false) =>
+        `<button type="button" data-run="${run}" title="${title}" aria-label="${title}"${pressed === undefined ? "" : ` aria-pressed="${pressed}"`}${text ? ' class="text"' : ""}>${label}</button>`;
+      const w = (k: keyof typeof UI) => say(UI[k], l);
+      const arrows: [string, string, keyof typeof UI][] = [["->", "→", "rxForward"], ["<=>", "⇌", "rxEquilibrium"], ["<=>>", "⥂", "rxEquilibriumRight"], ["<<=>", "⥄", "rxEquilibriumLeft"], ["<->", "↔", "rxResonance"], ["<-", "←", "rxBackward"]];
+      let html = arrows.map(([a, glyph, k]) => btn(`rxArrow:${a}`, glyph, w(k), arrow === null ? undefined : arrow === a)).join("");
+      if (piece?.kind === "rxarrow") html += '<span class="sep"></span>' + btn("rxPlace:above", "▔", w("rxAbove"), undefined) + btn("rxPlace:below", "▁", w("rxBelow"), undefined);
+      if (piece?.kind === "species") {
+        html += '<span class="sep"></span>' + [["s", "(s)"], ["l", "(l)"], ["g", "(g)"], ["aq", "(aq)"]].map(([s, label]) => btn(`rxState:${s}`, label, `${w("rxState")} ${label}`, state === s, true)).join("") + btn("rxState:", "∅", w("rxNoState"), state === "");
+        html += btn("rxPlace:coef", "2", w("rxCoefficient"));
+      }
+      html += '<span class="sep"></span>' + btn("rxSign:+", "+", w("rxPlus")) + btn("rxSign:^", "↑", w("rxGas")) + btn("rxSign:v", "↓", w("rxPrecipitate"));
+      if (piece) html += btn("rxRemove", icon("clear"), w("rxRemove"));
+      html += '<span class="sep"></span>' + btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, true) + `<span class="hint">${w("rxHint")}</span>`;
+      this.dbar.innerHTML = html;
+    }
+    this.dbar.hidden = false;
+    const r = atomRect(reaction, this.boxes);
+    const p = r && this.toBox({ ...r, height: r.height + 120 });
     const host = this.getBoundingClientRect();
     const box = this.box.getBoundingClientRect();
     if (!p) return;
