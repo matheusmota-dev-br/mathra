@@ -247,8 +247,11 @@ impl Reader<'_> {
     /// One `\arrow[…]` of tikz-cd, leaving cell `from`.
     fn tikzcd_arrow(&mut self, spec: &str, from: (usize, usize), col: usize) -> R<Option<DiagramArrow>> {
         let mut a = blank_arrow(from);
+        // tikz-cd starts and ends the arrow at the current cell; a direction, `to=` and `from=`
+        // move one end each: `r-c` names a cell, a direction counts from the current cell
+        let here = (from.0 as isize, from.1 as isize);
         let mut target: Option<(isize, isize)> = None;
-        let mut origin = from;
+        let mut origin: Option<(isize, isize)> = None;
         // a position given as an arrow option applies to the labels without their own
         let mut arrow_position = None;
         for item in split_top(spec, ',') {
@@ -292,22 +295,22 @@ impl Reader<'_> {
                 Some((k, v)) => (k.trim(), Some(v.trim())),
                 None => (item, None),
             };
-            if let (Some(s), None) = (step(key), value) {
-                target = Some(s);
+            if let (Some((di, dj)), None) = (step(key), value) {
+                target = Some((here.0 + di, here.1 + dj));
                 continue;
             }
             match key {
                 "to" | "from" => {
                     let cell = value.and_then(|v| v.split_once('-')).and_then(|(r, c)| Some((r.trim().parse::<usize>().ok()?, c.trim().parse::<usize>().ok()?)));
+                    let cell = match cell {
+                        Some((r, c)) if r > 0 && c > 0 => Some((r as isize - 1, c as isize - 1)),
+                        Some(_) => None,
+                        None => value.and_then(step).map(|(di, dj)| (here.0 + di, here.1 + dj)),
+                    };
                     match cell {
-                        Some((r, c)) if r > 0 && c > 0 => {
-                            if key == "to" {
-                                target = Some((r as isize - 1 - from.0 as isize, c as isize - 1 - from.1 as isize));
-                            } else {
-                                origin = (r - 1, c - 1);
-                            }
-                        }
-                        _ => self.tolerate(rules::E_REC_1, col, format!("arrow cell not in row-column form: {item}"), "ignored")?,
+                        Some(cell) if key == "to" => target = Some(cell),
+                        Some(cell) => origin = Some(cell),
+                        None => self.tolerate(rules::E_REC_1, col, format!("arrow cell not in row-column form: {item}"), "ignored")?,
                     }
                 }
                 "dashed" | "dash pattern" | "densely dashed" | "loosely dashed" => a.line = ArrowLine::Dashed,
@@ -376,14 +379,14 @@ impl Reader<'_> {
                 l.position = arrow_position.unwrap_or(0.5);
             }
         }
-        a.from = origin;
-        let Some((di, dj)) = target else {
+        if target.is_none() && origin.is_none() {
             self.tolerate(rules::E_REC_7, col, format!("arrow without a direction: \\arrow[{spec}]"), "left out")?;
             return Ok(None);
-        };
-        match destination(origin, di, dj) {
-            Some(to) => Ok(Some(DiagramArrow { to, ..a })),
-            None => {
+        }
+        let cell = |(r, c): (isize, isize)| (r >= 0 && c >= 0).then_some((r as usize, c as usize));
+        match (cell(origin.unwrap_or(here)), cell(target.unwrap_or(here))) {
+            (Some(from), Some(to)) => Ok(Some(DiagramArrow { from, to, ..a })),
+            _ => {
                 self.tolerate(rules::E_REC_7, col, format!("arrow pointing outside the diagram: \\arrow[{spec}]"), "left out")?;
                 Ok(None)
             }
