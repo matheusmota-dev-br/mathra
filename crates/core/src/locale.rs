@@ -333,3 +333,23 @@ impl fmt::Display for Locale {
         f.write_str(self.code())
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+
+    #[test]
+    #[should_panic(expected = "speech phrase 'no.such.phrase' missing from src/locales/en.json")]
+    fn a_phrase_no_language_has_is_a_bug_named_by_its_key() {
+        Locale::PtBr.phrase("no.such.phrase");
+    }
+
+    #[test]
+    fn an_optional_phrase_no_language_has_is_none() {
+        assert_eq!(Locale::PtBr.optional("no.such.phrase"), None);
+        // L-OPR-1: only the languages with their own word for the dot product have one
+        assert_eq!(Locale::Ja.own_phrase("dot_product"), None);
+        assert_eq!(Locale::En.own_phrase("dot_product"), Some("dot"));
+        assert_eq!(Locale::PtBr.own_phrase("dot_product"), Some("escalar"));
+    }
+}
