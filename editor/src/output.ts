@@ -1,0 +1,177 @@
+// <mathra-output>: what mathra makes of the field's formula, in tabs: LaTeX, MathML, SVG, PNG, speech,
+// braille and text, each with a button to copy it (and to download the images).
+
+import { FieldClient, TOKENS, html, icon, say, UI } from "./shared.ts";
+import type { MathraField } from "./field.ts";
+
+export type Format = "latex" | "mathml" | "svg" | "png" | "speech" | "braille" | "text";
+const ALL: Format[] = ["latex", "mathml", "svg", "png", "speech", "braille", "text"];
+
+const STYLE = `
+${TOKENS}
+:host { display: block; color: var(--_ink); background: var(--_background); border: 1px solid var(--_border); border-radius: var(--_radius); overflow: hidden; }
+:host([hidden]) { display: none; }
+.bar { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0; background: var(--_surface); border-bottom: 1px solid var(--_border); overflow-x: auto; }
+.bar .tab { flex: none; font: 600 13px var(--_font); color: var(--_muted); background: none; border: 0; padding: 7px 10px 8px; border-radius: var(--_radius) var(--_radius) 0 0; cursor: pointer; }
+.bar .tab[aria-selected="true"] { color: var(--_ink); background: var(--_background); box-shadow: inset 0 -2px 0 var(--_accent); }
+.bar .spacer { flex: 1; }
+.bar .act { flex: none; display: inline-flex; align-items: center; gap: 6px; font: 13px var(--_font); color: var(--_ink); background: var(--_key); border: 1px solid var(--_border); border-radius: var(--_radius); padding: 4px 9px; margin-bottom: 5px; cursor: pointer; }
+.bar .act:hover { border-color: var(--_accent); }
+.bar button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
+.body { padding: 10px 12px; min-height: 3em; }
+pre { margin: 0; font: 13px/1.55 var(--_mono); white-space: pre-wrap; word-break: break-word; max-height: var(--mathra-output-height, 220px); overflow: auto; }
+.speech, .braille { font-size: 15px; line-height: 1.6; }
+.braille { font-size: 22px; letter-spacing: 0.05em; }
+.image { display: grid; place-items: center; padding: 8px; }
+.image img { max-width: 100%; height: auto; }
+.empty { color: var(--_muted); font-size: 13px; }
+`;
+
+export class MathraOutput extends FieldClient {
+  static observedAttributes = ["formats", "locale", "png-scale"];
+  private current: Format | null = null;
+  private bar: HTMLDivElement;
+  private body: HTMLDivElement;
+  private pngUrl = "";
+
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: "open" });
+    root.innerHTML = `<style>${STYLE}</style><div class="bar" part="bar" role="tablist"></div><div class="body" part="body" role="tabpanel" aria-live="polite"></div>`;
+    this.bar = root.querySelector(".bar")!;
+    this.body = root.querySelector(".body")!;
+    this.bar.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button");
+      if (!b) return;
+      if (b.dataset.format) {
+        this.current = b.dataset.format as Format;
+        this.paint();
+      } else if (b.dataset.act === "copy") this.copy(b);
+      else if (b.dataset.act === "download") this.download();
+    });
+  }
+
+  /** The formats shown, in order (`formats="latex mathml speech"`). */
+  get formats(): Format[] {
+    const names = this.getAttribute("formats")?.split(/[\s,]+/).filter((f): f is Format => ALL.includes(f as Format));
+    return names?.length ? names : ALL;
+  }
+
+  attributeChangedCallback(): void {
+    this.paint();
+  }
+
+  protected override attach(field: MathraField): () => void {
+    const update = () => this.paint();
+    field.addEventListener("input", update);
+    queueMicrotask(update);
+    return () => field.removeEventListener("input", update);
+  }
+
+  protected override fieldChanged(): void {
+    this.paint();
+  }
+
+  /** The current format's content, as text (the PNG as a data URL). */
+  async text(format: Format = this.format): Promise<string> {
+    const out = this.field?.output;
+    if (!out) return "";
+    switch (format) {
+      case "latex":
+        return this.field!.latex;
+      case "mathml":
+        return out.mathml;
+      case "svg":
+        return out.svg;
+      case "png":
+        return this.png();
+      default:
+        return out[format];
+    }
+  }
+
+  private get format(): Format {
+    const f = this.formats;
+    return this.current && f.includes(this.current) ? this.current : f[0];
+  }
+
+  private paint(): void {
+    const locale = this.locale;
+    const format = this.format;
+    const image = format === "svg" || format === "png";
+    this.bar.setAttribute("aria-label", say(UI.outputs, locale));
+    this.bar.innerHTML =
+      this.formats.map((f) => `<button type="button" class="tab" role="tab" part="tab" data-format="${f}" aria-selected="${f === format}">${html(say(UI[f], locale))}</button>`).join("") +
+      `<span class="spacer"></span><button type="button" class="act" part="action" data-act="copy" title="${html(say(UI.copy, locale))}" aria-label="${html(say(UI.copy, locale))}">${icon("copy")}<span>${html(say(UI.copy, locale))}</span></button>` +
+      (image ? `<button type="button" class="act" part="action" data-act="download" title="${html(say(UI.download, locale))}" aria-label="${html(say(UI.download, locale))}">${icon("download")}</button>` : "");
+    const out = this.field?.output;
+    if (!out) {
+      this.body.innerHTML = `<div class="empty">${html(say(UI.empty, locale))}</div>`;
+      return;
+    }
+    if (format === "svg") this.body.innerHTML = `<div class="image">${out.svg}</div><pre>${html(out.svg.slice(0, 600))}${out.svg.length > 600 ? "…" : ""}</pre>`;
+    else if (format === "png") {
+      this.body.innerHTML = `<div class="image"></div>`;
+      this.png().then((url) => {
+        const host = this.body.querySelector(".image");
+        if (host && url) host.innerHTML = `<img alt="${html(out.speech)}" src="${url}">`;
+      });
+    } else {
+      const cls = format === "speech" || format === "braille" ? format : "";
+      void this.text(format).then((t) => (this.body.innerHTML = `<pre class="${cls}">${html(t)}</pre>`));
+    }
+  }
+
+  /** The formula as PNG (a data URL), drawn by the browser from mathra's SVG at `png-scale` (default 3) times its size, in the field's ink color. */
+  private async png(): Promise<string> {
+    const out = this.field?.output;
+    if (!out) return "";
+    const scale = Number(this.getAttribute("png-scale") ?? 3);
+    const color = getComputedStyle(this.field!).color || "#111";
+    // the ink color joins the SVG's own style attribute (a second one would make it invalid)
+    const svg = out.svg.replace('style="', `style="color:${color}; `);
+    const img = new Image();
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    await img.decode();
+    const em = parseFloat(getComputedStyle(this.field!).fontSize) || 24;
+    const w = Math.ceil((img.width || em * 4) * scale);
+    const h = Math.ceil((img.height || em) * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+    this.pngUrl = canvas.toDataURL("image/png");
+    return this.pngUrl;
+  }
+
+  private async copy(button: HTMLButtonElement): Promise<void> {
+    const format = this.format;
+    try {
+      if (format === "png" && typeof ClipboardItem !== "undefined") {
+        const blob = await (await fetch(await this.png())).blob();
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      } else await navigator.clipboard.writeText(await this.text(format));
+      const label = button.querySelector("span");
+      if (label) {
+        label.textContent = say(UI.copied, this.locale);
+        button.innerHTML = `${icon("check")}${label.outerHTML}`;
+        setTimeout(() => this.paint(), 1400);
+      }
+    } catch {
+      // without clipboard access, the text is selected for the user to copy
+      const pre = this.body.querySelector("pre");
+      if (pre) getSelection()?.selectAllChildren(pre);
+    }
+  }
+
+  private async download(): Promise<void> {
+    const format = this.format;
+    const a = document.createElement("a");
+    if (format === "png") a.href = await this.png();
+    else a.href = URL.createObjectURL(new Blob([await this.text("svg")], { type: "image/svg+xml" }));
+    a.download = `formula.${format}`;
+    a.click();
+  }
+}
+
+if (typeof customElements !== "undefined" && !customElements.get("mathra-output")) customElements.define("mathra-output", MathraOutput);

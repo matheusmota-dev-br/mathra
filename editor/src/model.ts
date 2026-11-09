@@ -341,14 +341,15 @@ export class Editor {
   }
 
   /** Inserts LaTeX at the cursor. In a snippet, `#0` is where the selection goes and `#?` an empty
-   * place; the cursor goes to the first empty place inserted, or after what was inserted. */
-  insertLatex(latex: string): void {
+   * place (when it is a whole argument); the cursor goes to the first empty place inserted, or after
+   * what was inserted. With `autoDelimiters`, `\\left…\\right` stays plain around small things. */
+  insertLatex(latex: string, options: { autoDelimiters?: boolean } = {}): void {
     this.change(() => {
       if (this.inText() && !/[#\\{}^_]/.test(latex)) {
         this.replaceSelectionWith([...latex].map((ch) => ({ kind: "char" as const, ch })));
         return;
       }
-      this.insertSpecs(readLatex(latex));
+      this.insertSpecs(readLatex(latex, options));
     });
   }
 
