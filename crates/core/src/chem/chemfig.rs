@@ -775,13 +775,17 @@ impl Mol<'_, '_> {
                         }
                         // a mark around the label (\htmlData, \class, \htmlId): read through, kept on the atom
                         "htmlData" | "class" | "htmlClass" | "htmlId" | "cssId" => {
+                            let start = self.pos - name.chars().count() - 1;
                             let mut args = Vec::new();
                             for _ in 0..2 {
                                 self.skip_spaces();
                                 args.push(if self.current() == Some('{') { self.group('{', '}')? } else { String::new() });
                             }
                             self.pending.attributes.extend(crate::input::latex::html_attribute_list(&name, &args[0]));
-                            s.push_str(args[1].trim());
+                            // what the mark holds is read in its place, as if written there (\charge, \lewis…)
+                            let end = self.pos;
+                            self.c.splice(start..end, args[1].trim().chars());
+                            self.pos = start;
                         }
                         // chemfig manual, section 5.4.3
                         "chemskipalign" => self.pending.skip_align = true,

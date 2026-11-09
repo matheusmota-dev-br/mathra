@@ -6,6 +6,7 @@
 import { readLatex, type AtomSpec } from "./latex.ts";
 import { writeDiagram, type ArrowData, type ArrowStyle, type DiagramEnv } from "./diagram.ts";
 import { REACTION_ARROWS, arrowText, speciesText, writeReaction } from "./reaction.ts";
+import { addBond, addRing, atomAt, editable, markBody, readGraph, removeAtom, setBondKind, setLabel, type Graph } from "./structure.ts";
 import { CHAR_CLASS, CHAR_LATEX, CLOSING, DELIMITERS, LOWER_LIMIT_ONLY, classOfCommand, escapeText, type AtomClass } from "./symbols.ts";
 
 export type { AtomClass } from "./symbols.ts";
@@ -134,12 +135,18 @@ for (const s of ["mathbf", "mathbb", "mathcal", "mathscr", "mathfrak", "mathrm",
  * edit as LaTeX: `‸` is where the cursor starts in it. */
 export const BLOCKS: Record<string, string> = {
   pu: "\\pu{‸}",
-  chemfig: "\\chemfig{‸}",
   schemestart: "\\schemestart ‸ \\schemestop",
 };
 
 /** Commands typed after `\` that start a diagram: one empty cell, the cursor in it. */
-const STRUCTURED: Record<string, string> = { ce: "\\ce{}" };
+const STRUCTURED: Record<string, string> = { ce: "\\ce{}", chemfig: "\\chemfig{}" };
+
+/** The selection inside a structure: an atom or a bond, by its index in mathra's reading. */
+export interface ChemSelection { atom: Raw; type: "atom" | "bond"; index: number; graph: Graph }
+
+const CHEMFIG = /^\\chemfig\{([\s\S]*)\}$/;
+/** Characters that end a label in chemfig's code (bonds, branches, rings…): not typed into one. */
+const LABEL_STOPS = /[-=~<>()*!?@\[\],\s]/;
 
 const DIAGRAMS: Record<string, string> = { tikzcd: "\\begin{tikzcd}#?\\end{tikzcd}", CD: "\\begin{CD}#?\\end{CD}", xymatrix: "\\xymatrix{#?}" };
 
@@ -216,6 +223,11 @@ export class Editor {
   decimalComma = false;
   /** The class of LaTeX kept as written (`\pdv{u}{t}` is a fraction), so its mark keeps its spacing. The field asks mathra (`classOfTree(render(latex).tree)`); without it, ordinary. */
   classifyRaw: ((latex: string) => AtomClass) | null = null;
+  /** mathra's reading of LaTeX (its `tree`), for structures: which atoms and bonds a \chemfig has and
+   * where each is written. The field sets it; without it, a structure is a block of LaTeX. */
+  parseChem: ((latex: string) => unknown) | null = null;
+  private graphs = new Map<string, Graph | null>();
+  private chem: { atom: Raw; type: "atom" | "bond"; index: number; fresh: boolean; row: Row; offset: number } | null = null;
   private rawClasses = new Map<string, AtomClass>();
   /** A block just inserted that wants its LaTeX edited (the field opens the editor of blocks). */
   private pendingBlock: { atom: Raw; caret: number } | null = null;
@@ -305,6 +317,163 @@ export class Editor {
     return !!owner && owner.kind === "text";
   }
 
+  // ---------- structures (\chemfig) ----------
+
+  /** The atoms and bonds of a \chemfig block, when the editor can edit it in place. */
+  graphOf(raw: Raw): Graph | null {
+    const m = CHEMFIG.exec(raw.latex);
+    if (!m || !this.parseChem || balanced(m[1]) !== m[1]) return null;
+    if (!this.graphs.has(raw.latex)) {
+      let g: Graph | null = null;
+      try {
+        g = readGraph(this.parseChem(raw.latex));
+      } catch {
+        g = null;
+      }
+      this.graphs.set(raw.latex, g && editable(g) ? g : null);
+    }
+    return this.graphs.get(raw.latex) ?? null;
+  }
+
+  /** The atom or bond selected in a structure (while the cursor stays where the selection put it). */
+  chemSelection(): ChemSelection | null {
+    const c = this.chem;
+    if (!c || this.anchor || this.cursor.row !== c.row || this.cursor.offset !== c.offset || c.row.children[c.offset - 1] !== c.atom) return null;
+    const graph = this.graphOf(c.atom);
+    if (!graph) return null;
+    const count = c.type === "atom" ? graph.atoms.length : graph.bonds.length;
+    if (c.index < 0 || c.index >= count) return null;
+    return { atom: c.atom, type: c.type, index: c.index, graph };
+  }
+
+  /** Selects an atom or a bond of a structure; typing then writes the atom's label. */
+  selectChem(atom: Raw, type: "atom" | "bond", index: number): void {
+    const row = atom.parent;
+    if (!row) return;
+    const offset = row.children.indexOf(atom) + 1;
+    this.anchor = null;
+    this.cursor = { row, offset };
+    this.chem = { atom, type, index, fresh: true, row, offset };
+    this.emit("cursor");
+  }
+
+  /** Leaves the structure (the cursor stays after it). */
+  clearChem(): void {
+    if (!this.chem) return;
+    this.chem = null;
+    this.emit("cursor");
+  }
+
+  private setStructure(atom: Raw, body: string): void {
+    atom.latex = `\\chemfig{${body}}`;
+  }
+
+  private chemBody(atom: Raw): string {
+    return CHEMFIG.exec(atom.latex)?.[1] ?? "";
+  }
+
+  /** A new label for the selected atom (`OH`, `CH_3`, empty for a carbon at a vertex). */
+  setChemLabel(label: string): void {
+    const s = this.chemSelection();
+    if (!s || s.type !== "atom") return;
+    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, label)));
+    if (this.chem) this.chem.fresh = false;
+  }
+
+  /** A bond from the selected atom in `angle` degrees (counterclockwise from the right) to a new atom,
+   * which is then selected; with a bond selected, from its far atom. */
+  addChemBond(angle: number, kind = "single", label = ""): void {
+    const s = this.chemSelection();
+    if (!s) return;
+    const from = s.type === "atom" ? s.index : s.graph.bonds[s.index].to;
+    let at = -1;
+    this.change(() => {
+      const r = addBond(this.chemBody(s.atom), s.graph, from, angle, kind, label);
+      at = r.at;
+      this.setStructure(s.atom, r.body);
+    });
+    const g = this.graphOf(s.atom);
+    const k = g ? atomAt(g, at) : -1;
+    if (k >= 0) this.selectChem(s.atom, "atom", k);
+  }
+
+  /** The selected bond's kind (`single`, `double`, `triple`, `wedge`, `hash`…). */
+  setChemBondKind(kind: string): void {
+    const s = this.chemSelection();
+    if (!s || s.type !== "bond") return;
+    this.change(() => this.setStructure(s.atom, setBondKind(this.chemBody(s.atom), s.graph, s.index, kind)));
+  }
+
+  /** A ring on the selected atom (`size` sides; `aromatic`: alternate double bonds). */
+  addChemRing(size: number, aromatic: boolean): void {
+    const s = this.chemSelection();
+    if (!s || s.type !== "atom") return;
+    this.change(() => this.setStructure(s.atom, addRing(this.chemBody(s.atom), s.graph, s.index, size, aromatic)));
+    this.selectChem(s.atom, "atom", s.index);
+  }
+
+  /** Removes the selected atom (with its bond, when nothing else hangs from it; otherwise its label
+   * goes) or the selected bond's far atom; the atom it hung from is selected. */
+  removeChem(): void {
+    const s = this.chemSelection();
+    if (!s) return;
+    const k = s.type === "atom" ? s.index : s.graph.bonds[s.index].to;
+    const parent = s.graph.bonds.find((b) => b.to === k)?.from ?? 0;
+    const before = s.atom.latex;
+    this.change(() => this.setStructure(s.atom, removeAtom(this.chemBody(s.atom), s.graph, k)));
+    const g = this.graphOf(s.atom);
+    const removed = g && g.atoms.length < s.graph.atoms.length;
+    if (s.atom.latex !== before) this.selectChem(s.atom, "atom", removed ? Math.min(parent, g!.atoms.length - 1) : k);
+  }
+
+  /** The atom next to the selected one in a direction (degrees): the bond closest to it. */
+  moveChem(angle: number): void {
+    const s = this.chemSelection();
+    if (!s) return;
+    const k = s.type === "atom" ? s.index : s.graph.bonds[s.index].to;
+    let best = -1;
+    let gap = 70;
+    for (const b of s.graph.bonds) {
+      const [other, dir] = b.from === k ? [b.to, b.angle] : b.to === k ? [b.from, b.angle + 180] : [-1, 0];
+      if (other < 0) continue;
+      const d = Math.abs(((dir - angle) % 360 + 540) % 360 - 180);
+      if (d < gap) {
+        gap = d;
+        best = other;
+      }
+    }
+    if (best >= 0) this.selectChem(s.atom, "atom", best);
+  }
+
+  /** Typing on a selected atom: its label (the first character replaces it). */
+  private typeInStructure(ch: string): boolean {
+    const s = this.chemSelection();
+    if (!s || !this.chem) return false;
+    if (s.type !== "atom") return true;
+    const current = s.graph.atoms[s.index].label;
+    // a sign after ^ is a charge (O^-); other bond and branch characters end nothing here
+    if (LABEL_STOPS.test(ch) && !(/[-+]/.test(ch) && current.endsWith("^") && !this.chem.fresh)) return true;
+    const label = this.chem.fresh ? ch : current + ch;
+    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, label)), true);
+    this.chem.fresh = false;
+    return true;
+  }
+
+  /** Backspace on a selected atom: a letter of its label; on one just selected (or empty), the atom. */
+  private backspaceInStructure(): boolean {
+    const s = this.chemSelection();
+    if (!s || !this.chem) return false;
+    const label = s.type === "atom" ? s.graph.atoms[s.index].label : "";
+    if (s.type === "bond" || this.chem.fresh || !label) {
+      this.removeChem();
+      return true;
+    }
+    const chars = Array.from(label);
+    chars.pop();
+    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, chars.join(""))), true);
+    return true;
+  }
+
   /** The reaction the cursor is in, with where: its row of pieces, or a species' or an arrow's row. */
   reactionAtCursor(): { reaction: Reaction; piece: Species | ReactionArrow | null } | null {
     const row = this.cursor.row;
@@ -358,6 +527,7 @@ export class Editor {
    * `{` and `|` open delimiters that grow, and their closing character leaves them; `\` starts a
    * command that a space or Enter finishes. In text, every character is itself. */
   type(ch: string): void {
+    if (this.typeInStructure(ch)) return;
     if (this.reactionAtCursor() && !this.commandBeingTyped() && ch !== "\\") return this.typeInReaction(ch);
     if (this.inText() && !this.commandBeingTyped()) {
       if (ch === "\n") return;
@@ -669,6 +839,13 @@ export class Editor {
         }
       }
       this.insertSpecs(specs);
+      // a structure from a palette: its first substituent to fill (R), or its first atom, selected
+      const made = this.cursor.row.children[this.cursor.offset - 1];
+      const g = made?.kind === "raw" && !this.anchor ? this.graphOf(made) : null;
+      if (made?.kind === "raw" && g) {
+        const r = g.atoms.findIndex((a) => a.label === "R");
+        this.chem = { atom: made, type: "atom", index: Math.max(0, r), fresh: true, row: this.cursor.row, offset: this.cursor.offset };
+      }
     });
   }
 
@@ -939,6 +1116,7 @@ export class Editor {
   /** Backspace: deletes the selection, or the atom before the cursor; a structure with something
    * inside is entered from its end; at the start of a place, the structure goes if it is empty. */
   backspace(): void {
+    if (this.backspaceInStructure()) return;
     this.change(() => {
       if (this.deleteSelection()) return;
       const { row, offset } = this.cursor;
@@ -956,6 +1134,7 @@ export class Editor {
 
   /** Delete: the selection, or the atom after the cursor (a structure with something inside is entered from its start). */
   deleteForward(): void {
+    if (this.chemSelection()) return this.removeChem();
     this.change(() => {
       if (this.deleteSelection()) return;
       const { row, offset } = this.cursor;
@@ -1318,6 +1497,8 @@ export class Editor {
       this.insertSpecs(readLatex(STRUCTURED[name]), { cursorAfter: true });
       const rx = this.cursor.row.children[this.cursor.offset - 1];
       if (rx?.kind === "reaction") this.cursor = { row: rx.body, offset: 0 };
+      if (rx?.kind === "raw" && this.graphOf(rx)) this.chem = { atom: rx, type: "atom", index: 0, fresh: true, row: this.cursor.row, offset: this.cursor.offset };
+      else if (rx?.kind === "raw") this.pendingBlock = { atom: rx, caret: rx.latex.length - 1 };
       return true;
     }
     const snippet = TEMPLATES[name];
@@ -1683,8 +1864,11 @@ export class Editor {
         if (!marked || UNMARKED.test(latex) || hasLooseAmpersand(latex)) return latex;
         const cls = this.rawClass(latex);
         const wrapper = cls === "op" ? "\\mathop" : CLASS_WRAPPER[cls ?? "ord"];
+        // a structure: each atom marked inside it, for the field to find (and pick) them
+        const g = this.graphOf(atom);
+        const inner = g ? `\\chemfig{${markBody(this.chemBody(atom), g, (k) => `${atom.id}a${k}`)}}` : latex;
         // marked `raw`: the field outlines a block of LaTeX under the pointer, to edit as written
-        const m = marked ? `\\htmlData{m=${atom.id},raw=1}{${latex}}` : latex;
+        const m = marked ? `\\htmlData{m=${atom.id},raw=1${g ? ",chem=1" : ""}}{${inner}}` : latex;
         return wrapper ? `${wrapper}{${m}}` : m;
       }
       case "command":

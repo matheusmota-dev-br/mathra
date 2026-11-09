@@ -201,6 +201,8 @@ fn marks_on_chemfig_atoms_move_nothing() {
         ),
         (r"\chemfig{*6(-=-=(-OH)-=)}", r"\chemfig{*6(-=-=(-\htmlData{m=x}{OH})-=)}"),
         (r"\chemfig{H_3C-C(=[1]O)-[7]OH}", r"\chemfig{\htmlData{m=a}{H_3C}-\htmlData{m=b}{C}(=[1]\htmlData{m=c}{O})-[7]\htmlData{m=d}{OH}}"),
+        (r"\chemfig{\charge{90=\|,0=$\oplus$}{N}-H}", r"\chemfig{\htmlData{m=a}{\charge{90=\|,0=$\oplus$}{N}}-\htmlData{m=b}{H}}"),
+        (r"\chemfig{\lewis{0:2:,O}=C=\lewis{4:6:,O}}", r"\chemfig{\htmlData{m=a}{\lewis{0:2:,O}}=\htmlData{m=c}{C}=\lewis{4:6:,O}}"),
         (r"\chemfig{H_3C-NH_2^+}", r"\chemfig{\htmlData{m=a}{H_3C}-\htmlData{m=b}{NH_2^+}}"),
         (r"\chemfig{*6(-=-=-=)}", r"\chemfig{\htmlData{m=v0}{}*6(-\htmlData{m=v1}{}=\htmlData{m=v2}{}-=-=)}"),
         (r"\chemfig{-[:30]-[:-30]OH}", r"\chemfig{\htmlData{m=v}{}-[:30]\htmlData{m=w}{}-[:-30]OH}"),

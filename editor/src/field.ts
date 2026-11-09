@@ -4,7 +4,7 @@
 import { init, render, type Options, type Result } from "@mathlabs/mathra";
 import { Editor, classOfTree, type ChangeKind } from "./model.ts";
 import { arrowAt, arrowPath, atomRect, blockAt, boxesById, caretRect, cellAt, cellRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
-import type { ArrowStyle, BlockSession, Diagram, Raw, Reaction } from "./model.ts";
+import type { ArrowStyle, BlockSession, ChemSelection, Diagram, Raw, Reaction } from "./model.ts";
 import { icon } from "./shared.ts";
 import { TOKENS, UI, say } from "./shared.ts";
 
@@ -74,6 +74,9 @@ textarea { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; 
 .dgov .cell.here { stroke: var(--_accent); stroke-dasharray: none; fill: color-mix(in srgb, var(--_accent) 7%, transparent); }
 .dgov .cell.target { stroke: var(--_slot); stroke-width: 2; stroke-dasharray: none; fill: color-mix(in srgb, var(--_slot) 12%, transparent); }
 .dgov .arrow { fill: none; stroke: var(--_accent); stroke-width: 9; stroke-linecap: round; opacity: 0.28; vector-effect: non-scaling-stroke; }
+.dgov .atom { fill: color-mix(in srgb, var(--_accent) 4%, transparent); stroke: var(--_border); stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.dgov .atom.here { stroke: var(--_accent); stroke-width: 2; stroke-dasharray: none; fill: color-mix(in srgb, var(--_accent) 12%, transparent); }
+.box.chem .caret { visibility: hidden; }
 .dgov .ghost { fill: none; stroke: var(--_slot); stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
 .dbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: calc(100% - 16px); padding: 6px; background: var(--_background); border: 1px solid var(--_border); border-radius: calc(var(--_radius) + 2px); box-shadow: 0 8px 24px rgb(0 0 0 / 0.14); font: 12px var(--_font); animation: drop 0.14s ease-out; }
 .dbar[hidden] { display: none; }
@@ -201,6 +204,9 @@ export class MathraField extends HTMLElement {
   private dgov!: SVGSVGElement;
   private dbar!: HTMLDivElement;
   /** A drag from a cell of a diagram: an arrow being drawn once it leaves the cell. */
+  private chemDrag: { atom: Raw; k: number; x0: number; y0: number; x: number; y: number; active: boolean } | null = null;
+  /** The kind of bond the structure bar draws next. */
+  private chemKind = "single";
   private arrowDrag: { diagram: Diagram; from: [number, number]; to: [number, number] | null; x: number; y: number; active: boolean } | null = null;
   private dbarKey = "";
   private ownValue: string | null = null;
@@ -260,6 +266,13 @@ export class MathraField extends HTMLElement {
     this.box.addEventListener("pointermove", (e) => this.pointermove(e));
     this.box.addEventListener("pointerup", () => {
       this.dragging = false;
+      const chem = this.chemDrag;
+      this.chemDrag = null;
+      if (chem?.active) {
+        const angle = this.snapAngle(chem.x - chem.x0, chem.y - chem.y0);
+        this.editor.selectChem(chem.atom, "atom", chem.k);
+        this.editor.addChemBond(angle, this.chemKind);
+      }
       const drag = this.arrowDrag;
       this.arrowDrag = null;
       this.box.classList.remove("dragging-arrow");
@@ -267,6 +280,8 @@ export class MathraField extends HTMLElement {
       else if (drag?.active) this.placeDiagram();
     });
     this.box.addEventListener("dblclick", (e) => {
+      // in a structure, a click picks atoms and bonds; its LaTeX opens from its bar
+      if (this.editor.chemSelection()) return;
       const b = this.blockUnder(e);
       if (b && !this.readOnly) this.openBlock(b);
       else this.selectRow();
@@ -274,6 +289,8 @@ export class MathraField extends HTMLElement {
     this.editor.onChange((kind) => this.changed(kind));
     // LaTeX the editor keeps as written gets the class mathra reads it into
     this.editor.classifyRaw = (latex) => classOfTree(render(latex, { locale: this.locale as Options["locale"] }).tree);
+    // structures (\chemfig): mathra says which atoms and bonds they have and where each is written
+    this.editor.parseChem = (latex) => render(latex).tree;
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.placeOverlays()).observe(this.box);
   }
 
@@ -370,6 +387,14 @@ export class MathraField extends HTMLElement {
     const colon = action.indexOf(":");
     const verb = colon < 0 ? action : action.slice(0, colon);
     const arg = colon < 0 ? "" : action.slice(colon + 1);
+    // in a structure, the arrows move between atoms and Alt+arrow draws a bond
+    const chem = e.chemSelection();
+    const towards: Record<string, number> = { moveLeft: 180, moveRight: 0, moveUp: 90, moveDown: 270, arrowLeft: 180, arrowRight: 0, arrowUp: 90, arrowDown: 270 };
+    if (chem && verb in towards) {
+      if (verb.startsWith("move")) e.moveChem(towards[verb]);
+      else e.addChemBond(towards[verb], arg === "dashed" ? "double" : this.chemKind);
+      return;
+    }
     const actions: Record<string, () => void> = {
       moveLeft: () => e.moveLeft(),
       moveRight: () => e.moveRight(),
@@ -411,7 +436,25 @@ export class MathraField extends HTMLElement {
       arrowBend: () => e.setArrowBend(arg === "left" || arg === "right" ? arg : null),
       arrowSwap: () => e.swapArrowLabel(),
       arrowRemove: () => e.removeArrow(),
+      chemLabel: () => e.setChemLabel(arg),
+      chemBond: () => e.addChemBond(Number(arg), this.chemKind),
+      chemKind: () => {
+        if (e.chemSelection()?.type === "bond") e.setChemBondKind(arg);
+        else {
+          this.chemKind = arg;
+          this.dbarKey = "";
+          this.placeDiagram();
+        }
+      },
+      chemRing: () => e.addChemRing(Number(arg.replace("a", "")), arg.endsWith("a")),
+      chemRemove: () => e.removeChem(),
       editAsLatex: () => {
+        const s = e.chemSelection();
+        if (s) {
+          e.clearChem();
+          this.openBlock(s.atom);
+          return;
+        }
         const at = e.matrixAtCursor();
         const d = at?.matrix.kind === "diagram" ? at.matrix : e.reactionAtCursor()?.reaction ?? null;
         if (!d) return;
@@ -583,6 +626,18 @@ export class MathraField extends HTMLElement {
     if (!at || this.readOnly) return;
     const p = this.svgPoint(e);
     if (p) {
+      // on an atom or a bond of a structure: picked; a drag from an atom draws a bond
+      const hit = this.chemAt(p.x, p.y);
+      if (hit) {
+        this.editor.selectChem(hit.atom, hit.type, hit.index);
+        if (hit.type === "atom") {
+          const c = this.chemPoints(hit.atom)?.[hit.index];
+          if (c) this.chemDrag = { atom: hit.atom, k: hit.index, x0: c.x, y0: c.y, x: p.x, y: p.y, active: false };
+        }
+        this.dragging = true;
+        this.box.setPointerCapture?.(e.pointerId);
+        return;
+      }
       // on an arrow: its label to edit
       const arrow = arrowAt(this.editor, this.boxes, p.x, p.y);
       const cell = cellAt(this.editor, this.boxes, p.x, p.y);
@@ -601,6 +656,16 @@ export class MathraField extends HTMLElement {
   private pointermove(e: PointerEvent): void {
     if (!e.buttons) this.hoverBlock(e);
     if (!this.dragging || !(e.buttons & 1)) return;
+    const chem = this.chemDrag;
+    if (chem) {
+      const p = this.svgPoint(e);
+      if (!p) return;
+      chem.x = p.x;
+      chem.y = p.y;
+      if (Math.hypot(p.x - chem.x0, p.y - chem.y0) > 450) chem.active = true;
+      if (chem.active) this.placeDiagram();
+      return;
+    }
     const drag = this.arrowDrag;
     const p = this.svgPoint(e);
     // a drag that starts in a diagram's cell draws an arrow, never a selection
@@ -661,6 +726,9 @@ export class MathraField extends HTMLElement {
     const svg = this.drawing.querySelector("svg");
     const drag = this.arrowDrag?.active ? this.arrowDrag : null;
     const d = drag?.diagram ?? this.diagramAtCursor();
+    const chemSel = svg && !this.readOnly ? this.editor.chemSelection() : null;
+    this.box.classList.toggle("chem", !!chemSel);
+    if (chemSel && svg) return this.placeStructure(svg, chemSel);
     if (!svg || !d || this.readOnly) {
       this.dgov.innerHTML = "";
       const rx = svg && !this.readOnly ? this.editor.reactionAtCursor() : null;
@@ -769,6 +837,119 @@ export class MathraField extends HTMLElement {
     Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
   }
 
+  /** Where each atom of a structure is drawn (its label's middle; a vertex's point), by index. */
+  private chemPoints(atom: Raw): { x: number; y: number; r: number }[] | null {
+    const g = this.editor.graphOf(atom);
+    if (!g) return null;
+    const out: { x: number; y: number; r: number }[] = [];
+    g.atoms.forEach((a, k) => {
+      // a ring that closes on its first atom names it again: the box is the first one's
+      const first = g.atoms.findIndex((b) => b.span && a.span && b.span[0] === a.span[0]);
+      const b = this.boxes.get(`${atom.id}a${first >= 0 ? first : k}`);
+      out.push(b ? { x: b.x + b.width / 2, y: b.y + b.height / 2, r: Math.max(b.width, b.height) / 2 } : { x: NaN, y: NaN, r: 0 });
+    });
+    return out;
+  }
+
+  /** The atom or bond of a structure at a point of the drawing. */
+  private chemAt(x: number, y: number): { atom: Raw; type: "atom" | "bond"; index: number } | null {
+    for (const row of this.editor.rows())
+      for (const a of row.children) {
+        if (a.kind !== "raw") continue;
+        const g = this.editor.graphOf(a);
+        const pts = g && this.chemPoints(a);
+        if (!g || !pts) continue;
+        let best: { type: "atom" | "bond"; index: number; d: number } | null = null;
+        pts.forEach((p, k) => {
+          const d = Math.hypot(x - p.x, y - p.y) - p.r;
+          if (d < 220 && (!best || d < best.d)) best = { type: "atom", index: k, d };
+        });
+        if (!best)
+          g.bonds.forEach((b, k) => {
+            const p = pts[b.from];
+            const q = pts[b.to];
+            if (!p || !q || Number.isNaN(p.x + q.x)) return;
+            const len2 = (q.x - p.x) ** 2 + (q.y - p.y) ** 2 || 1;
+            const t = Math.max(0, Math.min(1, ((x - p.x) * (q.x - p.x) + (y - p.y) * (q.y - p.y)) / len2));
+            const d = Math.hypot(x - (p.x + t * (q.x - p.x)), y - (p.y + t * (q.y - p.y)));
+            if (d < 160 && (!best || d < best.d)) best = { type: "bond", index: k, d };
+          });
+        const found = best as { type: "atom" | "bond"; index: number; d: number } | null;
+        if (found) return { atom: a, type: found.type, index: found.index };
+      }
+    return null;
+  }
+
+  /** A drag's direction as chemfig draws bonds: counterclockwise from the right, in steps of 30°. */
+  private snapAngle(dx: number, dy: number): number {
+    const a = (Math.atan2(-dy, dx) * 180) / Math.PI;
+    return ((Math.round(a / 30) * 30) % 360 + 360) % 360;
+  }
+
+  /** Over the structure being edited: its atoms outlined, the atom or bond picked, a bond being dragged; its bar. */
+  private placeStructure(svg: SVGSVGElement, s: ChemSelection): void {
+    const vb = svg.viewBox.baseVal;
+    const sr = svg.getBoundingClientRect();
+    const b = this.box.getBoundingClientRect();
+    this.dgov.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+    Object.assign(this.dgov.style, { left: `${sr.left - b.left + this.box.scrollLeft}px`, top: `${sr.top - b.top}px`, width: `${sr.width}px`, height: `${sr.height}px` });
+    const pts = this.chemPoints(s.atom) ?? [];
+    let out = "";
+    pts.forEach((p, k) => {
+      if (Number.isNaN(p.x)) return;
+      const here = s.type === "atom" && s.index === k;
+      out += `<circle class="atom${here ? " here" : ""}" cx="${p.x}" cy="${p.y}" r="${p.r + 110}"/>`;
+    });
+    if (s.type === "bond") {
+      const bd = s.graph.bonds[s.index];
+      const p = pts[bd.from];
+      const q = pts[bd.to];
+      if (p && q) out += `<line class="arrow" x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}"/>`;
+    }
+    const drag = this.chemDrag?.active ? this.chemDrag : null;
+    if (drag) {
+      const a = (this.snapAngle(drag.x - drag.x0, drag.y - drag.y0) * Math.PI) / 180;
+      const len = 1300;
+      out += `<line class="ghost" x1="${drag.x0}" y1="${drag.y0}" x2="${drag.x0 + Math.cos(a) * len}" y2="${drag.y0 - Math.sin(a) * len}"/>`;
+    }
+    this.dgov.innerHTML = out;
+    // the bar
+    const l = this.locale;
+    const label = s.type === "atom" ? s.graph.atoms[s.index].label : "";
+    const kind = s.type === "bond" ? s.graph.bonds[s.index].kind : this.chemKind;
+    const key = `ch|${l}|${s.type}|${label}|${kind}`;
+    if (key !== this.dbarKey) {
+      this.dbarKey = key;
+      const btn = (run: string, text: string, title: string, pressed?: boolean, cls = "") =>
+        `<button type="button" data-run="${run}" title="${title}" aria-label="${title}"${pressed === undefined ? "" : ` aria-pressed="${pressed}"`}${cls ? ` class="${cls}"` : ""}>${text}</button>`;
+      const w = (k: keyof typeof UI) => say(UI[k], l);
+      const kinds: [string, string, keyof typeof UI][] = [["single", "—", "chSingle"], ["double", "=", "chDouble"], ["triple", "≡", "chTriple"], ["wedge", "◀", "chWedge"], ["hash", "⋯", "chHash"]];
+      let html = "";
+      if (s.type === "atom") {
+        html += btn("chemLabel:", "·", w("chVertex"), label === "") + ["C", "H", "N", "O", "S", "P", "F", "Cl", "Br", "I"].map((el) => btn(`chemLabel:${el}`, el, `${w("chElement")} ${el}`, label === el)).join("");
+        html += '<span class="sep"></span>' + kinds.slice(0, 3).map(([k2, g, t]) => btn(`chemKind:${k2}`, g, t ? w(t) : k2, kind === k2)).join("");
+        const dirs: [number, string][] = [[0, "→"], [30, "↗"], [90, "↑"], [150, "↖"], [180, "←"], [210, "↙"], [270, "↓"], [330, "↘"]];
+        html += '<span class="sep"></span>' + dirs.map(([a, g]) => btn(`chemBond:${a}`, g, `${w("chBondTo")} ${a}°`)).join("");
+        html += '<span class="sep"></span>' + btn("chemRing:6a", "⌬", w("chBenzene")) + btn("chemRing:6", "⬡", w("chHexagon")) + btn("chemRing:5", "⬠", w("chPentagon"));
+      } else html += kinds.map(([k2, g, t]) => btn(`chemKind:${k2}`, g, w(t), kind === k2)).join("");
+      html += btn("chemRemove", icon("clear"), w("chRemove"));
+      html += '<span class="sep"></span>' + btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, "text") + `<span class="hint">${w(s.type === "atom" ? "chAtomHint" : "chBondHint")}</span>`;
+      this.dbar.innerHTML = html;
+    }
+    this.dbar.hidden = false;
+    const r = atomRect(s.atom, this.boxes);
+    const p = r && this.toBox({ ...r, height: r.height + 200 });
+    const host = this.getBoundingClientRect();
+    const box = this.box.getBoundingClientRect();
+    if (!p) return;
+    const width = this.dbar.offsetWidth;
+    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
+    left = Math.max(8, Math.min(left, host.width - width - 8));
+    let top = box.top - host.top + p.top + p.height + 14;
+    if (top + this.dbar.offsetHeight > host.height - 4) top = Math.max(4, box.top - host.top + p.top - this.dbar.offsetHeight - 14);
+    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
+  }
+
   /** The bar of a reaction: the arrow's kind and conditions, a species' state, signs to add. */
   private paintReactionBar(reaction: Reaction): void {
     const l = this.locale;
@@ -821,7 +1002,9 @@ export class MathraField extends HTMLElement {
 
   /** Outlines the block under the pointer, with a tooltip that says it can be edited. */
   private hoverBlock(e: PointerEvent): void {
-    const b = this.readOnly || this.block ? null : this.blockUnder(e);
+    const under = this.readOnly || this.block ? null : this.blockUnder(e);
+    // a structure is edited atom by atom, not as a block
+    const b = under && !this.editor.graphOf(under) ? under : null;
     const r = b && atomRect(b, this.boxes);
     const p = r && this.toBox(r);
     this.hoverBox.hidden = !p;
@@ -917,8 +1100,9 @@ export class MathraField extends HTMLElement {
       return;
     }
     if (e.key === "Escape") {
-      // leave a command being typed, else the selection
-      if (this.editor.commandBeingTyped()) this.editor.backspace();
+      // leave a command being typed, a structure, else the selection
+      if (this.editor.chemSelection()) this.editor.clearChem();
+      else if (this.editor.commandBeingTyped()) this.editor.backspace();
       else if (this.editor.anchor) this.editor.setCursor(this.editor.cursor);
     }
     // printable characters arrive through `input`, which also covers phones and dead keys

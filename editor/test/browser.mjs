@@ -467,6 +467,78 @@ await check("Chemistry: edit a reaction as LaTeX, and back to boxes when done", 
   assert.equal(await page.evaluate(() => document.getElementById("editor").editor.root.children[0].kind), "reaction");
 });
 
+const atomCenter = (k) => page.evaluate((k) => {
+  const ed = document.getElementById("editor");
+  const raw = ed.editor.root.children.find((a) => a.kind === "raw");
+  const b = ed.field.boxes.get(`${raw.id}a${k}`);
+  const svg = ed.field.shadowRoot.querySelector(".drawing svg");
+  const vb = svg.viewBox.baseVal, s = svg.getBoundingClientRect();
+  return [s.left + ((b.x + b.width / 2 - vb.x) / vb.width) * s.width, s.top + ((b.y + b.height / 2 - vb.y) / vb.height) * s.height];
+}, k);
+
+await check("Structures by keyboard: a new one, its atom typed, Alt+arrow bonds, arrows between atoms", async () => {
+  await setValue("");
+  await focus();
+  await tab("Química").click();
+  await button("Estrutura: digite o átomo, Alt+seta ou arraste para ligações").click();
+  await k.type("H3C");
+  await k.press("Alt+ArrowRight");
+  await k.type("C");
+  await k.press("Alt+ArrowUp");
+  await k.type("O");
+  assert.equal(await value(), "\\chemfig{H3C-[:0]C-[:90]O}");
+  // down to the carbon, then a double bond from the bar towards the lower right
+  await k.press("ArrowDown");
+  await dbar.locator('[data-run="chemKind:double"]').click();
+  await dbar.locator('[data-run="chemBond:330"]').click();
+  await k.type("O");
+  assert.equal(await value(), "\\chemfig{H3C-[:0]C(=[:-30]O)-[:90]O}");
+  assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/structure-keys.png` });
+});
+
+await check("Structures: a template's R typed over; a click on a bond, its kind changed", async () => {
+  await setValue("");
+  await focus();
+  await tab("Química").click();
+  await button("Anel benzênico com substituinte R").click();
+  await k.type("NO_2");
+  assert.equal(await value(), "\\chemfig{*6(-=-=(-NO_2)-=)}");
+  // the bond between atoms 0 and 1 of the ring
+  const [a, b] = [await atomCenter(0), await atomCenter(1)];
+  await page.mouse.click((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.chemSelection()?.type), "bond");
+  await dbar.locator('[data-run="chemKind:double"]').click();
+  assert.equal(await value(), "\\chemfig{*6(==-=(-NO_2)-=)}");
+  await ed.locator('[data-act="undo"]').click();
+  assert.equal(await value(), "\\chemfig{*6(-=-=(-NO_2)-=)}");
+});
+
+await check("Structures by mouse: a drag from an atom draws a bond; a click picks an atom", async () => {
+  await setValue("\\chemfig{A-B}");
+  await focus();
+  const b = await atomCenter(1);
+  // the kind the bar draws stays as last picked: single again
+  await page.mouse.click(b[0], b[1]);
+  await dbar.locator('[data-run="chemKind:single"]').click();
+  await page.mouse.move(b[0], b[1]);
+  await page.mouse.down();
+  await page.mouse.move(b[0] + 40, b[1] - 23, { steps: 3 });
+  await page.mouse.move(b[0] + 87, b[1] - 50, { steps: 3 });
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/structure-drag.png` });
+  await page.mouse.up();
+  await k.type("OH");
+  assert.equal(await value(), "\\chemfig{A-B-[:30]OH}");
+  const a = await atomCenter(0);
+  await page.mouse.click(a[0], a[1]);
+  await k.type("X");
+  assert.equal(await value(), "\\chemfig{X-B-[:30]OH}");
+  await k.press("Escape");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.chemSelection()), null);
+});
+
 await check("Chemistry: Esc takes the edit back; Enter beside a block opens it", async () => {
   await setValue("\\chemfig{A-B}");
   await focus();
