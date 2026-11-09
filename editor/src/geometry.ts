@@ -117,6 +117,22 @@ function contains(r: Rect, x: number, y: number): boolean {
   return x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height;
 }
 
+/** The innermost block of LaTeX (a raw atom) drawn at (x, y), if any. */
+export function blockAt(editor: Editor, boxes: Map<string, Box>, x: number, y: number): Atom | null {
+  let best: Atom | null = null;
+  let area = Infinity;
+  for (const row of editor.rows())
+    for (const a of row.children) {
+      if (a.kind !== "raw") continue;
+      const r = atomRect(a, boxes);
+      if (r && contains(r, x, y) && r.width * r.height < area) {
+        best = a;
+        area = r.width * r.height;
+      }
+    }
+  return best;
+}
+
 /** Where a click at (x, y) puts the cursor: in the innermost row whose box holds the point (the
  * formula itself if none), before the first atom whose middle is right of the point. */
 export function cursorAt(editor: Editor, boxes: Map<string, Box>, x: number, y: number): Cursor {

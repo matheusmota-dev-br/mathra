@@ -111,6 +111,28 @@ export const TEMPLATES: Record<string, string> = {
 for (const a of ["vec", "hat", "bar", "dot", "ddot", "tilde", "widehat", "widetilde", "overline", "underline", "overrightarrow", "overleftarrow", "overbrace", "underbrace", "boxed", "cancel"]) TEMPLATES[a] = `\\${a}{#0}`;
 for (const s of ["mathbf", "mathbb", "mathcal", "mathscr", "mathfrak", "mathrm", "mathit", "mathsf", "mathtt", "boldsymbol"]) TEMPLATES[s] = `\\${s}{#0}`;
 
+/** Commands typed after `\` that open a block of their own language (mhchem, chemfig, diagrams), to
+ * edit as LaTeX: `‸` is where the cursor starts in it. */
+export const BLOCKS: Record<string, string> = {
+  ce: "\\ce{‸}",
+  pu: "\\pu{‸}",
+  chemfig: "\\chemfig{‸}",
+  schemestart: "\\schemestart ‸ \\schemestop",
+  tikzcd: "\\begin{tikzcd}\n‸\n\\end{tikzcd}",
+  xymatrix: "\\xymatrix{‸}",
+  CD: "\\begin{CD}\n‸\n\\end{CD}",
+};
+
+/** Editing a block's LaTeX: changes show at once; `commit` makes them one step of undo, `cancel` takes them back. */
+export interface BlockSession {
+  atom: Raw;
+  /** Where the cursor starts in the LaTeX. */
+  caret: number;
+  update(latex: string): void;
+  commit(): void;
+  cancel(): void;
+}
+
 /** Names of the structures that attach to the atom before the cursor. */
 export type ScriptTemplate = "sup" | "sub";
 
@@ -173,6 +195,8 @@ export class Editor {
   /** The class of LaTeX kept as written (`\pdv{u}{t}` is a fraction), so its mark keeps its spacing. The field asks mathra (`classOfTree(render(latex).tree)`); without it, ordinary. */
   classifyRaw: ((latex: string) => AtomClass) | null = null;
   private rawClasses = new Map<string, AtomClass>();
+  /** A block just inserted that wants its LaTeX edited (the field opens the editor of blocks). */
+  private pendingBlock: { atom: Raw; caret: number } | null = null;
   private next = 0;
   private listeners = new Set<ChangeListener>();
   private undoStack: string[] = [];
@@ -308,8 +332,10 @@ export class Editor {
           this.insertSpecs(readLatex(`\\${ch}`));
         });
       }
-      this.change(() => this.finishCommand(command));
-      if (ch === " ") return;
+      let opened = false;
+      this.change(() => void (opened = this.finishCommand(command)));
+      // the space or the brace that ended \ce goes: the block's editor takes it from there
+      if (ch === " " || (opened && ch === "{")) return;
     }
     if (ch === " " || ch === "\n") return;
     if (ch === "\\") return this.change(() => this.replaceSelectionWith([{ kind: "command", name: "" }]));
@@ -347,7 +373,7 @@ export class Editor {
   /** Enter: finishes a command being typed; in a matrix, goes to the cell below, adding a line at the last one. */
   enter(): void {
     const command = this.commandBeingTyped();
-    if (command) return this.change(() => this.finishCommand(command));
+    if (command) return this.change(() => void this.finishCommand(command));
     const at = this.matrixAtCursor();
     if (!at) return;
     this.change(() => {
@@ -364,7 +390,7 @@ export class Editor {
     if (!command) return;
     this.change(() => {
       command.name = name.replace(/^\\/, "");
-      this.finishCommand(command);
+      void this.finishCommand(command);
     });
   }
 
@@ -398,6 +424,69 @@ export class Editor {
       }
       this.insertSpecs(readLatex(latex, options));
     });
+  }
+
+  /** Inserts a block of LaTeX to edit as written (mhchem, chemfig, a diagram): `‸` marks where its
+   * editor's cursor starts. The field opens the editor of blocks on it. */
+  insertBlock(template: string): void {
+    this.change(() => this.placeBlock(template));
+  }
+
+  /** The block just inserted that wants its LaTeX edited, once. */
+  takePendingBlock(): { atom: Raw; caret: number } | null {
+    const p = this.pendingBlock;
+    this.pendingBlock = null;
+    return p && p.atom.parent ? p : null;
+  }
+
+  /** The block of LaTeX right before the cursor (or right after it, at a row's start). */
+  blockAtCursor(): Raw | null {
+    const { row, offset } = this.cursor;
+    const before = row.children[offset - 1];
+    if (before?.kind === "raw") return before;
+    const after = row.children[offset];
+    return after?.kind === "raw" ? after : null;
+  }
+
+  /** Edits a block's LaTeX: each change shows at once, and all of them are one step of undo. */
+  editBlock(atom: Raw, caret = atom.latex.length): BlockSession {
+    const before = this.snapshot();
+    const original = atom.latex;
+    const editor = this;
+    return {
+      atom,
+      caret,
+      update(latex: string) {
+        atom.latex = latex;
+        editor.emit("content");
+      },
+      commit() {
+        const row = atom.parent;
+        if (row && !atom.latex.trim()) {
+          const i = row.children.indexOf(atom);
+          row.children.splice(i, 1);
+          editor.cursor = { row, offset: i };
+        } else if (row) editor.cursor = { row, offset: row.children.indexOf(atom) + 1 };
+        editor.anchor = null;
+        if (atom.latex !== original || !atom.latex.trim()) {
+          editor.undoStack.push(before);
+          editor.redoStack = [];
+        }
+        editor.typingRun = false;
+        editor.emit("content");
+      },
+      cancel() {
+        atom.latex = original;
+        // a block that was empty when it opened (\ce typed) goes
+        const row = atom.parent;
+        if (row && !original.replace(/\\(ce|pu|chemfig|xymatrix)\{\}|\\begin\{(tikzcd|CD)\}\s*\\end\{\2\}|\\schemestart\s*\\schemestop/, "").trim()) {
+          const i = row.children.indexOf(atom);
+          row.children.splice(i, 1);
+          editor.cursor = { row, offset: i };
+        }
+        editor.emit("content");
+      },
+    };
   }
 
   // ---------- moving ----------
@@ -813,18 +902,30 @@ export class Editor {
     this.cursor = { row, offset: offset + made.length };
   }
 
-  private finishCommand(command: Command): void {
+  private finishCommand(command: Command): boolean {
     const row = command.parent!;
     const at = row.children.indexOf(command);
     row.children.splice(at, 1);
     this.cursor = { row, offset: at };
     const name = command.name;
-    if (!name) return;
+    if (!name) return false;
+    if (BLOCKS[name]) {
+      this.placeBlock(BLOCKS[name]);
+      return true;
+    }
     const snippet = TEMPLATES[name];
-    if (snippet) return this.insertSpecs(readLatex(snippet, { autoDelimiters: true }));
+    if (snippet) this.insertSpecs(readLatex(snippet, { autoDelimiters: true }));
     // a large operator typed alone: with its limits, as the palette inserts it
-    if (LOWER_LIMIT_ONLY.has(name)) return this.insertSpecs(readLatex(`\\${name}_{#?}`));
-    this.insertSpecs(readLatex(`\\${name}`), { cursorAfter: true });
+    else if (LOWER_LIMIT_ONLY.has(name)) this.insertSpecs(readLatex(`\\${name}_{#?}`));
+    else this.insertSpecs(readLatex(`\\${name}`), { cursorAfter: true });
+    return false;
+  }
+
+  private placeBlock(template: string): void {
+    const caret = Math.max(0, template.indexOf("‸"));
+    this.replaceSelectionWith([{ kind: "raw", latex: template.replace("‸", "") }]);
+    const { row, offset } = this.cursor;
+    this.pendingBlock = { atom: row.children[offset - 1] as Raw, caret };
   }
 
   private script(which: ScriptTemplate): void {
@@ -1119,11 +1220,15 @@ export class Editor {
         if (!marked) return `${atom.cmd}{${atom.body.children.map((c) => (c.kind === "char" ? escapeText(c.ch) : "")).join("")}}`;
         return mark(r(atom.body).replace(/\\text\{/g, `${atom.cmd}{`));
       case "raw": {
+        // a block being typed may have a brace open: closed here, so the rest of the formula stays out of it
+        const latex = balanced(atom.latex);
         // what acts on the alignment around it cannot be inside a mark
-        if (!marked || UNMARKED.test(atom.latex) || /(^|[^\\])&/.test(atom.latex)) return atom.latex;
-        const cls = this.rawClass(atom.latex);
+        if (!marked || UNMARKED.test(latex) || hasLooseAmpersand(latex)) return latex;
+        const cls = this.rawClass(latex);
         const wrapper = cls === "op" ? "\\mathop" : CLASS_WRAPPER[cls ?? "ord"];
-        return wrapper ? `${wrapper}{${mark(atom.latex)}}` : mark(atom.latex);
+        // marked `raw`: the field outlines a block of LaTeX under the pointer, to edit as written
+        const m = marked ? `\\htmlData{m=${atom.id},raw=1}{${latex}}` : latex;
+        return wrapper ? `${wrapper}{${m}}` : m;
       }
       case "command":
         return marked ? mark(`\\mathtt{\\backslash ${atom.name}}`) : "";
@@ -1255,6 +1360,48 @@ export class Editor {
 
 /** Commands that act on the alignment around them (mathtools, amsmath): never inside a mark. */
 const UNMARKED = /^\\(MoveEqLeft|shortvdotswithin|vdotswithin|Aboxed|intertext|shortintertext|tag\*?|notag|nonumber|label|hline|noalign)\b/;
+
+/** LaTeX with its braces balanced: a `}` without its `{` dropped, the `}` missing at the end added. */
+export function balanced(latex: string): string {
+  let depth = 0;
+  let out = "";
+  for (let i = 0; i < latex.length; i++) {
+    const c = latex[i];
+    if (c === "\\" && i + 1 < latex.length) {
+      out += c + latex[++i];
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      if (depth === 0) continue;
+      depth--;
+    }
+    out += c;
+  }
+  // a lone backslash at the end (a command begun) is left out
+  if (out.endsWith("\\") && !out.endsWith("\\\\")) out = out.slice(0, -1);
+  return out + "}".repeat(depth);
+}
+
+/** An `&` of the alignment around (outside braces and environments): such LaTeX cannot be inside a
+ * mark. A diagram's or a matrix's own `&` (`\begin{tikzcd}…`, `\xymatrix{…}`) can. */
+function hasLooseAmpersand(latex: string): boolean {
+  let depth = 0;
+  let envs = 0;
+  for (let i = 0; i < latex.length; i++) {
+    const c = latex[i];
+    if (c === "\\") {
+      if (latex.startsWith("\\begin", i)) envs++;
+      else if (latex.startsWith("\\end", i)) envs--;
+      i++;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") depth--;
+    else if (c === "&" && depth <= 0 && envs <= 0) return true;
+  }
+  return false;
+}
 
 /** Commands known to be ordinary symbols: no need to ask mathra. */
 const KNOWN_ORDINARY: Record<string, true> = {};

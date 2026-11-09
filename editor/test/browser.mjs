@@ -87,10 +87,10 @@ await check("The logo and the GitHub link", async () => {
   if (shots) await page.screenshot({ path: `${shots}/bar.png`, clip: { x: 0, y: 0, width: 1440, height: 60 } });
 });
 
-await check("Fifteen palettes, all their tabs in view", async () => {
+await check("Sixteen palettes, all their tabs in view", async () => {
   const tabs = ed.locator("mathra-toolbar").locator("[role=tab]");
-  assert.equal(await tabs.count(), 15);
-  for (let i = 0; i < 15; i++) assert.ok(await tabs.nth(i).isVisible(), `tab ${i} hidden`);
+  assert.equal(await tabs.count(), 16);
+  for (let i = 0; i < 16; i++) assert.ok(await tabs.nth(i).isVisible(), `tab ${i} hidden`);
 });
 
 await check("A Greek letter from its tab; typing goes on in the field", async () => {
@@ -404,6 +404,95 @@ await check("A font from the mathfonts catalog (needs the network)", async () =>
   await s.locator('[data-font=""]').click();
   await ed.locator('.settings-panel [data-close]').click();
   assert.equal(await page.evaluate(() => document.getElementById("editor").shadowRoot.querySelector(".settings-panel").hidden), true);
+});
+
+const blockPanel = ed.locator("mathra-field").locator(".block");
+const blockSource = ed.locator("mathra-field").locator("textarea.src");
+
+await check("Chemistry: \\ce typed opens its LaTeX; the formula follows as it is typed", async () => {
+  await setValue("");
+  await focus();
+  await k.type("\\ce{");
+  assert.equal(await blockPanel.isVisible(), true);
+  assert.equal(await blockSource.inputValue(), "\\ce{}");
+  assert.equal(await blockSource.evaluate((t) => t.selectionStart), 4);
+  await k.type("2H2 + O2 -> 2H2O");
+  // drawn while typed
+  assert.equal(await value(), "\\ce{2H2 + O2 -> 2H2O}");
+  assert.match(await blockPanel.locator(".status").textContent(), /sem avisos/);
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/block.png` });
+  await k.press(`${mod}+Enter`);
+  assert.equal(await blockPanel.isVisible(), false);
+  // the cursor is after the reaction: typing goes on in math
+  await k.type("+x");
+  assert.equal(await value(), "\\ce{2H2 + O2 -> 2H2O}+x");
+});
+
+await check("Chemistry: a double click on a reaction edits it; the whole edit undoes in one step", async () => {
+  await setValue("\\ce{H2O -> H2 + O2}");
+  const svg = ed.locator("mathra-field").locator(".drawing svg");
+  const b = await svg.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  assert.equal(await ed.locator("mathra-field").locator(".hover").isVisible(), true, "the block is outlined under the pointer");
+  await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2);
+  assert.equal(await blockPanel.isVisible(), true);
+  await blockSource.fill("\\ce{2H2O -> 2H2 + O2}");
+  assert.equal(await value(), "\\ce{2H2O -> 2H2 + O2}");
+  await blockPanel.locator('[data-block="done"]').click();
+  await ed.locator('[data-act="undo"]').click();
+  assert.equal(await value(), "\\ce{H2O -> H2 + O2}");
+});
+
+await check("Chemistry: Esc takes the edit back; Enter beside a block opens it", async () => {
+  await setValue("\\chemfig{A-B}");
+  await focus();
+  await k.press("End");
+  await k.press("Enter");
+  assert.equal(await blockPanel.isVisible(), true);
+  await blockSource.fill("\\chemfig{A=B}");
+  assert.equal(await value(), "\\chemfig{A=B}");
+  await k.press("Escape");
+  assert.equal(await value(), "\\chemfig{A-B}");
+  assert.equal(await blockPanel.isVisible(), false);
+});
+
+await check("Diagrams: a square from its palette, its labels edited", async () => {
+  await setValue("");
+  await focus();
+  await tab("Diagramas").click();
+  await button("Quadrado comutativo").click();
+  assert.equal(await blockPanel.isVisible(), true);
+  const src = await blockSource.inputValue();
+  assert.match(src, /tikzcd/);
+  await blockSource.fill(src.replace('"f"', '"\\varphi"'));
+  assert.match(await value(), /varphi/);
+  assert.match(await blockPanel.locator(".status").textContent(), /sem avisos/);
+  await k.press(`${mod}+Enter`);
+  // the cursor sits after the diagram, at its right edge
+  const c = await page.evaluate(() => { const f = document.getElementById("editor").field; return [f.shadowRoot.querySelector(".caret").getBoundingClientRect().x, f.shadowRoot.querySelector(".drawing svg").getBoundingClientRect().right]; });
+  assert.ok(Math.abs(c[0] - c[1]) < 6, `caret at ${c[0]}, diagram ends at ${c[1]}`);
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/diagram.png` });
+});
+
+await check("Diagrams: every gallery diagram and reaction keeps its cursor in the drawing", async () => {
+  const bad = await page.evaluate(async () => {
+    const { GALLERY } = await import("/editor/dist/gallery.js");
+    const ed = document.getElementById("editor");
+    const out = [];
+    for (const g of GALLERY.filter((g) => ["reactions", "chemistry", "diagrams"].includes(g.id)))
+      for (const r of g.rows) {
+        ed.value = r.tex;
+        await new Promise((res) => requestAnimationFrame(res));
+        const f = ed.field;
+        const c = f.shadowRoot.querySelector(".caret").getBoundingClientRect();
+        const s = f.shadowRoot.querySelector(".drawing svg").getBoundingClientRect();
+        if (Math.abs(c.x - s.right) > 6) out.push(r.name || r.caption);
+      }
+    return out;
+  });
+  assert.deepEqual(bad, []);
 });
 
 await check("No error in the console", async () => {

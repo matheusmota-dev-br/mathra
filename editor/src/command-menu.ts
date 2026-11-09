@@ -138,8 +138,11 @@ export class MathraCommandMenu extends FieldClient {
       if (c.item.action) field.run(c.item.action);
       else if (c.item.insert !== undefined) field.run(`latex:${c.item.insert}`);
     });
+    // a block inserted inside the batch opens its editor now
+    const pending = field.editor.takePendingBlock();
+    if (pending) field.openBlock(pending.atom, pending.caret);
     this.close();
-    field.focus();
+    if (!pending) field.focus();
   }
 
   private close(): void {

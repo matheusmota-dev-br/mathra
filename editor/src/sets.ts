@@ -333,12 +333,42 @@ export const CHEMISTRY: PaletteSet = {
   id: "chemistry",
   title: t("Chemistry", "Química"),
   items: [
+    { action: "block:\\ce{‸}", preview: "\\ce{A + B -> C}", title: t("Reaction (mhchem): type it as LaTeX", "Reação (mhchem): escreva em LaTeX"), command: "ce", wide: true },
+    { action: "block:\\chemfig{‸}", preview: "\\chemfig{H-C(-[2]H)(-[6]H)-OH}", title: t("Structure (chemfig): type it as LaTeX", "Estrutura (chemfig): escreva em LaTeX"), command: "chemfig", wide: true },
+    { action: "block:\\schemestart ‸ \\schemestop", preview: "\\schemestart \\chemfig{A} \\arrow \\chemfig{B} \\schemestop", title: t("Reaction scheme (chemfig)", "Esquema de reação (chemfig)"), wide: true },
+    { action: "block:\\pu{‸}", preview: "\\pu{123 kJ/mol}", title: t("Physical unit (mhchem \\pu)", "Unidade física (mhchem \\pu)"), command: "pu", wide: true },
     tpl("\\ce{H2O}", "Water", "Água"), tpl("\\ce{CO2}", "Carbon dioxide", "Dióxido de carbono"), tpl("\\ce{O2}", "Oxygen", "Oxigênio"), tpl("\\ce{H2SO4}", "Sulfuric acid", "Ácido sulfúrico"),
     tpl("\\ce{NaCl}", "Sodium chloride", "Cloreto de sódio"), tpl("\\ce{CH4}", "Methane", "Metano"), tpl("\\ce{NH3}", "Ammonia", "Amônia"), tpl("\\ce{C6H12O6}", "Glucose", "Glicose"),
     tpl("\\ce{H+}", "Proton", "Próton"), tpl("\\ce{OH-}", "Hydroxide", "Hidróxido"), tpl("\\ce{SO4^2-}", "Sulfate", "Sulfato"), tpl("\\ce{Fe^3+}", "Iron(III)", "Ferro(III)"),
     tpl("\\ce{->}", "Reaction arrow", "Seta de reação"), tpl("\\ce{<=>}", "Equilibrium", "Equilíbrio"), tpl("\\ce{<->}", "Resonance", "Ressonância"), tpl("\\ce{->[\\Delta]}", "Heated", "Com aquecimento"),
     tpl("\\ce{^}", "Gas released", "Gás liberado", { preview: "\\uparrow" }), tpl("\\ce{v}", "Precipitate", "Precipitado", { preview: "\\downarrow" }), tpl("\\ce{2H2 + O2 -> 2H2O}", "Water synthesis", "Síntese da água", { wide: true }), tpl("\\ce{CH4 + 2O2 -> CO2 + 2H2O}", "Combustion of methane", "Combustão do metano", { wide: true }),
     tpl("\\ce{H2O <=> H+ + OH-}", "Water self-ionization", "Autoionização da água", { wide: true }), tpl("\\ce{^{14}_{6}C}", "Isotope", "Isótopo"), tpl("\\mathrm{pH}=-\\log\\left[\\mathrm{H^{+}}\\right]", "pH", "pH", { wide: true }), tpl("\\Delta H", "Enthalpy change", "Variação de entalpia"),
+  ],
+};
+
+const SQUARE = '\\begin{tikzcd} A \\arrow[r, "f"] \\arrow[d, "g"\'] & B \\arrow[d, "h"] \\\\ C \\arrow[r, "k"\'] & D \\end{tikzcd}';
+const TRIANGLE = '\\begin{tikzcd} A \\arrow[r, "f"] \\arrow[dr, "h"\'] & B \\arrow[d, "g"] \\\\ & C \\end{tikzcd}';
+const PULLBACK = '\\begin{tikzcd} P \\arrow[r] \\arrow[d] \\arrow[dr, phantom, "\\lrcorner", very near start] & X \\arrow[d, "f"] \\\\ Y \\arrow[r, "g"\'] & Z \\end{tikzcd}';
+
+export const DIAGRAMS: PaletteSet = {
+  id: "diagrams",
+  title: t("Diagrams", "Diagramas"),
+  items: [
+    { action: "block:\\begin{tikzcd}\n‸\n\\end{tikzcd}", preview: "\\begin{tikzcd} A \\arrow[r] & B \\end{tikzcd}", title: t("Diagram (tikz-cd): type it as LaTeX", "Diagrama (tikz-cd): escreva em LaTeX"), command: "tikzcd", wide: true },
+    { action: `block:${SQUARE}`, preview: SQUARE, title: t("Commutative square", "Quadrado comutativo"), wide: true },
+    { action: `block:${TRIANGLE}`, preview: TRIANGLE, title: t("Commutative triangle", "Triângulo comutativo"), wide: true },
+    { action: `block:${PULLBACK}`, preview: PULLBACK, title: t("Pullback", "Pullback"), wide: true },
+    { action: "block:\\begin{tikzcd} A \\arrow[r, shift left, \"f\"] \\arrow[r, shift right, \"g\"\'] & B \\end{tikzcd}", preview: "\\begin{tikzcd} A \\arrow[r, shift left, \"f\"] \\arrow[r, shift right, \"g\"\'] & B \\end{tikzcd}", title: t("Parallel arrows", "Setas paralelas"), wide: true },
+    { action: "block:\\begin{CD} A @>f>> B \\\\ @VgVV @VVhV \\\\ C @>k>> D \\end{CD}", preview: "\\begin{CD} A @>f>> B \\\\ @VgVV @VVhV \\\\ C @>k>> D \\end{CD}", title: t("Square (amscd)", "Quadrado (amscd)"), command: "CD", wide: true },
+    { action: "block:\\xymatrix{A \\ar[r]^{f} \\ar[d]_{g} & B \\ar[d]^{h} \\\\ C \\ar[r]_{k} & D}", preview: "\\xymatrix{A \\ar[r]^{f} \\ar[d]_{g} & B \\ar[d]^{h} \\\\ C \\ar[r]_{k} & D}", title: t("Square (xymatrix)", "Quadrado (xymatrix)"), command: "xymatrix", wide: true },
+    tpl("0\\to A\\xrightarrow{f}B\\xrightarrow{g}C\\to 0", "Short exact sequence", "Sequência exata curta", { wide: true }),
+    tpl("A\\xrightarrow{#?}B", "Arrow with a label", "Seta com rótulo"),
+    tpl("A\\xleftarrow{#?}B", "Left arrow with a label", "Seta à esquerda com rótulo"),
+    tpl("f:A\\to B", "Map", "Aplicação"),
+    sym("\\hookrightarrow", "Injection", "Injeção"),
+    sym("\\twoheadrightarrow", "Surjection", "Sobrejeção"),
+    sym("\\cong", "Isomorphic", "Isomorfo"),
+    sym("\\circ", "Composition", "Composição"),
   ],
 };
 
@@ -387,11 +417,11 @@ export const FORMULAS: PaletteSet = {
 };
 
 /** Every palette, in the order a toolbar shows them. */
-export const PALETTES: PaletteSet[] = [STRUCTURES, CALCULUS, MATRICES, GREEK_LETTERS, OPERATORS, RELATIONS, ARROWS, SETS, FUNCTIONS, ACCENTS, GEOMETRY, PHYSICS, CHEMISTRY, STATISTICS, FORMULAS];
+export const PALETTES: PaletteSet[] = [STRUCTURES, CALCULUS, MATRICES, GREEK_LETTERS, OPERATORS, RELATIONS, ARROWS, SETS, FUNCTIONS, ACCENTS, GEOMETRY, PHYSICS, CHEMISTRY, DIAGRAMS, STATISTICS, FORMULAS];
 
 /** The formula drawn on an item's button: its preview, or its snippet, with empty places drawn as □. */
 export function previewLatex(item: PaletteItem): string {
-  let latex = item.preview ?? item.insert ?? "";
+  let latex = item.preview ?? item.insert ?? (item.action?.startsWith("block:") ? item.action.slice(6).replace("‸", "") : "");
   if (/^[\^_]/.test(latex)) latex = `#?${latex}`;
   return latex.replace(/#[?0]/g, "\\htmlData{empty=1}{\\square}");
 }

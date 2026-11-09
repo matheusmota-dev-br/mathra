@@ -82,6 +82,16 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 | Ctrl/⌘+Z, Shift+Ctrl/⌘+Z, Ctrl+Y | undo, redo |
 | Escape | leaves a command being typed, or the selection |
 
+### Chemistry and diagrams: blocks edited as LaTeX
+
+mhchem (`\ce`, `\pu`), chemfig (`\chemfig`, `\schemestart…\schemestop`) and commutative diagrams (`tikzcd`, `CD`, `\xymatrix`) have languages of their own, so the editor keeps each as a block and edits it as LaTeX, in a panel under it, while the formula follows as it is typed and mathra says whether it reads it without a warning:
+
+- type `\ce`, `\pu`, `\chemfig`, `\tikzcd`, `\xymatrix` or `\CD` (then `{` or a space), or use the chemistry and diagram palettes (reactions, structures, schemes, squares, triangles, pullbacks);
+- double-click a block (it is outlined under the pointer), or press Enter beside it;
+- Ctrl/⌘+Enter or "Done" finishes, Esc takes the edit back; the whole edit is one step of undo.
+
+`field.run("block:\\ce{‸}")` inserts a block and opens it (`‸` is where its cursor starts); `field.openBlock(atom)` opens one.
+
 `field.keymap = { "Mod+B": "insert:mathbf", "Mod+R": "latex:\\sqrt{#0}", "Mod+Enter": "" }` adds, changes or turns off keys (`Mod` is Ctrl, or ⌘ on a Mac).
 
 ## Customizing

@@ -253,3 +253,45 @@ test("a decimal comma: part of the number where the locale says so", () => {
   e.decimalComma = false;
   assert.match(e.toLatex({ marked: true }), /\\mathpunct\{\\htmlData\{m=n\d+\}\{,\}\}/);
 });
+
+test("blocks: \\ce typed opens one to edit as LaTeX; edits show at once and undo in one step", () => {
+  const e = new Editor();
+  e.typeText("\\ce{");
+  const pending = e.takePendingBlock();
+  assert.ok(pending, "the block asks for its editor");
+  assert.equal(pending.atom.latex, "\\ce{}");
+  assert.equal(pending.caret, 4, "the cursor starts inside the braces");
+  const s = e.editBlock(pending.atom, pending.caret);
+  s.update("\\ce{2H2 + O2 -> 2H2O");
+  // a brace still open while typing: closed in the LaTeX, so nothing else falls inside it
+  assert.equal(e.toLatex(), "\\ce{2H2 + O2 -> 2H2O}");
+  s.update("\\ce{2H2 + O2 -> 2H2O}");
+  s.commit();
+  assert.equal(e.toLatex(), "\\ce{2H2 + O2 -> 2H2O}");
+  e.undo();
+  assert.equal(e.toLatex(), "\\ce{}");
+});
+
+test("blocks: cancel restores the LaTeX; an empty block just typed goes", () => {
+  const e = new Editor("\\ce{H2O} + x");
+  const block = e.root.children[0];
+  if (block.kind !== "raw") throw new Error("a raw block");
+  const s = e.editBlock(block);
+  s.update("\\ce{D2O}");
+  assert.equal(e.toLatex(), "\\ce{D2O}+x");
+  s.cancel();
+  assert.equal(e.toLatex(), "\\ce{H2O}+x");
+  const f = new Editor();
+  f.typeText("\\chemfig ");
+  const p = f.takePendingBlock()!;
+  f.editBlock(p.atom, p.caret).cancel();
+  assert.equal(f.toLatex(), "");
+});
+
+test("blocks: the block beside the cursor, and diagrams typed by name", () => {
+  const e = new Editor("a\\xymatrix{A \\ar[r] & B}");
+  assert.equal(e.blockAtCursor()?.latex, "\\xymatrix{A \\ar[r] & B}");
+  const d = new Editor();
+  d.typeText("\\tikzcd ");
+  assert.equal(d.takePendingBlock()?.atom.latex, "\\begin{tikzcd}\n\n\\end{tikzcd}");
+});

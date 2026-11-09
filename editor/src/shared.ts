@@ -150,6 +150,12 @@ export const UI = {
   animate: { en: "Written stroke by stroke (SVG output)", "pt-BR": "Escrita traço a traço (saída SVG)" },
   strict: { en: "Strict mode: refuse invalid LaTeX, as TeX does", "pt-BR": "Modo estrito: recusar LaTeX inválido, como o TeX" },
   pngSize: { en: "PNG size", "pt-BR": "Tamanho do PNG" },
+  blockTitle: { en: "LaTeX of this block", "pt-BR": "LaTeX deste bloco" },
+  blockHint: { en: "Ctrl+Enter or ⌘+Enter to finish · Esc to cancel", "pt-BR": "Ctrl+Enter ou ⌘+Enter conclui · Esc cancela" },
+  blockDone: { en: "Done", "pt-BR": "Pronto" },
+  blockCancel: { en: "Cancel", "pt-BR": "Cancelar" },
+  blockEdit: { en: "Double-click to edit its LaTeX", "pt-BR": "Clique duas vezes para editar o LaTeX" },
+  blockOk: { en: "mathra reads it without a warning", "pt-BR": "O mathra lê sem avisos" },
 } satisfies Record<string, Words>;
 
 /** Escapes text for HTML. */

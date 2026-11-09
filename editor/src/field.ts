@@ -3,7 +3,8 @@
 
 import { init, render, type Options, type Result } from "@mathlabs/mathra";
 import { Editor, classOfTree, type ChangeKind } from "./model.ts";
-import { boxesById, caretRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
+import { atomRect, blockAt, boxesById, caretRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
+import type { BlockSession, Raw } from "./model.ts";
 import { TOKENS, UI, say } from "./shared.ts";
 
 const STYLE = `
@@ -14,6 +15,7 @@ ${TOKENS}
   color: var(--_ink);
   -webkit-tap-highlight-color: transparent;
 }
+:host { position: relative; }
 :host([inline]) { display: inline-block; font-size: inherit; vertical-align: middle; }
 :host([hidden]) { display: none; }
 .box {
@@ -50,6 +52,22 @@ g[data-empty] { fill: var(--_slot); }
 :host([data-empty]:not(:focus-within)) .drawing { visibility: hidden; }
 .placeholder { position: absolute; left: var(--mathra-placeholder-left, 0.8em); color: var(--_muted); font-size: 0.6em; pointer-events: none; font-family: var(--_font); }
 textarea { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; border: 0; margin: 0; resize: none; overflow: hidden; left: 0; top: 0; pointer-events: none; }
+.hover { border: 1.5px dashed var(--_accent); border-radius: 4px; background: color-mix(in srgb, var(--_accent) 6%, transparent); }
+.box.over-block { cursor: pointer; }
+.block { position: absolute; z-index: 5; display: grid; gap: 8px; width: min(560px, calc(100% - 16px)); padding: 12px; color: var(--_ink); background: var(--_background); border: 1px solid var(--_border); border-radius: calc(var(--_radius) + 2px); box-shadow: 0 14px 36px rgb(0 0 0 / 0.2); font: 13px var(--_font); animation: drop 0.14s ease-out; }
+.block[hidden] { display: none; }
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+.block .title { display: flex; justify-content: space-between; gap: 10px; color: var(--_muted); font-size: 12px; }
+.block .title b { color: var(--_ink); font-weight: 600; }
+.block textarea.src { position: static; opacity: 1; width: 100%; height: auto; min-height: 4.5em; max-height: 14em; box-sizing: border-box; padding: 8px 10px; resize: vertical; overflow: auto; pointer-events: auto; color: var(--_ink); background: var(--_surface); border: 1px solid var(--_border); border-radius: var(--_radius); font: 14px/1.5 var(--_mono); }
+.block textarea.src:focus { outline: 2px solid var(--_focus); outline-offset: 0; }
+.block .status { min-height: 1.4em; color: var(--_muted); font-size: 12px; }
+.block .status.warn { color: light-dark(#8a4b00, #f0c27a); }
+.block .actions { display: flex; justify-content: flex-end; gap: 8px; }
+.block button { height: 30px; padding: 0 14px; border-radius: var(--_radius); font: 600 13px var(--_font); cursor: pointer; border: 1px solid var(--_border); background: var(--_key); color: var(--_ink); }
+.block button.primary { background: var(--_accent); border-color: var(--_accent); color: var(--_background); }
+.block button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .block { animation: none; } }
 .live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
 
@@ -151,12 +169,16 @@ export class MathraField extends HTMLElement {
   private dragging = false;
   private liveTimer = 0;
   private commandShown = false;
+  private hoverBox!: HTMLDivElement;
+  private blockPanel!: HTMLDivElement;
+  private blockSource!: HTMLTextAreaElement;
+  private block: BlockSession | null = null;
   private ownValue: string | null = null;
 
   constructor() {
     super();
     const root = this.attachShadow({ mode: "open", delegatesFocus: true });
-    root.innerHTML = `<style>${STYLE}</style><div class="box" part="box"><div class="drawing" part="drawing"></div><div class="overlay selection" part="selection" hidden></div><div class="overlay caret" part="caret"></div><div class="placeholder" part="placeholder" hidden></div><textarea part="input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea><div class="live" aria-live="polite"></div></div>`;
+    root.innerHTML = `<style>${STYLE}</style><div class="box" part="box"><div class="drawing" part="drawing"></div><div class="overlay selection" part="selection" hidden></div><div class="overlay caret" part="caret"></div><div class="overlay hover" part="block-hover" hidden></div><div class="placeholder" part="placeholder" hidden></div><textarea part="input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea><div class="live" aria-live="polite"></div></div><div class="block" part="block-editor" role="dialog" hidden><div class="title"><b></b><span class="hint"></span></div><textarea class="src" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea><div class="status" aria-live="polite"></div><div class="actions"><button type="button" data-block="cancel"></button><button type="button" class="primary" data-block="done"></button></div></div>`;
     this.box = root.querySelector(".box")!;
     this.drawing = root.querySelector(".drawing")!;
     this.caret = root.querySelector(".caret")!;
@@ -164,6 +186,26 @@ export class MathraField extends HTMLElement {
     this.placeholderEl = root.querySelector(".placeholder")!;
     this.input = root.querySelector("textarea")!;
     this.live = root.querySelector(".live")!;
+    this.hoverBox = root.querySelector(".hover")!;
+    this.blockPanel = root.querySelector(".block")!;
+    this.blockSource = root.querySelector("textarea.src")!;
+    this.blockSource.addEventListener("input", () => this.blockInput());
+    this.blockSource.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        this.closeBlock(false);
+      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        this.closeBlock(true);
+      }
+    });
+    this.blockPanel.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-block]");
+      if (b) this.closeBlock(b.dataset.block === "done");
+    });
+    this.blockPanel.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.box.addEventListener("pointerleave", () => (this.hoverBox.hidden = true));
     this.input.addEventListener("keydown", (e) => this.keydown(e));
     this.input.addEventListener("input", () => this.typed());
     this.input.addEventListener("copy", (e) => this.clipboard(e, "copy"));
@@ -177,7 +219,11 @@ export class MathraField extends HTMLElement {
     this.box.addEventListener("pointerdown", (e) => this.pointerdown(e));
     this.box.addEventListener("pointermove", (e) => this.pointermove(e));
     this.box.addEventListener("pointerup", () => (this.dragging = false));
-    this.box.addEventListener("dblclick", () => this.selectRow());
+    this.box.addEventListener("dblclick", (e) => {
+      const b = this.blockUnder(e);
+      if (b && !this.readOnly) this.openBlock(b);
+      else this.selectRow();
+    });
     this.editor.onChange((kind) => this.changed(kind));
     // LaTeX the editor keeps as written gets the class mathra reads it into
     this.editor.classifyRaw = (latex) => classOfTree(render(latex, { locale: this.locale as Options["locale"] }).tree);
@@ -265,7 +311,9 @@ export class MathraField extends HTMLElement {
    * `moveLeft` `moveRight` `moveUp` `moveDown` `selectLeft` `selectRight` `home` `end` `selectHome`
    * `selectEnd` `selectAll` `backspace` `deleteForward` `enter` `tab` `tabBack` `undo` `redo` `clear`
    * `addRow` `addRowAbove` `addColumn` `addColumnLeft` `removeRow` `removeColumn` `sup` `sub`,
-   * or `insert:<template>`, `latex:<snippet>`, `type:<text>`, `symbol:<latex>`. */
+   * `editBlock` (the LaTeX block beside the cursor), or `insert:<template>`, `latex:<snippet>`,
+   * `type:<text>`, `symbol:<latex>`, `block:<latex>` (a block of mhchem, chemfig or a diagram, its
+   * editor opened, `‸` where its cursor starts). */
   run(action: string): void {
     if (this.readOnly) return;
     const e = this.editor;
@@ -304,6 +352,11 @@ export class MathraField extends HTMLElement {
       latex: () => e.insertLatex(arg, { autoDelimiters: true }),
       type: () => e.typeText(arg),
       symbol: () => e.insertSymbol(arg),
+      block: () => e.insertBlock(arg),
+      editBlock: () => {
+        const b = e.blockAtCursor();
+        if (b) this.openBlock(b);
+      },
     };
     const f = actions[verb];
     if (!f) throw new Error(`mathra-field: no action named ${verb}`);
@@ -336,12 +389,15 @@ export class MathraField extends HTMLElement {
   // ---------- drawing ----------
 
   private changed(kind: ChangeKind): void {
+    const pending = this.editor.takePendingBlock();
     if (kind === "content") {
       this.draw();
       this.ownValue = this.latex;
       this.dispatchEvent(new CustomEvent<InputDetail>("input", { detail: { latex: this.latex }, bubbles: true, composed: true }));
     } else this.placeOverlays();
     this.sendCommand(!!this.editor.commandBeingTyped());
+    if (pending && !this.block) this.openBlock(pending.atom, pending.caret);
+    else if (this.block) this.placeBlock();
   }
 
   private draw(): void {
@@ -438,6 +494,8 @@ export class MathraField extends HTMLElement {
 
   private pointerdown(e: PointerEvent): void {
     if (e.button !== 0) return;
+    // a click outside the block being edited finishes it
+    if (this.block) this.closeBlock(true);
     e.preventDefault();
     this.input.focus();
     const at = this.pointAt(e);
@@ -448,6 +506,7 @@ export class MathraField extends HTMLElement {
   }
 
   private pointermove(e: PointerEvent): void {
+    if (!e.buttons) this.hoverBlock(e);
     if (!this.dragging || !(e.buttons & 1)) return;
     const at = this.pointAt(e);
     if (at) this.editor.setCursor(at, true);
@@ -469,6 +528,95 @@ export class MathraField extends HTMLElement {
     if (row.children.length && !this.readOnly) this.editor.select(row, 0, row.children.length);
   }
 
+  /** The block of LaTeX under the pointer. */
+  private blockUnder(e: MouseEvent): Raw | null {
+    const svg = this.drawing.querySelector("svg");
+    if (!svg) return null;
+    const vb = svg.viewBox.baseVal;
+    const b = svg.getBoundingClientRect();
+    if (!b.width) return null;
+    const k = b.width / vb.width;
+    return blockAt(this.editor, this.boxes, vb.x + (e.clientX - b.left) / k, vb.y + (e.clientY - b.top) / k) as Raw | null;
+  }
+
+  /** Outlines the block under the pointer, with a tooltip that says it can be edited. */
+  private hoverBlock(e: PointerEvent): void {
+    const b = this.readOnly || this.block ? null : this.blockUnder(e);
+    const r = b && atomRect(b, this.boxes);
+    const p = r && this.toBox(r);
+    this.hoverBox.hidden = !p;
+    this.box.classList.toggle("over-block", !!p);
+    this.box.title = p ? say(UI.blockEdit, this.locale) : "";
+    if (p) Object.assign(this.hoverBox.style, { left: `${p.left - 3}px`, top: `${p.top - 3}px`, width: `${p.width + 6}px`, height: `${p.height + 6}px` });
+  }
+
+  /** Opens the editor of a block's LaTeX under the block. */
+  openBlock(atom: Raw, caret?: number): void {
+    if (this.block) this.closeBlock(true);
+    this.block = this.editor.editBlock(atom, caret);
+    const l = this.locale;
+    this.blockPanel.setAttribute("aria-label", say(UI.blockTitle, l));
+    this.blockPanel.querySelector(".title b")!.textContent = say(UI.blockTitle, l);
+    this.blockPanel.querySelector(".hint")!.textContent = say(UI.blockHint, l);
+    this.blockPanel.querySelector('[data-block="done"]')!.textContent = say(UI.blockDone, l);
+    this.blockPanel.querySelector('[data-block="cancel"]')!.textContent = say(UI.blockCancel, l);
+    this.blockSource.setAttribute("aria-label", say(UI.blockTitle, l));
+    this.blockSource.value = atom.latex;
+    this.blockSource.rows = Math.min(8, Math.max(3, atom.latex.split("\n").length + 1));
+    this.blockPanel.hidden = false;
+    this.hoverBox.hidden = true;
+    this.placeBlock();
+    this.blockStatus();
+    this.blockSource.focus();
+    const c = caret ?? atom.latex.length;
+    this.blockSource.setSelectionRange(c, c);
+  }
+
+  private blockInput(): void {
+    this.block?.update(this.blockSource.value);
+    this.blockStatus();
+  }
+
+  /** What mathra says of the block's LaTeX, as it is typed. */
+  private blockStatus(): void {
+    const status = this.blockPanel.querySelector(".status")!;
+    const latex = this.blockSource.value;
+    let warnings: string[] = [];
+    try {
+      warnings = latex.trim() ? render(latex, this.drawingOptions).warnings.map((w) => w.description) : [];
+    } catch (e) {
+      warnings = [e instanceof Error ? e.message : String(e)];
+    }
+    status.classList.toggle("warn", warnings.length > 0);
+    status.textContent = warnings.length ? warnings[0] : latex.trim() ? say(UI.blockOk, this.locale) : "";
+  }
+
+  /** Keeps the editor of the block under the block (or above it, near the bottom). */
+  private placeBlock(): void {
+    if (!this.block) return;
+    const r = atomRect(this.block.atom, this.boxes);
+    const p = r && this.toBox(r);
+    const host = this.getBoundingClientRect();
+    const box = this.box.getBoundingClientRect();
+    const width = Math.min(560, host.width - 16);
+    let left = p ? box.left - host.left + p.left - this.box.scrollLeft : 8;
+    left = Math.max(8, Math.min(left, host.width - width - 8));
+    const below = p ? box.top - host.top + p.top + p.height + 10 : box.bottom - host.top + 8;
+    const panel = this.blockPanel.offsetHeight || 200;
+    const top = below + panel > Math.max(host.height, window.innerHeight - host.top) && p && p.top - panel - 10 > 0 ? box.top - host.top + p.top - panel - 10 : below;
+    Object.assign(this.blockPanel.style, { left: `${left}px`, top: `${top}px` });
+  }
+
+  private closeBlock(keep: boolean): void {
+    const s = this.block;
+    if (!s) return;
+    this.block = null;
+    this.blockPanel.hidden = true;
+    if (keep) s.commit();
+    else s.cancel();
+    this.input.focus();
+  }
+
   private keydown(e: KeyboardEvent): void {
     // a command menu, when open, takes the keys it needs first
     const ask = new CustomEvent("mathra-key", { detail: { key: e.key, shift: e.shiftKey }, cancelable: true, bubbles: true, composed: true });
@@ -477,8 +625,10 @@ export class MathraField extends HTMLElement {
       return;
     }
     if (e.isComposing) return;
-    const action = { ...DEFAULT_KEYMAP, ...this.keymap }[comboOf(e)];
+    let action = { ...DEFAULT_KEYMAP, ...this.keymap }[comboOf(e)];
     if (action === "") return;
+    // Enter beside a block of LaTeX (out of a command and a matrix) opens it
+    if (action === "enter" && !this.editor.commandBeingTyped() && !this.editor.matrixAtCursor() && this.editor.blockAtCursor()) action = "editBlock";
     if (action) {
       // Tab leaves an empty field, so a form can be crossed with it
       if ((action === "tab" || action === "tabBack") && this.editor.isEmpty()) return;
