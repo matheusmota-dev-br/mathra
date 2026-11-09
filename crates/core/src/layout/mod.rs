@@ -442,8 +442,8 @@ fn compose_node(node: &Node, e: Style, ctx: &mut Context) -> R<MathBox> {
         Node::Root { radicand, index } => compose_root(radicand, index.as_deref(), e, ctx),
         Node::Scripts { base, sup, sub } => compose_scripts(base, sup.as_deref(), sub.as_deref(), e, ctx),
         Node::Delimited { open, close, parts, middles } => compose_delimited(*open, *close, parts, middles, e, ctx),
-        Node::Table { shape: kind, rows, columns, verticals, dashed, horizontals, between, intertexts, stretch } => {
-            let lines = table::Lines { verticals, dashed, horizontals, stretch: *stretch };
+        Node::Table { shape: kind, rows, columns, verticals, dashed, horizontals, between, intertexts, stretch, colsep } => {
+            let lines = table::Lines { verticals, dashed, horizontals, stretch: *stretch, colsep: *colsep };
             table::compose(*kind, rows, columns, &lines, between, intertexts, e, ctx)
         }
         Node::VdotsWithin { symbol, .. } => compose_vdots_within(symbol, e, ctx),

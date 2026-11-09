@@ -574,7 +574,7 @@ impl Reader<'_> {
                 return Ok(Node::VdotsWithin { symbol: base.clone(), short: node.attribute("rowspacing") == Some("0em") });
             }
         }
-        Ok(Node::Table { shape, rows, columns, verticals, dashed: vec![], horizontals, between: vec![], intertexts: vec![], stretch: 1.0 })
+        Ok(Node::Table { shape, rows, columns, verticals, dashed: vec![], horizontals, between: vec![], intertexts: vec![], stretch: 1.0, colsep: 500 })
     }
 }
 
@@ -1047,6 +1047,7 @@ fn fences(children: Vec<Node>, marks: &[Mark], bare: bool) -> Node {
             between: vec![],
             intertexts: vec![],
             stretch: 1.0,
+            colsep: 500,
         };
         if let (Some(Some(o)), Some(Some(c))) = (open, close) {
             if let Some(inner) = inner_table(1..n - 1) {

@@ -1899,3 +1899,54 @@ fn bbox_and_enclose_take_defined_colors() {
     let t = tree(r"\bbox[red!40]{x}");
     assert!(t.contains('#'), "an xcolor mix becomes #rrggbb: {t}");
 }
+
+#[test]
+fn linebreak_and_qedhere_are_read_and_draw_nothing() {
+    // \linebreak[n] is a break hint, as \allowbreak (#255); \qedhere places a proof's end mark, and an
+    // equation converted alone is not a proof. Both appear inside real formulas (the Stacks Project,
+    // arXiv's math papers)
+    assert_eq!(tree(r"\{Zariski, \linebreak[0] smooth, \linebreak fppf\}"), tree(r"\{Zariski, smooth, fppf\}"));
+    assert_eq!(tree(r"[v]_{0} \le 1. \qedhere"), tree(r"[v]_{0} \le 1."));
+}
+
+#[test]
+fn lefteqn_overlaps_to_the_right_in_display_style() {
+    // LaTeX's \lefteqn: \hbox to 0pt{$\displaystyle #1$\hss}
+    let t = tree(r"\begin{eqnarray*} \lefteqn{\int_0^1 f\,dx} \\ & \le & 1 \end{eqnarray*}");
+    assert!(t.contains("Overlapped { base: Style { level: 0"), "{t}");
+    assert!(t.contains("side: 'r'"), "{t}");
+}
+
+#[test]
+fn setlength_arraycolsep_spaces_the_columns_after_it() {
+    // half the space between columns of the arrays and matrices after it, as in LaTeX
+    let colsep = |tex: &str| -> Vec<u16> {
+        let t = convert(tex, &Options { strict: true, ..Options::default() }).unwrap_or_else(|e| panic!("{tex}: {e}")).tree;
+        let mut out = Vec::new();
+        fn walk(n: &Node, out: &mut Vec<u16>) {
+            if let Node::Table { colsep, .. } = n {
+                out.push(*colsep);
+            }
+            if let Node::Row { children } = n {
+                children.iter().for_each(|c| walk(c, out));
+            }
+        }
+        walk(&t, &mut out);
+        out
+    };
+    assert_eq!(colsep(r"\begin{array}{cc} a & b \end{array}"), [500]);
+    assert_eq!(colsep(r"\setlength{\arraycolsep}{3pt} \begin{array}{cc} a & b \end{array} \begin{pmatrix} 1 & 2 \end{pmatrix}"), [300, 300]);
+    assert_eq!(colsep(r"\setlength\arraycolsep{1em} \begin{array}{cc} a & b \end{array}"), [1000]);
+    // the drawing is narrower with less space, and the tree's JSON says so only when it is not the default
+    let width = |tex: &str| mathra::typeset(tex, &Options::default()).unwrap().0.width;
+    assert!(width(r"\setlength{\arraycolsep}{1pt}\begin{array}{ccc} a & b & c \end{array}") < width(r"\begin{array}{ccc} a & b & c \end{array}"));
+    assert!(!tree(r"\begin{array}{cc} a & b \end{array}").contains("colsep: 0.3"));
+    assert!(convert(r"\setlength{\arraycolsep}{3pt}\begin{array}{cc} a & b \end{array}", &Options::default()).unwrap().tree.to_json().contains(r#""colsep":0.3"#));
+    assert!(!convert(r"\begin{array}{cc} a & b \end{array}", &Options::default()).unwrap().tree.to_json().contains("colsep"));
+    // another length is one mathra does not use, and a measure it cannot read leaves the spacing as it was
+    let (_, w) = tolerant(r"\setlength{\topsep}{1pt} x");
+    assert!(w.iter().any(|w| w.starts_with("E-REC-1") && w.contains(r"\setlength{\topsep}")), "{w:?}");
+    let (_, w) = tolerant(r"\setlength{\arraycolsep}{abc} x");
+    assert!(w.iter().any(|w| w.starts_with("E-REC-9")), "{w:?}");
+    assert!(convert(r"\setlength{\topsep}{1pt} x", &Options { strict: true, ..Options::default() }).is_err());
+}

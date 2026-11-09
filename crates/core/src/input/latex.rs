@@ -111,6 +111,8 @@ struct Macros {
     /// E-REC-2, [`json_signs`]: `None` when the input has a real tab or line break (a JSON string has
     /// none, so it shows no escape); otherwise, does the input show a sign of JSON ([`json_evidence`]).
     json_text: Option<bool>,
+    /// `\setlength{\arraycolsep}{…}`, in em, for the arrays and matrices after it.
+    array_colsep: Option<f32>,
 }
 
 #[derive(Clone)]
@@ -500,7 +502,18 @@ impl Reader<'_> {
             rows.push(cells);
         }
         let kind = if had_e { TableKind::Aligned } else { TableKind::Centered };
-        Ok(Node::Table { shape: kind, rows, columns: vec![], verticals: vec![], dashed: vec![], horizontals: vec![], between: vec![], intertexts: vec![], stretch: 1.0 })
+        Ok(Node::Table {
+            shape: kind,
+            rows,
+            columns: vec![],
+            verticals: vec![],
+            dashed: vec![],
+            horizontals: vec![],
+            between: vec![],
+            intertexts: vec![],
+            stretch: 1.0,
+            colsep: 500,
+        })
     }
 
     /// Reads atoms up to a stop (end, `}`, `&`, `\\`, `\end`, `\right`…).
@@ -1159,6 +1172,14 @@ impl Reader<'_> {
             "nonumber" | "notag" | "nolinebreak" | "nobreak" | "allowbreak" | "displaybreak" | "protect" | "relax" | "noindent" | "centering" | "ensuremath" => {
                 return Ok(Some(None))
             }
+            // \linebreak[n] is a break hint too, as \allowbreak; \qedhere places a proof's end mark, and an
+            // equation converted alone is not a proof: both are read and draw nothing
+            "linebreak" => {
+                self.raw_optional();
+                return Ok(Some(None));
+            }
+            "qedhere" => return Ok(Some(None)),
+            "setlength" => return self.set_length(col).map(|()| Some(None)),
             "strut" | "mathstrut" => Node::Phantom { base: Box::new(Node::Operator { symbol: '(', class: Class::Open }), width: false, height: true },
             "tag" => {
                 let label = self.raw_text()?;
@@ -1723,6 +1744,12 @@ impl Reader<'_> {
                 let base = self.argument()?;
                 Node::Smashed { base: Box::new(base), height: option != "b", depth: option != "t" }
             }
+            // LaTeX's \lefteqn{…}: its argument in display style, with no width, overlapping to the right
+            // (eqnarray's long left-hand side)
+            "lefteqn" => {
+                let base = self.argument()?;
+                Node::Overlapped { base: Box::new(Node::Style { level: 0, base: Box::new(base) }), side: 'r' }
+            }
             "mathllap" | "mathrlap" | "mathclap" | "llap" | "rlap" | "clap" => {
                 let side = match name.trim_start_matches("math") {
                     "llap" => 'l',
@@ -2251,7 +2278,18 @@ impl Reader<'_> {
             let n = rows.iter().map(Vec::len).max().unwrap_or(1);
             columns = vec![a; n];
         }
-        Ok(Node::Table { shape: kind, rows, columns, verticals, dashed, horizontals, between, intertexts, stretch: self.array_stretch() })
+        Ok(Node::Table {
+            shape: kind,
+            rows,
+            columns,
+            verticals,
+            dashed,
+            horizontals,
+            between,
+            intertexts,
+            stretch: self.array_stretch(),
+            colsep: self.macros.array_colsep.map_or(500, |em| (em * 1000.0).round() as u16),
+        })
     }
 
     /// mathtools' `cases*`, `dcases*`, `rcases*` and `drcases*`: the second column is text, with `$…$` for
@@ -2271,6 +2309,29 @@ impl Reader<'_> {
             "r" => Some('r'),
             _ => None,
         })
+    }
+
+    /// `\setlength{\register}{length}` (or `\setlength\register{…}`), `\setlength` just read.
+    /// `\arraycolsep` sets half the space between columns of the arrays and matrices after it; any
+    /// other length is one mathra does not use (E-REC-1, ignored).
+    #[inline(never)]
+    fn set_length(&mut self, col: usize) -> R<()> {
+        self.skip_spaces();
+        let register = if self.current() == Some('\\') {
+            self.pos += 1;
+            format!("\\{}", self.read_command_name())
+        } else {
+            self.raw_text()?.trim().to_string()
+        };
+        let value = self.raw_text()?;
+        match (register.as_str(), measure_em(&value)) {
+            ("\\arraycolsep", Some(em)) if em.is_finite() && em >= 0.0 => {
+                self.macros.array_colsep = Some(em.min(10.0));
+                Ok(())
+            }
+            ("\\arraycolsep", _) => self.tolerate(rules::E_REC_9, col, format!("\\setlength{{\\arraycolsep}}: unrecognized measure: {value}"), "the spacing left as it was"),
+            _ => self.tolerate(rules::E_REC_1, col, format!("\\setlength{{{register}}}: a length mathra does not use"), "ignored"),
+        }
     }
 
     /// `\arraystretch` as the input defined it (`\def`, `\renewcommand`), or 1.
@@ -2363,7 +2424,7 @@ impl Reader<'_> {
             font: self.font,
         };
         let (rows, horizontals, intertexts) = sub.table_body(None, col)?;
-        Ok(Node::Table { shape, rows, columns: vec![], verticals: vec![], dashed: vec![], horizontals, between: vec![], intertexts, stretch: 1.0 })
+        Ok(Node::Table { shape, rows, columns: vec![], verticals: vec![], dashed: vec![], horizontals, between: vec![], intertexts, stretch: 1.0, colsep: 500 })
     }
 
     /// amscd commutative diagram: `A @>f>> B \\ @VgVV @VVhV \\ C @>>k> D`.
@@ -2478,6 +2539,7 @@ impl Reader<'_> {
             between: vec![],
             intertexts: vec![],
             stretch: 1.0,
+            colsep: 500,
         })
     }
 
