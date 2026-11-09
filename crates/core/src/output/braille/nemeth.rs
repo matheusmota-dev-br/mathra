@@ -585,10 +585,7 @@ impl Writer {
         if let Some(s) = sub {
             let numeric = matches!(s, Node::Number { value, .. } if !value.contains('.'));
             // a letter, also an upright one (H in H₂O), or an abbreviated function name
-            let base = match base {
-                Node::Unit { base, .. } => base.as_ref(),
-                other => other,
-            };
+            let base = script_letter(base);
             let on_letter = matches!(base, Node::Identifier { name, .. } if name.chars().count() == 1)
                 || matches!(base, Node::Function { .. })
                 || matches!(base, Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(t)] if !t.is_empty() && t.chars().all(|c| c.is_ascii_alphabetic())));
@@ -1084,6 +1081,28 @@ fn enclosed_lists(children: &[Node]) -> Vec<bool> {
         }
     }
     inside
+}
+
+/// What a script's base ends with in braille, for the numeric subscript of a letter (§14.6): a unit is its
+/// letter, and a quantity (`\si{m}`, `\qty{3}{m}`) the last node of its row, where the subscript follows.
+/// A unit of several letters (`\si{kg}`, a row of two) is not a letter, and keeps the indicator.
+fn script_letter(base: &Node) -> &Node {
+    // inside a unit's row: a group of one node is that node
+    fn unit_end(n: &Node) -> &Node {
+        match n {
+            Node::Row { children } if children.len() == 1 => unit_end(&children[0]),
+            Node::Unit { base, .. } => unit_end(base),
+            other => other,
+        }
+    }
+    match base {
+        Node::Quantity { unit, .. } => match unit.as_ref() {
+            Node::Row { children } if !children.is_empty() => unit_end(&children[children.len() - 1]),
+            other => unit_end(other),
+        },
+        Node::Unit { base, .. } => base,
+        other => other,
+    }
 }
 
 /// How deep the fractions inside go: 0 for a simple fraction's parts.
