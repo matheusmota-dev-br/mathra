@@ -81,10 +81,8 @@ fn exit(r: Rect, p: P, d: P) -> P {
     } else if d.1 < -1e-6 {
         t = t.min((r.y0 - p.1) / d.1);
     }
-    if !t.is_finite() {
-        t = 0.0;
-    }
-    add(p, mul(d, t.max(0.0)))
+    // (`d` has a length of one, so one side stops it; nowhere for a ray that never leaves)
+    add(p, mul(d, if t.is_finite() { t.max(0.0) } else { 0.0 }))
 }
 
 /// xy-pic's `@(d1,d2)` (reference manual, note 24p): the cubic from the center `p` of the source to the
@@ -366,9 +364,8 @@ pub fn compose(cells: &[Vec<Node>], arrows: &[DiagramArrow], e: Style, ctx: &mut
                 .collect()
         };
         let total = polyline_length(&path);
-        if total < 1e-3 {
-            continue;
-        }
+        // (a path of no length, which the borders an arrow leaves and reaches never give, draws nothing)
+        let false = total < 1e-3 else { continue };
 
         // labels beside the arrow or on it, at their position along it (the middle by default)
         let mut breaks: Vec<Rect> = Vec::new();
