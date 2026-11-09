@@ -466,6 +466,7 @@ export class MathraField extends HTMLElement {
       rxSign: () => e.addReactionSign(arg),
       rxPlace: () => e.enterReactionPlace(arg as "above" | "below" | "coef" | "formula"),
       rxRemove: () => e.removeReactionPiece(),
+      rxStructure: () => e.addSchemeStructure(),
       editBlock: () => {
         const b = e.blockAtCursor();
         if (b) this.openBlock(b);
@@ -955,24 +956,29 @@ export class MathraField extends HTMLElement {
     const l = this.locale;
     const at = this.editor.reactionAtCursor();
     const piece = at?.piece ?? null;
-    const arrow = piece?.kind === "rxarrow" ? piece.arrow : null;
+    const beside = !piece && this.editor.cursor.row === reaction.body ? reaction.body.children[this.editor.cursor.offset - 1] : null;
+    const arrow = piece?.kind === "rxarrow" ? piece.arrow : beside?.kind === "rxarrow" ? beside.arrow : null;
     const state = piece?.kind === "species" ? piece.state.children.map((c) => (c.kind === "char" ? c.ch : "")).join("") : null;
-    const key = `rx|${l}|${piece?.kind ?? ""}|${arrow}|${state}`;
+    const scheme = !!reaction.scheme;
+    const key = `rx|${l}|${scheme}|${piece?.kind ?? ""}|${arrow}|${state}`;
     if (key !== this.dbarKey) {
       this.dbarKey = key;
       const btn = (run: string, label: string, title: string, pressed?: boolean, text = false) =>
         `<button type="button" data-run="${run}" title="${title}" aria-label="${title}"${pressed === undefined ? "" : ` aria-pressed="${pressed}"`}${text ? ' class="text"' : ""}>${label}</button>`;
       const w = (k: keyof typeof UI) => say(UI[k], l);
-      const arrows: [string, string, keyof typeof UI][] = [["->", "→", "rxForward"], ["<=>", "⇌", "rxEquilibrium"], ["<=>>", "⥂", "rxEquilibriumRight"], ["<<=>", "⥄", "rxEquilibriumLeft"], ["<->", "↔", "rxResonance"], ["<-", "←", "rxBackward"]];
+      const arrows: [string, string, keyof typeof UI][] = scheme
+        ? [["->", "→", "rxForward"], ["<=>", "⇌", "rxEquilibrium"], ["<->", "↔", "rxResonance"], ["<-", "←", "rxBackward"], ["-/>", "↛", "rxNoReaction"]]
+        : [["->", "→", "rxForward"], ["<=>", "⇌", "rxEquilibrium"], ["<=>>", "⥂", "rxEquilibriumRight"], ["<<=>", "⥄", "rxEquilibriumLeft"], ["<->", "↔", "rxResonance"], ["<-", "←", "rxBackward"]];
       let html = arrows.map(([a, glyph, k]) => btn(`rxArrow:${a}`, glyph, w(k), arrow === null ? undefined : arrow === a)).join("");
       if (piece?.kind === "rxarrow") html += '<span class="sep"></span>' + btn("rxPlace:above", "▔", w("rxAbove"), undefined) + btn("rxPlace:below", "▁", w("rxBelow"), undefined);
       if (piece?.kind === "species") {
         html += '<span class="sep"></span>' + [["s", "(s)"], ["l", "(l)"], ["g", "(g)"], ["aq", "(aq)"]].map(([s, label]) => btn(`rxState:${s}`, label, `${w("rxState")} ${label}`, state === s, true)).join("") + btn("rxState:", "∅", w("rxNoState"), state === "");
         html += btn("rxPlace:coef", "2", w("rxCoefficient"));
       }
-      html += '<span class="sep"></span>' + btn("rxSign:+", "+", w("rxPlus")) + btn("rxSign:^", "↑", w("rxGas")) + btn("rxSign:v", "↓", w("rxPrecipitate"));
-      if (piece) html += btn("rxRemove", icon("clear"), w("rxRemove"));
-      html += '<span class="sep"></span>' + btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, true) + `<span class="hint">${w("rxHint")}</span>`;
+      html += '<span class="sep"></span>' + (scheme ? btn("rxStructure", "⌬", w("rxStructure")) + btn("rxSign:+", "+", w("rxPlus")) : btn("rxSign:+", "+", w("rxPlus")) + btn("rxSign:^", "↑", w("rxGas")) + btn("rxSign:v", "↓", w("rxPrecipitate")));
+      const current = piece ?? this.editor.cursor.row.children[this.editor.cursor.offset - 1];
+      if (current) html += btn("rxRemove", icon("clear"), w("rxRemove"));
+      html += '<span class="sep"></span>' + btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, true) + `<span class="hint">${w(scheme ? "rxSchemeHint" : "rxHint")}</span>`;
       this.dbar.innerHTML = html;
     }
     this.dbar.hidden = false;

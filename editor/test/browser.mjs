@@ -539,6 +539,31 @@ await check("Structures by mouse: a drag from an atom draws a bond; a click pick
   assert.equal(await page.evaluate(() => document.getElementById("editor").editor.chemSelection()), null);
 });
 
+await check("Schemes: a structure, a space, an arrow with conditions, the next structure; the bar's arrows", async () => {
+  await setValue("");
+  await focus();
+  await tab("Química").click();
+  await button("Esquema de reação: estruturas e setas; -> entre elas, [ para as condições").click();
+  await k.type("A");
+  await k.press("Alt+ArrowRight");
+  await k.type("B");
+  await k.type(" ->[calor]");
+  // ] leaves the conditions: the next letter starts the next structure
+  await k.type("C");
+  assert.equal(await value(), "\\schemestart \\chemfig{A-[:0]B} \\arrow{->[calor]} \\chemfig{C} \\schemestop");
+  // the arrow: picked by moving onto it, its kind from the bar
+  await k.press("Escape");
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; const b = e.root.children[0].body; e.setCursor({ row: b, offset: 2 }); });
+  await dbar.locator('[data-run="rxArrow:<=>"]').click();
+  assert.match(await value(), /\\arrow\{<=>\[calor\]\}/);
+  await dbar.locator('[data-run="rxStructure"]').click();
+  await k.type("D");
+  assert.match(await value(), /\\arrow\{<=>\[calor\]\} \\chemfig\{D\} \\chemfig\{C\}/);
+  assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/scheme.png` });
+});
+
 await check("Chemistry: Esc takes the edit back; Enter beside a block opens it", async () => {
   await setValue("\\chemfig{A-B}");
   await focus();

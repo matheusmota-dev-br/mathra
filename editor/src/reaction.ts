@@ -5,7 +5,12 @@
 export type PieceData =
   | { kind: "species"; coef: string; formula: string; state: string }
   | { kind: "rxarrow"; arrow: string; above: string | null; below: string | null }
-  | { kind: "rxtoken"; text: string };
+  | { kind: "rxtoken"; text: string }
+  /** A compound of a scheme: a structure, its LaTeX. */
+  | { kind: "chem"; latex: string };
+
+/** chemfig's arrows the editor writes in a scheme. */
+export const SCHEME_ARROWS = ["<=>", "<->", "->", "<-", "-/>"];
 
 /** mhchem's arrows, the longest first (so `<=>>` is not read as `<=>`). */
 export const REACTION_ARROWS = ["<=>>", "<<=>", "<-->", "<=>", "<->", "->", "<-", "="];
@@ -101,6 +106,77 @@ export function readReaction(src: string): PieceData[] | null {
       continue;
     }
     out.push(species("", t));
+  }
+  return out;
+}
+
+/** The group `{…}` at `s[i]`, and where it ends. */
+function group(s: string, i: number): { text: string; end: number } | null {
+  if (s[i] !== "{") return null;
+  let depth = 0;
+  for (let j = i; j < s.length; j++) {
+    if (s[j] === "\\") {
+      j++;
+      continue;
+    }
+    if (s[j] === "{") depth++;
+    else if (s[j] === "}" && --depth === 0) return { text: s.slice(i + 1, j), end: j + 1 };
+  }
+  return null;
+}
+
+/** Reads what is between \schemestart and \schemestop into compounds (\chemfig), arrows (with what goes
+ * over and under them) and \+; null when there is anything else (it stays a block). */
+export function readScheme(src: string): PieceData[] | null {
+  const out: PieceData[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (/\s/.test(src[i])) {
+      i++;
+      continue;
+    }
+    if (src.startsWith("\\chemfig", i) && !/[a-zA-Z*]/.test(src[i + 8] ?? "")) {
+      const g = group(src, i + 8);
+      if (!g) return null;
+      out.push({ kind: "chem", latex: `\\chemfig{${g.text}}` });
+      i = g.end;
+      continue;
+    }
+    if (src.startsWith("\\+", i)) {
+      out.push({ kind: "rxtoken", text: "+" });
+      i += 2;
+      continue;
+    }
+    if (src.startsWith("\\arrow", i) && !/[a-zA-Z]/.test(src[i + 6] ?? "")) {
+      i += 6;
+      const g = group(src, i);
+      let arrow = "->";
+      let above: string | null = null;
+      let below: string | null = null;
+      if (g) {
+        const t = g.text.trim();
+        arrow = SCHEME_ARROWS.find((a) => t.startsWith(a)) ?? "";
+        if (!arrow) return null;
+        let rest = t.slice(arrow.length);
+        const a = bracket(rest, 0);
+        if (a) {
+          above = a.text;
+          rest = rest.slice(a.end);
+          const b = bracket(rest, 0);
+          if (b) {
+            below = b.text;
+            rest = rest.slice(b.end);
+          }
+        }
+        if (rest.trim()) return null;
+        i = g.end;
+      }
+      // an arrow's own [angle, length…] or a name (a--b): left as written
+      if (src[i] === "[" || src[i] === "(") return null;
+      out.push({ kind: "rxarrow", arrow, above, below });
+      continue;
+    }
+    return null;
   }
   return out;
 }

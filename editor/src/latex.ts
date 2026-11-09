@@ -3,7 +3,7 @@
 // an empty place and `#0` where the selection goes.
 
 import { readDiagram, type ArrowData, type DiagramEnv } from "./diagram.ts";
-import { readReaction } from "./reaction.ts";
+import { readReaction, readScheme } from "./reaction.ts";
 import {
   ACCENTS,
   CHAR_CLASS,
@@ -33,7 +33,7 @@ export type AtomSpec =
   | { kind: "matrix"; env: string; cells: AtomSpec[][][] }
   | { kind: "raw"; latex: string }
   /** A reaction (mhchem's \ce): pieces, their texts as characters. */
-  | { kind: "reaction"; pieces: ({ kind: "species"; coef: string; formula: string; state: string } | { kind: "rxarrow"; arrow: string; above: string | null; below: string | null } | { kind: "rxtoken"; text: string })[] }
+  | { kind: "reaction"; scheme?: boolean; pieces: ({ kind: "species"; coef: string; formula: string; state: string } | { kind: "rxarrow"; arrow: string; above: string | null; below: string | null } | { kind: "rxtoken"; text: string } | { kind: "chem"; latex: string })[] }
   /** A commutative diagram: cells and arrows, labels as atoms. */
   | { kind: "diagram"; env: DiagramEnv; cells: AtomSpec[][][]; arrows: ArrowData<AtomSpec[]>[] }
   | { kind: "command"; name: string }
@@ -313,7 +313,10 @@ class Reader {
         }
         stop = this.pos;
       }
-      out.push({ kind: "raw", latex: `\\schemestart${this.src.slice(start, stop)}` });
+      // compounds, arrows and + only: a scheme of pieces; anything else (\chemmove, names) one block
+      const inner = end < 0 ? null : this.src.slice(start, end);
+      const pieces = !after && inner !== null ? readScheme(inner) : null;
+      out.push(pieces ? { kind: "reaction", scheme: true, pieces } : { kind: "raw", latex: `\\schemestart${this.src.slice(start, stop)}` });
       this.pos = stop;
       return;
     }

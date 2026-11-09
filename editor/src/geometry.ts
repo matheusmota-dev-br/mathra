@@ -48,6 +48,13 @@ export function atomRect(atom: Atom, boxes: Map<string, Box>): Rect | null {
   if (inNumber) return inNumber;
   const inPiece = piecePart(atom, boxes);
   if (inPiece) return inPiece;
+  const arrow = schemeArrow(atom, boxes);
+  if (arrow) return arrow;
+  // a structure in a scheme carries no mark around it: where its atoms are
+  if (atom.kind === "raw") {
+    const atoms = [...boxes.entries()].filter(([id]) => id.startsWith(`${atom.id}a`) && /^\d+$/.test(id.slice(atom.id.length + 1))).map(([, b]) => b);
+    if (atoms.length) return union(atoms);
+  }
   const parts: Rect[] = [];
   for (const id of [`${atom.id}l`, `${atom.id}r`]) {
     const b = boxes.get(id);
@@ -79,6 +86,35 @@ function numberPart(atom: Atom, boxes: Map<string, Box>): Rect | null {
     return { x: group.x + before * unit, y: group.y, width: weight(atom) * unit, height: group.height };
   }
   return null;
+}
+
+/** An arrow of a scheme, which carries no mark of its own: the space between the pieces around it,
+ * as high as they are (its labels' boxes, when it has them, widen it). */
+function schemeArrow(atom: Atom, boxes: Map<string, Box>): Rect | null {
+  const row = atom.parent;
+  if (atom.kind !== "rxarrow" || row?.parent?.kind !== "reaction" || !row.parent.scheme || boxes.has(atom.id)) return null;
+  const i = row.children.indexOf(atom);
+  const near = (step: number) => {
+    for (let k = i + step; k >= 0 && k < row.children.length; k += step) {
+      const a = row.children[k];
+      if (a.kind === "rxarrow") continue;
+      const r = boxes.get(a.id) ?? (a.kind === "raw" ? union([...boxes.entries()].filter(([id]) => id.startsWith(`${a.id}a`)).map(([, b]) => b)) : null);
+      if (r) return r;
+    }
+    return null;
+  };
+  const l = near(-1);
+  const r = near(+1);
+  const labels = [atom.above, atom.below].map((x) => boxes.get(x.id)).filter((b): b is Box => !!b);
+  if (!l && !r && !labels.length) return null;
+  // with nothing on one side, an arrow's usual length from the other
+  const usual = 1600;
+  const x0 = l ? l.x + l.width : labels.length ? Math.min(...labels.map((b) => b.x)) : r!.x - usual;
+  const x1 = r ? r.x : labels.length ? Math.max(...labels.map((b) => b.x + b.width)) : x0 + usual;
+  const ys = [l, r, ...labels].filter((b): b is Rect => !!b);
+  const y0 = Math.min(...ys.map((b) => b.y));
+  const y1 = Math.max(...ys.map((b) => b.y + b.height));
+  return { x: Math.min(x0, x1), y: y0, width: Math.abs(x1 - x0), height: y1 - y0 };
 }
 
 /** A character of a reaction's piece (mhchem draws the piece's text as one group): its share of the
