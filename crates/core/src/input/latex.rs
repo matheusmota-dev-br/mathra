@@ -8,7 +8,7 @@ use crate::tree::*;
 use crate::Error;
 
 use super::symbols::{self, Symbol};
-use siunitx::{joined_units, unit_node, PerMode, UnitEntry};
+use siunitx::{joined_units, unit_node, PerMode, UnitEntry, UnitSymbol};
 
 #[cfg(feature = "chem")]
 mod chemistry;
@@ -999,7 +999,7 @@ impl Reader<'_> {
                 self.pos = saved;
                 self.environment(col)?
             }
-            "intertext" | "shortintertext" => return Ok(Some(Some(Stop::Intertext(self.text()?)))),
+            "intertext" | "shortintertext" => return Ok(Some(Some(Stop::Intertext(Node::Text { parts: self.text_parts()? })))),
             // amsmath, for a line of multline: the line at the left or right margin (the optional
             // [length] away from it, which mathra, with no margin to measure from, leaves out)
             "shoveleft" | "shoveright" => {
@@ -1023,6 +1023,27 @@ impl Reader<'_> {
             let cells: usize = row.iter().map(span).sum();
             if cells > declared && !intertexts.contains(&r) {
                 self.tolerate(rules::E_REC_9, col, format!("row {} of {name} has {cells} cells, the columns declare {declared}", r + 1), "the extra cells drawn centered")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// amsmath's "Misplaced alignment tab character &": a line of `gather`, `gathered` or `multline`,
+    /// which have one column, split by `&` (E-REC-9; refused in strict mode). The cells are joined
+    /// into the one cell of the line. Out of line, as `extra_cells`.
+    #[inline(never)]
+    fn misplaced_tabs(&mut self, rows: &mut [Vec<Node>], name: &str, col: usize) -> R<()> {
+        for (r, row) in rows.iter_mut().enumerate() {
+            if row.len() > 1 {
+                self.tolerate(rules::E_REC_9, col, format!("'&' in line {} of {name}, which has one column", r + 1), "the cells joined")?;
+                let mut joined = Vec::new();
+                for cell in row.drain(..) {
+                    match cell {
+                        Node::Row { children } => joined.extend(children),
+                        other => joined.push(other),
+                    }
+                }
+                row.push(Node::row(joined).simplify());
             }
         }
         Ok(())
@@ -1265,7 +1286,7 @@ impl Reader<'_> {
         let node: Node = match name {
             // text and fonts
             "text" | "textrm" | "textnormal" | "textup" | "mbox" | "hbox" | "textsf" | "textmd" | "textsl" | "fbox" | "framebox" => {
-                let text = self.text()?;
+                let text = Node::Text { parts: self.text_parts()? };
                 if matches!(name, "fbox" | "framebox") {
                     Node::Framed { base: Box::new(text), shape: Frame::Rectangle, background: None, border: None, padding: None, thickness: None }
                 } else {
@@ -1284,19 +1305,16 @@ impl Reader<'_> {
                 if name == "texttt" {
                     self.variant = Variant::Monospace;
                 }
-                let text = self.text();
+                let text = self.text_parts();
                 self.variant = variant;
-                match text? {
-                    Node::Text { parts } => Node::Text {
-                        parts: parts
-                            .into_iter()
-                            .map(|p| match p {
-                                TextPart::Text(t) => TextPart::Text(format!("{open}{t}{close}")),
-                                math => math,
-                            })
-                            .collect(),
-                    },
-                    other => other,
+                Node::Text {
+                    parts: text?
+                        .into_iter()
+                        .map(|p| match p {
+                            TextPart::Text(t) => TextPart::Text(format!("{open}{t}{close}")),
+                            math => math,
+                        })
+                        .collect(),
                 }
             }
             // hyperref: the address as written, in typewriter type (_ % # ~ are its own characters)
@@ -1306,7 +1324,7 @@ impl Reader<'_> {
                 Node::Text { parts: vec![TextPart::Text(format!("{MONO_START}{address}{MONO_END}"))] }
             }
             // graphicx: \scalebox{-1}[1]{…}, its argument in text mode
-            "reflectbox" => Node::Reflected { base: Box::new(self.text()?) },
+            "reflectbox" => Node::Reflected { base: Box::new(Node::Text { parts: self.text_parts()? }) },
             "mathrm" | "mathup" | "mathit" | "mathbf" | "mathsf" | "mathtt" | "mathbb" | "mathcal" | "mathscr" | "mathfrak" | "boldsymbol" | "bm" | "pmb" | "mathbfit"
             | "mathbold" | "mathnormal" | "symbf" | "symrm" | "symit" | "mathds" | "mathbbm" | "Bbb" => {
                 let variant = match name {
@@ -1486,12 +1504,12 @@ impl Reader<'_> {
             // the color is the background, not the content's: the text keeps the page color
             "colorbox" => {
                 let background = self.color()?;
-                Node::Framed { base: Box::new(self.text()?), shape: Frame::Fill, background, border: None, padding: None, thickness: None }
+                Node::Framed { base: Box::new(Node::Text { parts: self.text_parts()? }), shape: Frame::Fill, background, border: None, padding: None, thickness: None }
             }
             "fcolorbox" => {
                 let border = self.color()?;
                 let background = self.color()?;
-                Node::Framed { base: Box::new(self.text()?), shape: Frame::Rectangle, background, border, padding: None, thickness: None }
+                Node::Framed { base: Box::new(Node::Text { parts: self.text_parts()? }), shape: Frame::Rectangle, background, border, padding: None, thickness: None }
             }
             // MathJax: \bbox[background,padding,border:…]{math}, a \colorbox or \fcolorbox around math
             // (read in functions of their own: this match's frame is on the stack at every level of \not)
@@ -1784,7 +1802,7 @@ impl Reader<'_> {
                     "rlap" => 'r',
                     _ => 'c',
                 };
-                let base = if name.starts_with("math") { self.argument()? } else { self.text()? };
+                let base = if name.starts_with("math") { self.argument()? } else { Node::Text { parts: self.text_parts()? } };
                 Node::Overlapped { base: Box::new(base), side }
             }
             // graphicx's boxes, their argument in text mode
@@ -1793,7 +1811,7 @@ impl Reader<'_> {
                 let em = measure_em(&measure).ok_or(Error::Syntax { column: col, message: format!("unrecognized measure: {measure}") })?;
                 let height = self.box_length(col)?;
                 let depth = if height.is_some() { self.box_length(col)? } else { None };
-                Node::Raised { em, height: height.flatten(), depth: depth.flatten(), base: Box::new(self.text()?) }
+                Node::Raised { em, height: height.flatten(), depth: depth.flatten(), base: Box::new(Node::Text { parts: self.text_parts()? }) }
             }
             "scalebox" => {
                 let factor = |s: &str| s.trim().parse::<f32>().ok().filter(|f| f.is_finite()).map(|f| f.signum() * f.abs().clamp(0.05, 20.0));
@@ -1802,7 +1820,7 @@ impl Reader<'_> {
                     Some(y) => Some(factor(&y).ok_or(Error::Syntax { column: col, message: "\\scalebox{h}[v]{…} takes numbers".into() })?),
                     None => None,
                 };
-                Node::Scaled { factor: x, vertical: y.filter(|y| *y != x), base: Box::new(self.text()?) }
+                Node::Scaled { factor: x, vertical: y.filter(|y| *y != x), base: Box::new(Node::Text { parts: self.text_parts()? }) }
             }
             "resizebox" => {
                 let mut size = Vec::with_capacity(2);
@@ -1816,7 +1834,7 @@ impl Reader<'_> {
                         },
                     });
                 }
-                Node::Resized { width: size[0], height: size[1], total: star, base: Box::new(self.text()?) }
+                Node::Resized { width: size[0], height: size[1], total: star, base: Box::new(Node::Text { parts: self.text_parts()? }) }
             }
             "rotatebox" => {
                 // of the options, origin=…; x=, y= and units= are ignored
@@ -1827,7 +1845,7 @@ impl Reader<'_> {
                 let angle = self.raw_text()?;
                 let degrees =
                     angle.trim().parse::<f32>().ok().filter(|a| a.is_finite()).ok_or(Error::Syntax { column: col, message: "\\rotatebox{angle}{…} takes a number".into() })?;
-                Node::Rotated { degrees: degrees % 360.0, origin, base: Box::new(self.text()?) }
+                Node::Rotated { degrees: degrees % 360.0, origin, base: Box::new(Node::Text { parts: self.text_parts()? }) }
             }
             "rule" => {
                 let raise = self.raw_optional().and_then(|m| measure_em(&m)).unwrap_or(0.0);
@@ -1854,7 +1872,7 @@ impl Reader<'_> {
                 pos
             }
             "textsuperscript" | "textsubscript" => {
-                let t = self.text()?;
+                let t = Node::Text { parts: self.text_parts()? };
                 if name == "textsuperscript" {
                     Node::Scripts { base: Box::new(Node::row(vec![])), sup: Some(Box::new(t)), sub: None }
                 } else {
@@ -2294,6 +2312,9 @@ impl Reader<'_> {
         }
 
         let (mut rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        if matches!(base, "gather" | "gathered" | "multline") {
+            self.misplaced_tabs(&mut rows, &name, col)?;
+        }
         if base == "multline" {
             multline_alignments(&mut rows);
         }
@@ -2647,8 +2668,8 @@ impl Reader<'_> {
         Ok(())
     }
 
-    /// Content of `\text{…}`: running text, old-style accents and `$…$` snippets.
-    fn text(&mut self) -> R<Node> {
+    /// Content of `\text{…}`: running text, old-style accents and `$…$` snippets, as the parts of its node.
+    fn text_parts(&mut self) -> R<Vec<TextPart>> {
         let col = self.column();
         let raw = self.raw_text()?;
         let c: Vec<char> = raw.chars().collect();
@@ -2990,7 +3011,7 @@ impl Reader<'_> {
         if !current.is_empty() {
             parts.push(TextPart::Text(current));
         }
-        Ok(Node::Text { parts })
+        Ok(parts)
     }
 
     /// A siunitx number; in tolerant mode, something else is drawn as math, with a warning.
@@ -3084,11 +3105,11 @@ impl Reader<'_> {
                         // a declared unit comes first, even over one of siunitx's own names
                         let other = if self.macros.siunitx.units.contains_key(name) || symbols::unit(name).is_none() { self.other_unit_symbol(name)? } else { None };
                         let symbol = match (other, symbols::unit(name)) {
-                            (Some(node), _) => node,
-                            (None, Some(symbol)) => Node::Text { parts: vec![TextPart::Text(symbol.to_string())] },
+                            (Some(symbol), _) => symbol,
+                            (None, Some(symbol)) => UnitSymbol::Text(symbol.to_string()),
                             (None, None) => {
                                 self.tolerate(rules::E_REC_1, col, format!("unsupported unit: \\{name}"), "written by its name")?;
-                                Node::Text { parts: vec![TextPart::Text(name.to_string())] }
+                                UnitSymbol::Text(name.to_string())
                             }
                         };
                         let exponent = if let Some(n) = raised.take() {
@@ -3102,12 +3123,9 @@ impl Reader<'_> {
                         };
                         let written = prefix.trim_end_matches(['²', '³']).to_string();
                         let base = match symbol {
-                            Node::Text { parts: p } => match p.as_slice() {
-                                [TextPart::Text(t)] => Node::Text { parts: vec![TextPart::Text(format!("{written}{t}"))] },
-                                _ => Node::Text { parts: p },
-                            },
-                            other if !written.is_empty() => Node::row(vec![Node::Text { parts: vec![TextPart::Text(written)] }, other]),
-                            other => other,
+                            UnitSymbol::Text(t) => Node::Text { parts: vec![TextPart::Text(format!("{written}{t}"))] },
+                            UnitSymbol::Math(math) if !written.is_empty() => Node::row(vec![Node::Text { parts: vec![TextPart::Text(written)] }, math]),
+                            UnitSymbol::Math(math) => math,
                         };
                         prefix.clear();
                         let names = (std::mem::take(&mut prefix_names), symbols::canonical_unit(name).to_string());
@@ -4373,12 +4391,11 @@ fn multline_alignments(rows: &mut [Vec<Node>]) {
     if last == 0 {
         return;
     }
+    // a line is one cell by now: `misplaced_tabs` has joined the cells of a line split by `&`
     for (i, alignment) in [(0, 'l'), (last, 'r')] {
-        if let [cell] = rows[i].as_mut_slice() {
-            if !matches!(cell, Node::Multicolumn { .. }) {
-                let base = std::mem::replace(cell, Node::row(vec![]));
-                *cell = Node::Multicolumn { columns: 1, alignment, base: Box::new(base) };
-            }
+        for cell in rows[i].iter_mut().filter(|cell| !matches!(cell, Node::Multicolumn { .. })) {
+            let base = std::mem::replace(cell, Node::row(vec![]));
+            *cell = Node::Multicolumn { columns: 1, alignment, base: Box::new(base) };
         }
     }
 }
@@ -4699,26 +4716,8 @@ fn html_attributes(command: &str, value: &str, base: Node) -> (Node, Vec<String>
             }
         }
         "style" | "htmlStyle" => {
-            let mut kept = Vec::new();
-            for declaration in value.split(';').map(str::trim).filter(|d| !d.is_empty()) {
-                // the same test as safe_style, which the MathML reader uses
-                let Some((property, v)) = declaration.split_once(':') else {
-                    dropped.push(format!("style {declaration:?}"));
-                    continue;
-                };
-                let (property, v) = (property.trim().to_ascii_lowercase(), v.trim());
-                let lower = v.to_ascii_lowercase();
-                let plain = !v.is_empty() && v.len() < 60 && v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),.% -".contains(c));
-                let is_color = v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c));
-                if !STYLE_PROPERTIES.contains(&property.as_str()) || !plain || lower.contains("url(") || lower.contains("expression(") || (property == "color" && !is_color) {
-                    dropped.push(format!("style {declaration:?}"));
-                    continue;
-                }
-                if property == "color" {
-                    color = Some(v.to_string());
-                }
-                kept.push(format!("{property}:{v}"));
-            }
+            let kept;
+            (kept, color) = style_declarations(value, &mut dropped);
             if !kept.is_empty() {
                 attributes.push(("style".into(), kept.join(";")));
             }
@@ -4746,18 +4745,37 @@ fn html_attributes(command: &str, value: &str, base: Node) -> (Node, Vec<String>
     (out, dropped)
 }
 
+/// The declarations of a style that [`html_attributes`] keeps, as it writes them (`property:value`),
+/// and the color among them; the others go to `dropped`.
+fn style_declarations(value: &str, dropped: &mut Vec<String>) -> (Vec<String>, Option<String>) {
+    let mut kept = Vec::new();
+    let mut color = None;
+    for declaration in value.split(';').map(str::trim).filter(|d| !d.is_empty()) {
+        let Some((property, v)) = declaration.split_once(':') else {
+            dropped.push(format!("style {declaration:?}"));
+            continue;
+        };
+        let (property, v) = (property.trim().to_ascii_lowercase(), v.trim());
+        let lower = v.to_ascii_lowercase();
+        let plain = !v.is_empty() && v.len() < 60 && v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),.% -".contains(c));
+        let is_color = v.chars().all(|c| c.is_ascii_alphanumeric() || "#(),. ".contains(c));
+        if !STYLE_PROPERTIES.contains(&property.as_str()) || !plain || lower.contains("url(") || lower.contains("expression(") || (property == "color" && !is_color) {
+            dropped.push(format!("style {declaration:?}"));
+            continue;
+        }
+        if property == "color" {
+            color = Some(v.to_string());
+        }
+        kept.push(format!("{property}:{v}"));
+    }
+    (kept, color)
+}
+
 /// A style attribute with only the declarations [`html_attributes`] keeps, as it writes them; `None`
 /// when none is left. For the MathML reader, which reads back the `style` mathra writes.
 pub(crate) fn safe_style(value: &str) -> Option<String> {
-    let (node, _) = html_attributes("style", value, Node::row(vec![]));
-    let mut node = node;
-    loop {
-        match node {
-            Node::Attributed { attributes, .. } => return attributes.into_iter().find(|(k, _)| k == "style").map(|(_, v)| v),
-            Node::Colored { base, .. } => node = *base,
-            _ => return None,
-        }
-    }
+    let (kept, _) = style_declarations(value, &mut Vec::new());
+    (!kept.is_empty()).then(|| kept.join(";"))
 }
 
 /// A siunitx number with an uncertainty, as written: compact, `1.23(4)` (and `1.23(4)e3`), or separate,
@@ -5706,10 +5724,8 @@ impl Reader<'_> {
             // redefines those two as the operators Re and Im, which mathra does not do
             "real" => "\\Re ".into(),
             "imaginary" => "\\Im ".into(),
-            long => match physics_long_name(long) {
-                Some(short) => format!("\\{short} "),
-                None => return Ok(None),
-            },
+            // a long name (\sine): what is left once the names in `PHYSICS` have their arms
+            long => return Ok(physics_long_name(long).map(|short| format!("\\{short} "))),
         }))
     }
 

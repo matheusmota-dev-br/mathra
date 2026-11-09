@@ -87,8 +87,9 @@ fn label_speech(l: &Label, loc: Locale) -> String {
     }
 }
 
-fn arrow_key(kind: ArrowKind) -> &'static str {
-    match kind {
+/// The phrase an arrow is read by; an invisible arrow has none.
+fn arrow_key(kind: ArrowKind) -> Option<&'static str> {
+    Some(match kind {
         ArrowKind::Forward => "forward",
         ArrowKind::Backward => "backward",
         ArrowKind::Equilibrium => "equilibrium",
@@ -97,8 +98,8 @@ fn arrow_key(kind: ArrowKind) -> &'static str {
         ArrowKind::Resonance => "resonance",
         ArrowKind::Retro => "retro",
         ArrowKind::NoReaction => "no_reaction",
-        ArrowKind::Invisible => "",
-    }
+        ArrowKind::Invisible => return None,
+    })
 }
 
 /// The name a mechanism arrow's end is read by: the hooked atom's label, or the hook's name.
@@ -131,16 +132,8 @@ fn hook_name(s: &Scheme, hook: &str, loc: Locale) -> String {
 pub fn speak(s: &Scheme, loc: Locale) -> String {
     let mut parts: Vec<String> = Vec::new();
     for item in &s.items {
-        // a merge is read as the arrow it ends in
         let merged;
-        let item = match item {
-            Item::Merge(m) => {
-                merged = Item::Arrow(m.as_arrow());
-                &merged
-            }
-            other => other,
-        };
-        match item {
+        let a = match item {
             Item::Compound(c) => {
                 let body = match &c.body {
                     Body::Structure(m) => molecule_speech(m, loc),
@@ -151,26 +144,32 @@ pub fn speak(s: &Scheme, loc: Locale) -> String {
                     Some(n) => format!("{}, {body}", math_speech(&text_tex(&super::layout::split_lines(n).join(" ")), loc)),
                     None => body,
                 });
+                continue;
             }
-            Item::Plus => parts.push(loc.phrase("op.+").to_string()),
-            // read as its arrow, above
-            Item::Merge(_) => {}
-            Item::Arrow(a) => {
-                let mut p = if a.kind == ArrowKind::Invisible { String::new() } else { phrase(loc, arrow_key(a.kind)).to_string() };
-                let mut labels = Vec::new();
-                if let Some(l) = &a.above {
-                    labels.push(fill(phrase(loc, "over"), &[&label_speech(l, loc)]));
-                }
-                if let Some(l) = &a.below {
-                    labels.push(fill(phrase(loc, "under"), &[&label_speech(l, loc)]));
-                }
-                if !labels.is_empty() {
-                    p.push_str(&format!(" ({})", labels.join("; ")));
-                }
-                if !p.is_empty() {
-                    parts.push(p);
-                }
+            Item::Plus => {
+                parts.push(loc.phrase("op.+").to_string());
+                continue;
             }
+            Item::Arrow(a) => a,
+            // a merge is read as the arrow it ends in
+            Item::Merge(m) => {
+                merged = m.as_arrow();
+                &merged
+            }
+        };
+        let mut p = arrow_key(a.kind).map_or_else(String::new, |k| phrase(loc, k).to_string());
+        let mut labels = Vec::new();
+        if let Some(l) = &a.above {
+            labels.push(fill(phrase(loc, "over"), &[&label_speech(l, loc)]));
+        }
+        if let Some(l) = &a.below {
+            labels.push(fill(phrase(loc, "under"), &[&label_speech(l, loc)]));
+        }
+        if !labels.is_empty() {
+            p.push_str(&format!(" ({})", labels.join("; ")));
+        }
+        if !p.is_empty() {
+            parts.push(p);
         }
     }
     let mut speech = parts.join(" ");
@@ -186,44 +185,44 @@ pub fn speak(s: &Scheme, loc: Locale) -> String {
 pub fn linear(s: &Scheme, loc: Locale) -> String {
     let mut parts: Vec<String> = Vec::new();
     for item in &s.items {
-        // a merge is read as the arrow it ends in
         let merged;
-        let item = match item {
+        let a = match item {
+            Item::Compound(c) => {
+                parts.push(match &c.body {
+                    Body::Structure(m) => formula::of(m).written(),
+                    Body::Math { tex } => math_text(tex, loc),
+                });
+                continue;
+            }
+            Item::Plus => {
+                parts.push("+".to_string());
+                continue;
+            }
+            Item::Arrow(a) => a,
+            // a merge is read as the arrow it ends in
             Item::Merge(m) => {
-                merged = Item::Arrow(m.as_arrow());
+                merged = m.as_arrow();
                 &merged
             }
-            other => other,
         };
-        match item {
-            Item::Compound(c) => parts.push(match &c.body {
-                Body::Structure(m) => formula::of(m).written(),
-                Body::Math { tex } => math_text(tex, loc),
-            }),
-            Item::Plus => parts.push("+".to_string()),
-            // read as its arrow, above
-            Item::Merge(_) => {}
-            Item::Arrow(a) => {
-                let sign = match a.kind {
-                    ArrowKind::Forward => "→",
-                    ArrowKind::Backward => "←",
-                    ArrowKind::Equilibrium | ArrowKind::EquilibriumRight | ArrowKind::EquilibriumLeft => "⇌",
-                    ArrowKind::Resonance => "↔",
-                    ArrowKind::Retro => "⇒",
-                    ArrowKind::NoReaction => "↛",
-                    ArrowKind::Invisible => "",
-                };
-                let labels: Vec<String> = [&a.above, &a.below]
-                    .into_iter()
-                    .flatten()
-                    .map(|l| match l {
-                        Label::Text { tex } => math_text(&text_tex(tex), loc),
-                        Label::Structure(m) => formula::of(m).written(),
-                    })
-                    .collect();
-                parts.push(if labels.is_empty() { sign.to_string() } else { format!("{sign}[{}]", labels.join("; ")) });
-            }
-        }
+        let sign = match a.kind {
+            ArrowKind::Forward => "→",
+            ArrowKind::Backward => "←",
+            ArrowKind::Equilibrium | ArrowKind::EquilibriumRight | ArrowKind::EquilibriumLeft => "⇌",
+            ArrowKind::Resonance => "↔",
+            ArrowKind::Retro => "⇒",
+            ArrowKind::NoReaction => "↛",
+            ArrowKind::Invisible => "",
+        };
+        let labels: Vec<String> = [&a.above, &a.below]
+            .into_iter()
+            .flatten()
+            .map(|l| match l {
+                Label::Text { tex } => math_text(&text_tex(tex), loc),
+                Label::Structure(m) => formula::of(m).written(),
+            })
+            .collect();
+        parts.push(if labels.is_empty() { sign.to_string() } else { format!("{sign}[{}]", labels.join("; ")) });
     }
     parts.retain(|p| !p.is_empty());
     parts.join(" ")
@@ -244,35 +243,35 @@ pub fn as_nodes(s: &Scheme) -> Node {
     };
     let mut children = Vec::new();
     for item in &s.items {
-        // a merge is read as the arrow it ends in
         let merged;
-        let item = match item {
+        let a = match item {
+            Item::Compound(c) => {
+                children.push(match &c.body {
+                    Body::Structure(m) => read(&formula::of(m).tex()),
+                    Body::Math { tex } => read(tex),
+                });
+                continue;
+            }
+            Item::Plus => {
+                children.push(Node::Operator { symbol: '+', class: Class::Bin });
+                continue;
+            }
+            Item::Arrow(a) => a,
+            // a merge is read as the arrow it ends in
             Item::Merge(m) => {
-                merged = Item::Arrow(m.as_arrow());
+                merged = m.as_arrow();
                 &merged
             }
-            other => other,
         };
-        match item {
-            Item::Compound(c) => children.push(match &c.body {
-                Body::Structure(m) => read(&formula::of(m).tex()),
-                Body::Math { tex } => read(tex),
-            }),
-            Item::Plus => children.push(Node::Operator { symbol: '+', class: Class::Bin }),
-            // read as its arrow, above
-            Item::Merge(_) => {}
-            Item::Arrow(a) => {
-                let symbol = match a.kind {
-                    ArrowKind::Forward | ArrowKind::NoReaction => '→',
-                    ArrowKind::Backward => '←',
-                    ArrowKind::Equilibrium | ArrowKind::EquilibriumRight | ArrowKind::EquilibriumLeft => '⇌',
-                    ArrowKind::Resonance => '↔',
-                    ArrowKind::Retro => '⇒',
-                    ArrowKind::Invisible => continue,
-                };
-                children.push(Node::Arrow { symbol, above: label(&a.above), below: label(&a.below) });
-            }
-        }
+        let symbol = match a.kind {
+            ArrowKind::Forward | ArrowKind::NoReaction => '→',
+            ArrowKind::Backward => '←',
+            ArrowKind::Equilibrium | ArrowKind::EquilibriumRight | ArrowKind::EquilibriumLeft => '⇌',
+            ArrowKind::Resonance => '↔',
+            ArrowKind::Retro => '⇒',
+            ArrowKind::Invisible => continue,
+        };
+        children.push(Node::Arrow { symbol, above: label(&a.above), below: label(&a.below) });
     }
     Node::row(children)
 }

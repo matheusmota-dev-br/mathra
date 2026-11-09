@@ -187,11 +187,13 @@ impl Reader<'_> {
             // KaTeX writes \mathbb{1} as <mn mathvariant="double-struck">1</mn>: the symbol 𝟙, as from LaTeX
             "mn" if variant == Variant::DoubleStruck && text_of(node).trim().len() == 1 => self.identifier(node, variant),
             "mn" => self.number(node, variant),
-            "mo" if slashed(&text_of(node)).is_some() => slashed_symbol(&text_of(node)),
-            "mo" => match spaced(node, operator(&text_of(node))) {
-                // a word with limits that move aside in inline style: \operatorname*{argmax}
-                Node::Function { name, .. } if node.attribute("movablelimits") == Some("true") => Node::Function { name, limits: true },
-                other => other,
+            "mo" => match slashed(&text_of(node)) {
+                Some(c) => slashed_symbol(c),
+                None => match spaced(node, operator(&text_of(node))) {
+                    // a word with limits that move aside in inline style: \operatorname*{argmax}
+                    Node::Function { name, .. } if node.attribute("movablelimits") == Some("true") => Node::Function { name, limits: true },
+                    other => other,
+                },
             },
             // the no-break spaces of mathra's output keep the spaces at the ends of the text
             "mtext" => Node::Text { parts: vec![TextPart::Text(text_of(node).replace('\u{A0}', " "))] },
@@ -528,9 +530,10 @@ impl Reader<'_> {
             }
             if let Some(label) = label {
                 let l = self.element(label, variant)?;
-                if let Some(last) = cells.pop() {
-                    cells.push(Node::row(vec![last, Node::Space { em: 2.0 }, l]));
-                }
+                // a row with only its label keeps it, alone in the row, after the same space as \tag
+                let mut end: Vec<Node> = cells.pop().into_iter().collect();
+                end.extend([Node::Space { em: 2.0 }, l]);
+                cells.push(Node::row(end));
             }
             rows.push(cells);
         }
@@ -829,10 +832,9 @@ fn slashed(t: &str) -> Option<char> {
     }
 }
 
-/// `<mo>∂̸</mo>`: the slashed symbol.
-fn slashed_symbol(t: &str) -> Node {
-    let base = slashed(t).map_or_else(|| Node::row(vec![]), |c| operator(&c.to_string()));
-    Node::Canceled { base: Box::new(base), shape: Cancel::Slash }
+/// `<mo>∂̸</mo>`: the symbol `c`, slashed.
+fn slashed_symbol(c: char) -> Node {
+    Node::Canceled { base: Box::new(operator(&c.to_string())), shape: Cancel::Slash }
 }
 
 /// `<mo>`: the class of the character, a large operator, or a function name (`lim`, `max`).

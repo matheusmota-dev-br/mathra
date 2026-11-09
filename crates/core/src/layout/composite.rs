@@ -406,10 +406,8 @@ fn stem(b: &MathBox, vertical: bool, e: Style) -> Option<f32> {
 /// Where a line across the first glyph of a box meets its outline, in the box's units, in order:
 /// a horizontal line at height `at`, or a vertical one at `at` from the left (`vertical`).
 fn crossing(b: &MathBox, vertical: bool, at: f32, e: Style) -> Option<Vec<f32>> {
-    let (id, gx, gy, scale) = b.items.iter().find_map(|i| match *i {
-        Item::Glyph { id, x, y, scale, font: None, flip: false, .. } => Some((id, x, y, scale)),
-        _ => None,
-    })?;
+    // (the first item of every box measured here is the glyph)
+    let (id, gx, gy, scale) = b.items.iter().find_map(|i| if let Item::Glyph { id, x, y, scale, font: None, flip: false, .. } = *i { Some((id, x, y, scale)) } else { None })?;
     let local = if vertical { (at - gx) / scale } else { (at - gy) / scale };
     let found = crossings(e.font(), id, vertical, local);
     let offset = if vertical { gy } else { gx };

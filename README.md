@@ -2,6 +2,8 @@
 
 # mathra
 
+[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fmatheusmota-dev-br.github.io%2Fmathra%2Fcoverage%2Fbadge.json)](https://matheusmota-dev-br.github.io/mathra/coverage/html/)
+
 Accessible SVG equations from LaTeX, chemistry included, without a TeX install, for **JavaScript, Python, Rust and the terminal**. **[Try it in the browser](https://matheusmota-dev-br.github.io/mathra/)**, or **[watch the 60-second demo](https://youtu.be/Bbz_nwre2BQ)**.
 
 <p align="center"><a href="https://youtu.be/Bbz_nwre2BQ"><img src="https://img.youtube.com/vi/Bbz_nwre2BQ/maxresdefault.jpg" alt="mathra in 60 seconds: watch the demo on YouTube" width="720"></a></p>

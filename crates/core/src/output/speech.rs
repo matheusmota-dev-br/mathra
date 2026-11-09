@@ -443,6 +443,16 @@ fn pair_bars(children: &[Node]) -> Vec<Node> {
     out
 }
 
+/// The prefix and name of a unit, alone or with its power (`\metre\squared`); None for any other node.
+fn unit_of(n: &Node) -> Option<(Option<&str>, &str)> {
+    let n = if let Node::Scripts { base, .. } = n { base.as_ref() } else { n };
+    if let Node::Unit { prefix, name, .. } = n {
+        Some((prefix.as_deref(), name.as_str()))
+    } else {
+        None
+    }
+}
+
 /// A single token: number, letter, or the same thing with a simple subscript.
 /// L-UNI-3: a quantity's units by their names, in the languages that have them ("9.81 meters per
 /// second squared"): each unit becomes the text of its name, `/` becomes "per", and the grouping of
@@ -453,20 +463,18 @@ fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
         return unit.clone();
     };
     let plural = value.is_none_or(|v| loc.unit_plural(v));
-    let name = |node: &Node, plural: bool| -> Node {
-        let named = |n: &Node| match n {
-            Node::Unit { prefix, name, .. } => loc.unit_name(prefix.as_deref(), name, plural).map(|t| Node::Text { parts: vec![TextPart::Text(t)] }),
-            _ => None,
+    // a unit (alone or with its power) as the text of its name, keeping its scripts
+    let name = |node: &Node, (prefix, unit): (Option<&str>, &str), plural: bool| -> Node {
+        let Some(t) = loc.unit_name(prefix, unit, plural) else {
+            return node.clone();
         };
+        let text = Node::Text { parts: vec![TextPart::Text(t)] };
         match node {
-            Node::Scripts { base, sup, sub } => match named(base) {
-                Some(b) => Node::Scripts { base: Box::new(b), sup: sup.clone(), sub: sub.clone() },
-                None => node.clone(),
-            },
-            other => named(other).unwrap_or_else(|| other.clone()),
+            Node::Scripts { sup, sub, .. } => Node::Scripts { base: Box::new(text), sup: sup.clone(), sub: sub.clone() },
+            _ => text,
         }
     };
-    let is_unit = |n: &Node| matches!(n, Node::Unit { .. }) || matches!(n, Node::Scripts { base, .. } if matches!(base.as_ref(), Node::Unit { .. }));
+    let is_unit = |n: &Node| unit_of(n).is_some();
     let words = |children: &[Node]| -> Vec<Node> {
         let slash = children.iter().position(|c| matches!(c, Node::Operator { symbol: '/', .. }));
         let numerator = slash.unwrap_or(children.len());
@@ -478,8 +486,10 @@ fn units_by_name(unit: &Node, value: Option<&str>, loc: Locale) -> Node {
                 Node::Number { .. } if slash == Some(1) && i == 0 => {}
                 Node::Operator { symbol: '/', .. } => out.push(Node::Text { parts: vec![TextPart::Text(per.to_string())] }),
                 Node::Operator { symbol: '(' | ')' | '·', .. } if slash.is_some_and(|s| i > s) => {}
-                c if is_unit(c) => out.push(name(c, plural && Some(i) == last)),
-                c => out.push(c.clone()),
+                c => out.push(match unit_of(c) {
+                    Some(u) => name(c, u, plural && Some(i) == last),
+                    None => c.clone(),
+                }),
             }
         }
         out

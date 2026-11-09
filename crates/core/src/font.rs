@@ -7,9 +7,10 @@
 //! `Options::fallback_fonts`), in order: any OpenType or TrueType font with outlines, such as Noto
 //! Emoji (the monochrome one), embedded with the `emoji` feature.
 
+use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::num::NonZeroU16;
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock, PoisonError, RwLock};
 
 use ttf_parser::math::{Constants, MathValue};
 pub use ttf_parser::GlyphId;
@@ -67,7 +68,7 @@ impl MathFont {
     /// is kept for as long as the program runs; the same bytes again give the same font.
     pub fn load(bytes: Vec<u8>) -> Result<MathFont, FontError> {
         let hash = fnv(&bytes);
-        let mut loaded = LOADED.lock().unwrap_or_else(|e| e.into_inner());
+        let mut loaded = LOADED.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some((_, f)) = loaded.iter().find(|(h, _)| *h == hash) {
             return Ok(MathFont::Custom(f));
         }
@@ -91,7 +92,7 @@ impl MathFont {
 
     /// The fonts loaded with [`MathFont::load`], in the order they were loaded.
     pub fn loaded() -> Vec<MathFont> {
-        LOADED.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, f)| MathFont::Custom(f)).collect()
+        LOADED.lock().unwrap_or_else(PoisonError::into_inner).iter().map(|(_, f)| MathFont::Custom(f)).collect()
     }
 
     pub fn name(self) -> &'static str {
@@ -183,7 +184,7 @@ pub struct FallbackFont(NonZeroU16);
 static FALLBACK_FONTS: RwLock<Vec<&'static Font>> = RwLock::new(Vec::new());
 
 /// The fallback fonts loaded so far, by a hash of their bytes (as [`LOADED`] for math fonts).
-static LOADED_FALLBACKS: Mutex<Vec<(u64, FallbackFont)>> = Mutex::new(Vec::new());
+static LOADED_FALLBACKS: Mutex<BTreeMap<u64, FallbackFont>> = Mutex::new(BTreeMap::new());
 
 impl std::fmt::Debug for FallbackFont {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -197,11 +198,11 @@ impl FallbackFont {
     /// runs; the same bytes again give the same font.
     pub fn load(bytes: Vec<u8>) -> Result<FallbackFont, FontError> {
         let hash = fnv(&bytes);
-        let mut loaded = LOADED_FALLBACKS.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((_, f)) = loaded.iter().find(|(h, _)| *h == hash) {
+        let mut loaded = LOADED_FALLBACKS.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(f) = loaded.get(&hash) {
             return Ok(*f);
         }
-        if FALLBACK_FONTS.read().unwrap_or_else(|e| e.into_inner()).len() >= usize::from(u16::MAX) {
+        if FALLBACK_FONTS.read().unwrap_or_else(PoisonError::into_inner).len() >= usize::from(u16::MAX) {
             return Err(FontError::NotAFont("too many fallback fonts loaded".into()));
         }
         let (name, has_outlines) = {
@@ -214,28 +215,39 @@ impl FallbackFont {
         }
         let data: &'static [u8] = Box::leak(bytes.into_boxed_slice());
         let font: &'static Font = Box::leak(Box::new(Font { hash: Some(hash), ..Font::parse(data, name) }));
-        let fallback = FallbackFont::register(font);
-        loaded.push((hash, fallback));
+        // a font just made, so not among the fallbacks yet
+        let fallback = FallbackFont::push(&mut FALLBACK_FONTS.write().unwrap_or_else(PoisonError::into_inner), font);
+        loaded.insert(hash, fallback);
         Ok(fallback)
     }
 
     /// The number of a font among the fallbacks, given it the first time.
     fn register(font: &'static Font) -> FallbackFont {
-        let mut fonts = FALLBACK_FONTS.write().unwrap_or_else(|e| e.into_inner());
-        let index = match fonts.iter().position(|f| std::ptr::eq(*f, font)) {
-            Some(i) => i,
-            None => {
-                fonts.push(font);
-                fonts.len() - 1
-            }
-        };
+        let mut fonts = FALLBACK_FONTS.write().unwrap_or_else(PoisonError::into_inner);
+        match fonts.iter().position(|f| std::ptr::eq(*f, font)) {
+            Some(i) => FallbackFont::nth(i),
+            None => FallbackFont::push(&mut fonts, font),
+        }
+    }
+
+    /// A font added to the fallbacks, and its number.
+    fn push(fonts: &mut Vec<&'static Font>, font: &'static Font) -> FallbackFont {
+        fonts.push(font);
+        FallbackFont::nth(fonts.len() - 1)
+    }
+
+    /// The number of the fallback at `index`.
+    fn nth(index: usize) -> FallbackFont {
         // at most u16::MAX fonts: `load` refuses more, and the embedded ones are a handful
         FallbackFont(NonZeroU16::new(u16::try_from(index + 1).expect("at most 65535 fallback fonts")).expect("index + 1 is not zero"))
     }
 
     /// The fallback fonts loaded with [`FallbackFont::load`], in the order they were loaded.
     pub fn loaded() -> Vec<FallbackFont> {
-        LOADED_FALLBACKS.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|(_, f)| *f).collect()
+        let mut fonts: Vec<FallbackFont> = LOADED_FALLBACKS.lock().unwrap_or_else(PoisonError::into_inner).values().copied().collect();
+        // numbered as they were loaded
+        fonts.sort_by_key(|f| f.0);
+        fonts
     }
 
     /// Noto Emoji, the monochrome one (SIL Open Font License), embedded with the `emoji` feature: a
@@ -262,7 +274,7 @@ impl FallbackFont {
 
     /// The font, parsed.
     pub fn get(self) -> &'static Font {
-        FALLBACK_FONTS.read().unwrap_or_else(|e| e.into_inner())[usize::from(self.0.get()) - 1]
+        FALLBACK_FONTS.read().unwrap_or_else(PoisonError::into_inner)[usize::from(self.0.get()) - 1]
     }
 
     /// What names its glyphs in the SVG apart from the math font's and another fallback's
@@ -576,9 +588,13 @@ impl Contours {
     }
 
     /// A Bézier from the last point, with its control points and end, as short lines.
-    fn curve(&mut self, points: &[(f32, f32)]) {
+    fn curve(&mut self, curve: Bezier) {
         let p = self.last();
         let dist = |u: (f32, f32), v: (f32, f32)| (u.0 - v.0).hypot(u.1 - v.1);
+        let points: &[(f32, f32)] = match &curve {
+            Bezier::Quadratic(points) => points,
+            Bezier::Cubic(points) => points,
+        };
         let mut length = 0.0;
         let mut prev = p;
         for &q in points {
@@ -589,17 +605,22 @@ impl Contours {
         for k in 1..=n {
             let t = k as f32 / n as f32;
             let u = 1.0 - t;
-            let at = match *points {
-                [a, q] => (u * u * p.0 + 2.0 * u * t * a.0 + t * t * q.0, u * u * p.1 + 2.0 * u * t * a.1 + t * t * q.1),
-                [a, b, q] => (
+            let at = match curve {
+                Bezier::Quadratic([a, q]) => (u * u * p.0 + 2.0 * u * t * a.0 + t * t * q.0, u * u * p.1 + 2.0 * u * t * a.1 + t * t * q.1),
+                Bezier::Cubic([a, b, q]) => (
                     u * u * u * p.0 + 3.0 * u * u * t * a.0 + 3.0 * u * t * t * b.0 + t * t * t * q.0,
                     u * u * u * p.1 + 3.0 * u * u * t * a.1 + 3.0 * u * t * t * b.1 + t * t * t * q.1,
                 ),
-                _ => return,
             };
             self.line.push(at);
         }
     }
+}
+
+/// A curve's control points and end, after the point it starts from.
+enum Bezier {
+    Quadratic([(f32, f32); 2]),
+    Cubic([(f32, f32); 3]),
 }
 
 impl OutlineBuilder for Contours {
@@ -612,10 +633,10 @@ impl OutlineBuilder for Contours {
         self.line.push((x, y));
     }
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        self.curve(&[(x1, y1), (x, y)]);
+        self.curve(Bezier::Quadratic([(x1, y1), (x, y)]));
     }
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        self.curve(&[(x1, y1), (x2, y2), (x, y)]);
+        self.curve(Bezier::Cubic([(x1, y1), (x2, y2), (x, y)]));
     }
     fn close(&mut self) {
         if self.last() != self.first {

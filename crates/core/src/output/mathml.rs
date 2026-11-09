@@ -90,7 +90,8 @@ fn needs_fallback(tree: &Node) -> Option<&'static str> {
     None
 }
 
-/// Pushes the direct children of a node.
+/// Pushes the direct children of a node. The nodes `needs_fallback` stops at (diagrams, graphicx
+/// boxes) are never walked into, so their children are left out.
 fn each_child<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
     match n {
         Node::Row { children } | Node::Choice { branches: children } | Node::Delimited { parts: children, .. } => out.extend(children.iter()),
@@ -108,7 +109,6 @@ fn each_child<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
             out.extend(rows.iter().flatten());
             out.extend(between.iter().map(|(_, n)| n));
         }
-        Node::ArrowDiagram { cells, .. } => out.extend(cells.iter().flatten()),
         Node::Brace { base, label, .. } => {
             out.push(base);
             out.extend(label.as_deref());
@@ -130,11 +130,7 @@ fn each_child<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
         | Node::Unit { base, .. }
         | Node::Multicolumn { base, .. }
         | Node::Raised { base, .. }
-        | Node::Scaled { base, .. }
-        | Node::Resized { base, .. }
-        | Node::Rotated { base, .. }
         | Node::VCenter { base }
-        | Node::Reflected { base }
         | Node::Smashed { base, .. }
         | Node::Attributed { base, .. }
         | Node::VdotsWithin { symbol: base, .. }
@@ -348,56 +344,57 @@ impl Writer {
             return;
         }
         let mut n = n;
-        while let Node::Canceled { base, .. }
-        | Node::Rotated { base, .. }
-        | Node::Reflected { base }
-        | Node::Scaled { base, .. }
-        | Node::Resized { base, .. }
-        | Node::VCenter { base } = n
-        {
-            n = base;
-        }
-        match n {
-            Node::Number { value, group, thousands, variant } => self.number(value, (*group, *thousands), *variant),
-            Node::Identifier { name, variant } => self.identifier(name, *variant),
-            Node::Function { name, limits } => self.function(name, *limits, false),
-            Node::Operator { symbol, class } => self.operator(*symbol, *class),
-            Node::FixedDelimiter { symbol, class, size } => self.fixed_delimiter(*symbol, *class, *size),
-            Node::LargeOperator { symbol, limits } => self.large_operator(*symbol, *limits),
-            Node::Row { children } => self.single_row(children),
-            Node::Fraction { .. } => self.fraction(n),
-            Node::Root { radicand, index } => self.root(radicand, index.as_deref()),
-            Node::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref()),
-            Node::Delimited { open, close, parts, middles } => self.delimited(*open, *close, parts, middles),
-            Node::Table { .. } => self.table(n),
-            Node::Accent { base, accent, stretchy, below } => self.accent(base, *accent, *stretchy, *below),
-            Node::Bar { base, above } => self.under_over(base, if *above { '‾' } else { '_' }, *above, true),
-            Node::Brace { base, above, label, bracket } => self.brace(base, *above, label.as_deref(), *bracket),
-            Node::Text { parts } => self.text_node(parts),
-            Node::Space { em: e } => self.space(*e),
-            Node::Framed { base, background, padding, .. } => self.paint(base, None, background.as_deref(), *padding),
-            Node::Colored { color, base } => self.paint(base, Some(color), None, None),
-            Node::Arrow { symbol, above, below } => self.arrow(*symbol, above.as_deref(), below.as_deref()),
-            Node::Stacked { base, above, below } => self.stacked(base, above.as_deref(), below.as_deref()),
-            Node::Phantom { base, width, height } => self.phantom(base, *width, *height),
-            Node::ForcedClass { base, .. } | Node::Quantity { unit: base, .. } | Node::Multicolumn { base, .. } => self.node(base),
-            Node::Attributed { attributes, base } => self.attributed(attributes, base),
-            Node::VdotsWithin { symbol, short } => self.vdots_within(symbol, *short),
-            Node::Style { level, base } => self.style(*level, base),
-            Node::Unit { base, .. } => self.unit(base),
-            Node::Raised { em: e, base, .. } => self.padded(base, &[("voffset", em(*e))]),
-            Node::Smashed { base, height, depth } => self.smashed(base, *height, *depth),
-            Node::Overlapped { base, side } => self.overlapped(base, *side),
-            Node::Rule { width, height, raise } => self.rule(*width, *height, *raise),
-            Node::Choice { branches } => self.choice(branches),
-            Node::VerticalArrow { symbol, left, right } => self.vertical_arrow(*symbol, left.as_deref(), right.as_deref()),
-            Node::ArrowDiagram { cells, .. } => self.cells(cells),
-            #[cfg(feature = "chem")]
-            Node::Chemistry { scheme } => self.chemistry(scheme),
-            Node::LongDivision { dividend, divisor } => self.long_division(dividend, divisor),
-            Node::ColumnArithmetic { operation, terms } => self.column_arithmetic(*operation, terms),
-            // handled by the loop above
-            Node::Canceled { .. } | Node::Rotated { .. } | Node::Reflected { .. } | Node::Scaled { .. } | Node::Resized { .. } | Node::VCenter { .. } => {}
+        loop {
+            match n {
+                Node::Canceled { base, .. }
+                | Node::Rotated { base, .. }
+                | Node::Reflected { base }
+                | Node::Scaled { base, .. }
+                | Node::Resized { base, .. }
+                | Node::VCenter { base } => {
+                    n = base;
+                    continue;
+                }
+                Node::Number { value, group, thousands, variant } => self.number(value, (*group, *thousands), *variant),
+                Node::Identifier { name, variant } => self.identifier(name, *variant),
+                Node::Function { name, limits } => self.function(name, *limits, false),
+                Node::Operator { symbol, class } => self.operator(*symbol, *class),
+                Node::FixedDelimiter { symbol, class, size } => self.fixed_delimiter(*symbol, *class, *size),
+                Node::LargeOperator { symbol, limits } => self.large_operator(*symbol, *limits),
+                Node::Row { children } => self.single_row(children),
+                Node::Fraction { .. } => self.fraction(n),
+                Node::Root { radicand, index } => self.root(radicand, index.as_deref()),
+                Node::Scripts { base, sup, sub } => self.scripts(base, sup.as_deref(), sub.as_deref()),
+                Node::Delimited { open, close, parts, middles } => self.delimited(*open, *close, parts, middles),
+                Node::Table { .. } => self.table(n),
+                Node::Accent { base, accent, stretchy, below } => self.accent(base, *accent, *stretchy, *below),
+                Node::Bar { base, above } => self.under_over(base, if *above { '‾' } else { '_' }, *above, true),
+                Node::Brace { base, above, label, bracket } => self.brace(base, *above, label.as_deref(), *bracket),
+                Node::Text { parts } => self.text_node(parts),
+                Node::Space { em: e } => self.space(*e),
+                Node::Framed { base, background, padding, .. } => self.paint(base, None, background.as_deref(), *padding),
+                Node::Colored { color, base } => self.paint(base, Some(color), None, None),
+                Node::Arrow { symbol, above, below } => self.arrow(*symbol, above.as_deref(), below.as_deref()),
+                Node::Stacked { base, above, below } => self.stacked(base, above.as_deref(), below.as_deref()),
+                Node::Phantom { base, width, height } => self.phantom(base, *width, *height),
+                Node::ForcedClass { base, .. } | Node::Quantity { unit: base, .. } | Node::Multicolumn { base, .. } => self.node(base),
+                Node::Attributed { attributes, base } => self.attributed(attributes, base),
+                Node::VdotsWithin { symbol, short } => self.vdots_within(symbol, *short),
+                Node::Style { level, base } => self.style(*level, base),
+                Node::Unit { base, .. } => self.unit(base),
+                Node::Raised { em: e, base, .. } => self.padded(base, &[("voffset", em(*e))]),
+                Node::Smashed { base, height, depth } => self.smashed(base, *height, *depth),
+                Node::Overlapped { base, side } => self.overlapped(base, *side),
+                Node::Rule { width, height, raise } => self.rule(*width, *height, *raise),
+                Node::Choice { branches } => self.choice(branches),
+                Node::VerticalArrow { symbol, left, right } => self.vertical_arrow(*symbol, left.as_deref(), right.as_deref()),
+                Node::ArrowDiagram { cells, .. } => self.cells(cells),
+                #[cfg(feature = "chem")]
+                Node::Chemistry { scheme } => self.chemistry(scheme),
+                Node::LongDivision { dividend, divisor } => self.long_division(dividend, divisor),
+                Node::ColumnArithmetic { operation, terms } => self.column_arithmetic(*operation, terms),
+            }
+            break;
         }
     }
 
@@ -506,32 +503,24 @@ impl Writer {
             if variant == natural && (variant == Variant::Italic || !italicized) {
                 return self.char_leaf("mi", c);
             }
-            if variant == Variant::Upright {
-                self.start("mi");
-                self.attr("mathvariant", "normal");
-                self.gt();
-                self.char_leaf_text(c);
-                return self.end("mi");
+        }
+        // the variant as Unicode's mathematical letters (𝐱, ℝ), which MathML Core draws; upright, and
+        // a letter without one, keep the mathvariant attribute
+        if variant != Variant::Upright {
+            let mapped: String = name.chars().map(|c| alphabet::character(c, variant)).collect();
+            if mapped.chars().zip(name.chars()).all(|(m, c)| m != c) {
+                return self.leaf("mi", &mapped);
             }
-        } else if variant == Variant::Upright {
-            self.start("mi");
-            self.attr("mathvariant", "normal");
-            self.gt();
-            self.text(name);
-            return self.end("mi");
         }
-        // the variant as Unicode's mathematical letters (𝐱, ℝ), which MathML Core draws; a letter
-        // without one keeps the mathvariant attribute
-        let mapped: String = name.chars().map(|c| alphabet::character(c, variant)).collect();
-        if mapped.chars().zip(name.chars()).all(|(m, c)| m != c) {
-            self.leaf("mi", &mapped);
+        self.start("mi");
+        self.attr("mathvariant", variant_name(variant));
+        self.gt();
+        if variant == Variant::Upright && rest.is_none() {
+            self.char_leaf_text(c);
         } else {
-            self.start("mi");
-            self.attr("mathvariant", variant_name(variant));
-            self.gt();
             self.text(name);
-            self.end("mi");
         }
+        self.end("mi");
     }
 
     fn char_leaf_text(&mut self, c: char) {
