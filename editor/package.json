@@ -42,6 +42,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "node --test \"test/*.test.ts\"",
     "test:browser": "node test/browser.mjs",
+    "coverage": "node --no-warnings scripts/coverage.mjs",
     "demo": "node demo/serve.mjs"
   },
   "peerDependencies": {

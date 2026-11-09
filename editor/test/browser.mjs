@@ -1,22 +1,39 @@
 // The components in a real browser (Chromium, headless): node test/browser.mjs [screenshot folder]
 // Serves the repository root itself (npm/pkg and editor/dist must be built), drives demo/index.html
 // (the editor filling the page) and test/components.html (the pieces alone), and checks what a person
-// would see and do. Exits non-zero if anything fails.
+// would see and do. Exits non-zero if anything fails. With COVERAGE=<file>, it serves the sources
+// themselves (src/*.ts with the types stripped, so offsets are the source's) and writes Chromium's
+// coverage of them there, for scripts/coverage.mjs.
 
 import { chromium } from "playwright-core";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripTypeScriptTypes } from "node:module";
+import { writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const shots = process.argv[2] ?? null;
+const coverage = process.env.COVERAGE ?? null;
+const covered = [];
+const watch = async (p) => coverage && p.coverage.startJSCoverage({ resetOnNavigation: false });
+const collect = async (p) => coverage && covered.push(...(await p.coverage.stopJSCoverage()).filter((e) => e.url.includes("/editor/dist/")));
 if (shots) await mkdir(shots, { recursive: true });
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm", ".svg": "image/svg+xml", ".png": "image/png" };
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const file = join(root, path.endsWith("/") ? `${path}index.html` : path);
+  const source = coverage && /^\/editor\/dist\/([\w-]+)\.(?:js|ts)$/.exec(path);
+  if (source) {
+    try {
+      const code = stripTypeScriptTypes(await readFile(join(root, "editor/src", `${source[1]}.ts`), "utf8"));
+      return res.writeHead(200, { "content-type": "text/javascript" }).end(code);
+    } catch {
+      // not a source: the built file
+    }
+  }
   try {
     res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream" }).end(await readFile(file));
   } catch {
@@ -46,6 +63,7 @@ const ready = (page) => page.waitForFunction(() => document.getElementById("edit
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 const page = await context.newPage();
+await watch(page);
 const errors = [];
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 page.on("pageerror", (e) => errors.push(String(e)));
@@ -692,12 +710,14 @@ await check("Diagrams: every gallery diagram and reaction keeps its cursor in th
 await check("No error in the console", async () => {
   assert.deepEqual(errors, []);
 });
+await collect(page);
 await context.close();
 
 // ---------- the pieces alone ----------
 
 const alone = await browser.newContext({ viewport: { width: 1000, height: 800 } });
 const p3 = await alone.newPage();
+await watch(p3);
 await p3.goto(`${base}/editor/test/components.html`);
 await p3.waitForFunction(() => document.getElementById("b")?.shadowRoot?.querySelector("svg"));
 const v3 = (id) => p3.evaluate((id) => document.getElementById(id).value, id);
@@ -724,12 +744,14 @@ await check("Inline field and keyboard alone", async () => {
   assert.equal(await v3("c"), "\\frac{8}{3}");
   assert.equal(await p3.locator("#c-result").textContent(), "certo");
 });
+await collect(p3);
 await alone.close();
 
 // ---------- a phone ----------
 
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
 const p2 = await phone.newPage();
+await watch(p2);
 await p2.goto(`${base}/editor/demo/`);
 await ready(p2);
 await check("Phone: the keyboard starts open, the outputs go below, nothing wider than the screen", async () => {
@@ -749,7 +771,9 @@ await check("Phone: tapping keys builds a formula", async () => {
   await kb.locator('button[title="2"]').tap();
   assert.equal(await p2.evaluate(() => document.getElementById("editor").value), "\\sqrt{2}");
 });
+await collect(p2);
 await phone.close();
+if (coverage) await writeFile(coverage, JSON.stringify(covered));
 
 await browser.close();
 server.close();

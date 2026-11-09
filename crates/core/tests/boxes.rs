@@ -237,3 +237,42 @@ fn chemfig_atoms_and_bonds_know_where_they_are_written() {
     let bonds: Vec<String> = structure["bonds"].as_array().unwrap().iter().map(|b| text(&b["span"])).collect();
     assert_eq!(bonds, ["-", "=[1]", "-[7]"]);
 }
+
+/// The corners of marks in chemistry: spaces inside a mark, a coefficient before one, what is dropped
+/// as unsafe, a mark command without its arguments, nested braces and a label cut short.
+#[test]
+fn marks_in_chemistry_at_their_corners() {
+    let same = [
+        (r"\ce{H2O}", r"\ce{\htmlData{m=a}{ H2O}}"),
+        (r"\ce{n H2O}", r"\ce{n \htmlData{m=a}{H2O}}"),
+        (r"\ce{H2O CO2}", r"\ce{\htmlData{m=a}{H2O} \htmlData{m=b}{CO2}}"),
+        (r"\chemfig{O-H}", r"\chemfig{\class{<>}{O}-H}"),
+        (r"\schemestart \chemfig{A}\arrow{->[x{y}]}\chemfig{B}\schemestop", r"\schemestart \chemfig{A}\arrow{->[\htmlData{m=a}{x{y}}]}\chemfig{B}\schemestop"),
+    ];
+    for (bare, marked) in same {
+        assert_eq!(drawing(&typeset(bare)), drawing(&typeset(marked)), "marks moved something in {bare}");
+    }
+    // a class with nothing safe in it is dropped, with a warning, and nothing is marked
+    let out = mathra::convert(r"\ce{\class{<>}{H2O}}", &options()).unwrap();
+    assert!(out.boxes.is_empty() && !out.warnings.is_empty());
+    assert!(boxes(r"\chemfig{\class{<>}{O}-H}").is_empty());
+    // a mark without its arguments is not a mark: read as anything else, without a panic
+    for tex in [
+        r"\ce{\htmlData x}",
+        r"\ce{\htmlData{m=a} H2O}",
+        r"\schemestart \chemfig{A}\arrow{->[\htmlData x]}\chemfig{B}\schemestop",
+        r"\schemestart \chemfig{A}\arrow{->[\htmlData{m=a}]}\chemfig{B}\schemestop",
+        r"\schemestart \chemfig{A}\arrow{->[\htmlData{m=a}{x]y}]}\chemfig{B}\schemestop",
+    ] {
+        let _ = mathra::convert(tex, &options());
+    }
+}
+
+/// A label's span leaves out the spaces around it.
+#[test]
+fn chemfig_spans_leave_spaces_out() {
+    let body = "A -B";
+    let tree = serde_json::to_value(mathra::convert(&format!("\\chemfig{{{body}}}"), &options()).unwrap().tree).unwrap();
+    let atoms = &tree["children"][0]["scheme"]["items"][0]["body"]["atoms"];
+    assert_eq!(atoms[0]["span"], serde_json::json!([0, 1]));
+}
