@@ -27,13 +27,15 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 
 | Element | What it is |
 | --- | --- |
-| `<mathra-editor>` | Everything together: a bar (undo, redo, clear, zoom, language, theme, keyboard, outputs), palettes in tabs with a search, the field, the keyboard (open on touch screens), the command menu and the outputs. `layout="page"` fills the page: the formula takes the room left, the outputs sit beside it (below it on narrow screens). |
+| `<mathra-editor>` | Everything together: a bar (undo, redo, clear, zoom, gallery, mathra's options, language, theme, keyboard, outputs), palettes in tabs with a search, the field, the keyboard (open on touch screens), the command menu and the outputs. `layout="page"` fills the page: the formula takes the room left, the outputs sit beside it (below it on narrow screens). |
 | `<mathra-field>` | The box. Typing, clicking, dragging, Shift+arrows, copy and paste of LaTeX, undo. `inline` makes it the size of an answer in a sentence. |
 | `<mathra-toolbar for="f">` | Palettes in tabs, and a search over every button (by its name in English or Portuguese, accents ignored, or its command; Enter inserts the first). `palettes="structures calculus greek"` picks and orders them; `nosearch` hides the search; `wrap` shows every tab. |
 | `<mathra-palette for="f" set="greek">` | One grid of buttons. |
 | `<mathra-command-menu for="f">` | While `\name` is typed, the commands that start with it, beside the cursor. |
 | `<mathra-keyboard for="f">` | A keyboard on the screen: numbers, letters, functions and symbols. |
-| `<mathra-output for="f">` | LaTeX, MathML, SVG, PNG, speech, braille and text, with copy and download. `formats="latex mathml"` picks them. |
+| `<mathra-output for="f">` | LaTeX, MathML, SVG, PNG, speech, braille, text, and the rules mathra applied with its warnings, with copy and download (and "write it again" when the SVG is animated). `formats="latex mathml"` picks them. |
+| `<mathra-settings for="f">` | mathra's options, each with a control: the font (the 30 of the [mathfonts](https://matheusmota-dev-br.github.io/mathfonts/) catalog, downloaded only when chosen), display or inline, breaking long formulas at a maximum width, the braille code, the SVG written stroke by stroke, strict mode, and the PNG's size. The box itself stays one line, in the chosen font and style; the rest applies to the outputs. |
+| `<mathra-gallery for="f">` | mathra's gallery (110 examples in LaTeX, from `corpus/gallery.json`), drawn by mathra, with a search; choosing one opens it in the field (it can be undone), with its options. |
 
 `for` names a field by its id. In JavaScript, `component.field = fieldElement` does the same (also across shadow roots).
 
@@ -48,7 +50,7 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 | `inline` | Text style, sized for a sentence (field only). |
 | `aria-label` | The field's name for screen readers; the formula itself is read through mathra's speech. |
 | `palettes`, `outputs`, `keyboard` | (`<mathra-editor>` only) which palettes, which outputs (`none` hides them), and `keyboard="on"`, `"off"` or automatic. |
-| `layout`, `controls`, `theme`, `languages` | (`<mathra-editor>` only) `layout="page"`; the bar's controls (`controls="history zoom language theme keyboard outputs"`, all of them in a page, history and keyboard otherwise); `theme="auto"`, `"light"` or `"dark"`; the languages the menu offers (`languages="en pt-BR es"`, all 16 that mathra speaks by default, each under its own name). |
+| `layout`, `controls`, `theme`, `languages` | (`<mathra-editor>` only) `layout="page"`; the bar's controls (`controls="history zoom gallery settings language theme keyboard outputs"`, all of them in a page, history and keyboard otherwise); `theme="auto"`, `"light"` or `"dark"`; the languages the menu offers (`languages="en pt-BR es"`, all 16 that mathra speaks by default, each under its own name). |
 
 ### Events
 
@@ -58,6 +60,7 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 | `change` | The field lost the focus with a different formula. | `{ latex }` |
 | `mathra-command` | A command is typed after `\` (what the command menu follows). | `{ name, active, rect }` |
 | `mathra-render` | The field drew the formula (an edit, a language, a font). | |
+| `mathra-options`, `mathra-gallery` | An option was changed in the panel; an example of the gallery was opened. | the options; `{ example }` |
 | `mathra-locale`, `mathra-theme` | The language or the theme was chosen in the editor's bar (to remember it, as the demo does). | `{ locale }`, `{ theme }` |
 
 ### Typing
@@ -138,6 +141,8 @@ e.toLatex(); // "x=\\frac{1}{2}"
 
 Marking moves nothing: for 48 formulas, in English and in pt-BR, the marked LaTeX draws exactly what the plain one draws, each formula read and written back draws what it drew, and the cursor sits in its row at every place (`test/corpus.test.ts`).
 
+Every example of mathra's gallery (110 in LaTeX) opens in the editor and draws as it did, read and written back and marked (`test/gallery.test.ts`). Getting there: cells of an alignment are not wrapped (`&= …` keeps the relation's spacing) and an empty one is an invisible place; LaTeX kept as written, and commands the editor does not know (`\pdv`, `\vdot`), are marked with the class mathra reads them into (the field asks it); commands that act on the alignment (`\Aboxed`, `\MoveEqLeft`) stay unmarked; a chemfig scheme, with its `\chemmove`, is one block.
+
 **Limits.** A brace group the reader takes apart loses TeX's grouping (`{x}^2` reads as `x^2`, which may move an exponent by an italic correction). `\color{c}` colors to the end of its group, as mathra draws it. Typing `^` inside an index makes an exponent of the index, as in other editors: the right arrow leaves the index first.
 
 ## Develop
@@ -145,7 +150,8 @@ Marking moves nothing: for 48 formulas, in English and in pt-BR, the marked LaTe
 ```sh
 npm/build.sh                       # from the repository root: mathra's package, with `boxes`
 cd editor && pnpm install
-pnpm test                          # the editor and the corpus, in Node (22.18+ runs the TypeScript)
+pnpm test                          # the editor, the corpus, every palette button and the gallery, in Node (22.18+ runs the TypeScript)
+node scripts/gallery.mjs           # src/gallery.ts again, after corpus/gallery.json changed
 pnpm build                         # dist/
 pnpm test:browser                  # the components in Chromium (playwright-core's browser)
 pnpm demo                          # http://127.0.0.1:4520/editor/demo/ (the editor filling the page)

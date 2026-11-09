@@ -9,15 +9,19 @@ import type { MathraToolbar } from "./palette.ts";
 import type { MathraKeyboard } from "./keyboard.ts";
 import type { MathraOutput } from "./output.ts";
 import type { MathraCommandMenu } from "./command-menu.ts";
+import type { MathraSettings } from "./settings.ts";
+import type { MathraGallery } from "./gallery-view.ts";
 import "./field.ts";
 import "./palette.ts";
 import "./keyboard.ts";
 import "./output.ts";
 import "./command-menu.ts";
+import "./settings.ts";
+import "./gallery-view.ts";
 
 /** The controls the bar can show (`controls="history zoom language theme keyboard outputs"`). */
-export type Control = "history" | "zoom" | "language" | "theme" | "keyboard" | "outputs";
-const ALL_CONTROLS: Control[] = ["history", "zoom", "language", "theme", "keyboard", "outputs"];
+export type Control = "history" | "zoom" | "gallery" | "settings" | "language" | "theme" | "keyboard" | "outputs";
+const ALL_CONTROLS: Control[] = ["history", "zoom", "gallery", "settings", "language", "theme", "keyboard", "outputs"];
 const ZOOMS = [0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
 
 const STYLE = `
@@ -80,10 +84,14 @@ mathra-keyboard { animation: rise 0.2s ease-out; }
 :host([layout="page"]) .stage { grid-area: stage; display: grid; padding: 12px 12px 12px 16px; min-height: 0; }
 :host([layout="page"]) .stage mathra-field { height: 100%; }
 :host([layout="page"]) mathra-keyboard { grid-area: keys; margin: 0 12px 12px 16px; }
-:host([layout="page"]) mathra-output { grid-area: side; width: 380px; margin: 12px 16px 12px 0; align-self: stretch; overflow: auto; --mathra-output-height: none; }
+:host([layout="page"]) .side { grid-area: side; width: 380px; margin: 12px 16px 12px 0; grid-template-rows: minmax(0, auto) minmax(160px, 1fr); }
+:host([layout="page"]) .side:has(.settings-panel[hidden]) { grid-template-rows: minmax(0, 1fr); }
+.side:has(.settings-panel[hidden]):has(mathra-output[hidden]) { display: none; }
+:host([layout="page"]) .settings-panel { max-height: 62vh; }
+:host([layout="page"]) mathra-output { overflow: auto; --mathra-output-height: none; }
 @media (max-width: 1000px) {
   :host([layout="page"]) .wrap { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(220px, 1fr) auto auto; grid-template-areas: "bar" "tools" "stage" "keys" "side"; height: auto; min-height: 100%; }
-  :host([layout="page"]) mathra-output { width: auto; margin: 0 12px 12px 16px; }
+  :host([layout="page"]) .side { width: auto; margin: 0 12px 12px 16px; }
   :host([layout="page"]) mathra-toolbar { --mathra-palette-height: 30vh; }
 }
 @media (max-width: 640px) {
@@ -95,6 +103,28 @@ mathra-keyboard { animation: rise 0.2s ease-out; }
   .menu { right: auto; left: 0; }
 }
 ::slotted([slot="title"]) { font: 600 15px var(--_font); margin-right: 8px; }
+
+/* the gallery: a large window; the options: a panel at the right that leaves the formula in view */
+.text-button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; color: var(--_ink); background: none; border: 1px solid transparent; border-radius: var(--_radius); font: 13px var(--_font); cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.text-button:hover { background: var(--_key-active); }
+.text-button[aria-expanded="true"] { border-color: var(--_border); background: var(--_key-active); }
+dialog { color: var(--_ink); background: var(--_background); border: 1px solid var(--_border); padding: 0; box-shadow: 0 24px 60px rgb(0 0 0 / 0.28); }
+dialog .head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; background: var(--_background); border-bottom: 1px solid var(--_border); }
+dialog .head h2 { margin: 0; font: 600 16px var(--_font); }
+dialog .content { padding: 16px 18px 20px; }
+dialog.gallery { width: min(1100px, calc(100vw - 32px)); height: min(820px, calc(100vh - 48px)); border-radius: calc(var(--_radius) + 4px); overflow: auto; }
+dialog.gallery::backdrop { background: rgb(0 0 0 / 0.35); }
+dialog.gallery[open] { animation: pop 0.18s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
+.side { display: grid; gap: var(--mathra-gap, 10px); min-height: 0; }
+.settings-panel { display: flex; flex-direction: column; min-height: 0; color: var(--_ink); background: var(--_background); border: 1px solid var(--_border); border-radius: var(--_radius); overflow: hidden; animation: slide 0.2s ease-out; }
+.settings-panel[hidden] { display: none; }
+.settings-panel .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--_border); }
+.settings-panel .head h2 { margin: 0; font: 600 15px var(--_font); }
+.settings-panel .content { padding: 14px 16px 16px; overflow-y: auto; min-height: 0; }
+@keyframes slide { from { transform: translateY(-6px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { dialog[open] { animation: none; } }
+@media (max-width: 640px) { .text-button span { display: none; } }
 `;
 
 export class MathraEditor extends HTMLElement {
@@ -105,6 +135,10 @@ export class MathraEditor extends HTMLElement {
   readonly keyboard: MathraKeyboard;
   readonly outputPanel: MathraOutput;
   readonly commandMenu: MathraCommandMenu;
+  readonly gallery: MathraGallery;
+  readonly settings: MathraSettings;
+  private galleryDialog: HTMLDialogElement;
+  private settingsDialog: HTMLElement;
   private bar: HTMLDivElement;
   private zoom = 1;
   private menuOpen = false;
@@ -113,14 +147,32 @@ export class MathraEditor extends HTMLElement {
   constructor() {
     super();
     const root = this.attachShadow({ mode: "open" });
-    root.innerHTML = `<style>${STYLE}</style><div class="wrap" part="wrap"><div class="bar" part="bar"></div><slot name="start"></slot><mathra-toolbar part="toolbar" exportparts="tab, button, grid, search"></mathra-toolbar><div class="stage" part="stage"><mathra-field part="field" exportparts="box, caret, selection, slot, placeholder"></mathra-field></div><mathra-keyboard part="keyboard" exportparts="key" hidden></mathra-keyboard><mathra-output part="output" exportparts="tab: output-tab, action: output-action"></mathra-output><slot name="end"></slot></div><mathra-command-menu></mathra-command-menu>`;
+    root.innerHTML = `<style>${STYLE}</style><div class="wrap" part="wrap"><div class="bar" part="bar"></div><slot name="start"></slot><mathra-toolbar part="toolbar" exportparts="tab, button, grid, search"></mathra-toolbar><div class="stage" part="stage"><mathra-field part="field" exportparts="box, caret, selection, slot, placeholder"></mathra-field></div><mathra-keyboard part="keyboard" exportparts="key" hidden></mathra-keyboard><div class="side" part="side"><section class="settings-panel" part="settings" aria-labelledby="settings-title" hidden><div class="head"><h2 id="settings-title"></h2><button type="button" class="icon-button" data-close="settings"></button></div><div class="content"><mathra-settings></mathra-settings></div></section><mathra-output part="output" exportparts="tab: output-tab, action: output-action"></mathra-output></div><slot name="end"></slot></div><mathra-command-menu></mathra-command-menu><dialog class="gallery" part="gallery" aria-labelledby="gallery-title"><div class="head"><h2 id="gallery-title"></h2><button type="button" class="icon-button" data-close="gallery"></button></div><div class="content"><mathra-gallery></mathra-gallery></div></dialog>`;
     this.field = root.querySelector("mathra-field")!;
     this.toolbar = root.querySelector("mathra-toolbar")!;
     this.keyboard = root.querySelector("mathra-keyboard")!;
     this.outputPanel = root.querySelector("mathra-output")!;
     this.commandMenu = root.querySelector("mathra-command-menu")!;
     this.bar = root.querySelector(".bar")!;
-    for (const c of [this.toolbar, this.keyboard, this.outputPanel, this.commandMenu]) c.field = this.field;
+    this.gallery = root.querySelector("mathra-gallery")!;
+    this.settings = root.querySelector("mathra-settings")!;
+    this.galleryDialog = root.querySelector("dialog.gallery")!;
+    this.settingsDialog = root.querySelector(".settings-panel")!;
+    for (const c of [this.toolbar, this.keyboard, this.outputPanel, this.commandMenu, this.gallery, this.settings]) c.field = this.field;
+    this.settings.output = this.outputPanel;
+    for (const d of [this.galleryDialog, this.settingsDialog]) {
+      d.addEventListener("click", (e) => {
+        const close = (e.target as HTMLElement).closest("[data-close]");
+        // a click on the gallery's backdrop closes it too
+        if (close || e.target === this.galleryDialog) this.closePanel(d);
+      });
+    }
+    this.galleryDialog.addEventListener("close", () => this.paintBar());
+    this.settingsDialog.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.closePanel(this.settingsDialog);
+    });
+    // an example chosen: the gallery closes on the formula
+    this.gallery.addEventListener("mathra-gallery", () => this.closePanel(this.galleryDialog));
     this.bar.addEventListener("pointerdown", (e) => {
       // buttons keep the focus in the field; the language menu takes it
       if ((e.target as HTMLElement).closest(".icon-button, .segmented button")) e.preventDefault();
@@ -180,7 +232,7 @@ export class MathraEditor extends HTMLElement {
       else el.setAttribute(name, v);
     };
     for (const name of ["value", "locale", "readonly", "placeholder", "aria-label"]) pass(this.field, name);
-    for (const el of [this.toolbar, this.keyboard, this.outputPanel, this.commandMenu]) pass(el, "locale");
+    for (const el of [this.toolbar, this.keyboard, this.outputPanel, this.commandMenu, this.gallery, this.settings]) pass(el, "locale");
     pass(this.toolbar, "palettes");
     this.toolbar.toggleAttribute("wrap", this.getAttribute("layout") === "page");
     const outputs = this.getAttribute("outputs");
@@ -216,6 +268,12 @@ export class MathraEditor extends HTMLElement {
       parts.push(`<div class="group">${button("undo", "undo", UI.undo, e.canUndo() ? "" : " disabled")}${button("redo", "redo", UI.redo, e.canRedo() ? "" : " disabled")}${button("clear", "clear", UI.clear, e.isEmpty() ? " disabled" : "")}</div>`);
     if (c.includes("zoom")) parts.push(`<div class="group zoom">${button("zoomOut", "zoomOut", UI.zoomOut, this.zoom <= ZOOMS[0] ? " disabled" : "")}<span class="zoom-value" aria-live="polite">${Math.round(this.zoom * 100)}%</span>${button("zoomIn", "zoomIn", UI.zoomIn, this.zoom >= ZOOMS[ZOOMS.length - 1] ? " disabled" : "")}</div>`);
     parts.push('<span class="spacer"></span>');
+    const textButton = (act: string, name: string, words: (typeof UI)[keyof typeof UI], open: boolean) => {
+      const label = html(say(words, locale));
+      return `<button type="button" class="text-button" part="action" data-act="${act}" title="${label}" aria-label="${label}" aria-haspopup="dialog" aria-expanded="${open}">${icon(name)}<span>${label}</span></button>`;
+    };
+    if (c.includes("gallery")) parts.push(textButton("gallery", "gallery", UI.galleryTitle, this.galleryDialog.open));
+    if (c.includes("settings")) parts.push(textButton("settings", "options", UI.settingsTitle, !this.settingsDialog.hidden));
     if (c.includes("language")) {
       const langs = this.languages();
       const current = langs.find((l) => l.code === locale) ?? { code: locale, name: locale };
@@ -272,12 +330,43 @@ export class MathraEditor extends HTMLElement {
       else this.openMenu();
       return;
     }
+    if (act === "gallery") return this.openPanel(this.galleryDialog);
+    if (act === "settings") return this.settingsDialog.hidden ? this.openPanel(this.settingsDialog) : this.closePanel(this.settingsDialog);
     if (act === "keyboard") this.keyboard.hidden = !this.keyboard.hidden;
     else if (act === "outputs") this.outputPanel.hidden = !this.outputPanel.hidden;
     else if (act === "zoomIn" || act === "zoomOut") {
       const i = ZOOMS.indexOf(this.zoom) + (act === "zoomIn" ? 1 : -1);
       this.zoom = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, i))];
     } else this.field.run(act);
+    this.paintBar();
+    this.field.focus();
+  }
+
+  private openPanel(d: HTMLElement): void {
+    const locale = this.locale;
+    const gallery = d === this.galleryDialog;
+    d.querySelector("h2")!.textContent = say(gallery ? UI.galleryTitle : UI.settingsTitle, locale);
+    const close = d.querySelector<HTMLElement>("[data-close]")!;
+    close.innerHTML = icon("close");
+    close.title = say(UI.close, locale);
+    close.setAttribute("aria-label", say(UI.close, locale));
+    if (gallery) {
+      (d as HTMLDialogElement).showModal();
+      this.gallery.focusSearch();
+    } else {
+      // above the outputs, beside the formula: both change in view as the options do
+      d.hidden = false;
+      this.outputPanel.hidden = false;
+      this.settings.loadCatalog();
+      close.focus();
+    }
+    this.paintBar();
+  }
+
+  private closePanel(d: HTMLElement): void {
+    if (d instanceof HTMLDialogElement) {
+      if (d.open) d.close();
+    } else d.hidden = true;
     this.paintBar();
     this.field.focus();
   }

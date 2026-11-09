@@ -59,6 +59,9 @@ const ICON_PATHS: Record<string, string> = {
   zoomIn: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M21 21l-4.35-4.35 M11 8v6 M8 11h6",
   zoomOut: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M21 21l-4.35-4.35 M8 11h6",
   chevron: "M6 9l6 6 6-6",
+  gallery: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z",
+  options: "M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6",
+  play: "M6 4l14 8-14 8z",
 };
 
 /** An icon as inline SVG; the button around it carries the name (`title` and `aria-label`). */
@@ -122,6 +125,31 @@ export const UI = {
   zoomIn: { en: "Larger", "pt-BR": "Aumentar" },
   zoomOut: { en: "Smaller", "pt-BR": "Diminuir" },
   showOutputs: { en: "Show the outputs", "pt-BR": "Mostrar as saídas" },
+  rules: { en: "Rules and warnings", "pt-BR": "Regras e avisos" },
+  noRules: { en: "No rule changed this formula, and nothing to warn about.", "pt-BR": "Nenhuma regra mudou esta fórmula, e não há avisos." },
+  applied: { en: "Rules mathra applied", "pt-BR": "Regras que o mathra aplicou" },
+  warnings: { en: "Warnings", "pt-BR": "Avisos" },
+  refused: { en: "mathra refused the formula (strict mode)", "pt-BR": "O mathra recusou a fórmula (modo estrito)" },
+  replay: { en: "Write it again", "pt-BR": "Escrever de novo" },
+  galleryTitle: { en: "Gallery", "pt-BR": "Galeria" },
+  galleryHint: { en: "mathra's gallery: choose an example to open it in the editor.", "pt-BR": "A galeria do mathra: escolha um exemplo para abri-lo no editor." },
+  gallerySearch: { en: "Search the gallery", "pt-BR": "Buscar na galeria" },
+  settingsTitle: { en: "mathra's options", "pt-BR": "Opções do mathra" },
+  close: { en: "Close", "pt-BR": "Fechar" },
+  font: { en: "Font", "pt-BR": "Fonte" },
+  fontDefault: { en: "STIX Two Math (built in)", "pt-BR": "STIX Two Math (embutida)" },
+  fontLoading: { en: "Downloading…", "pt-BR": "Baixando…" },
+  fontCatalogFailed: { en: "The font catalog could not be read (offline?).", "pt-BR": "Não foi possível ler o catálogo de fontes (sem internet?)." },
+  coverage: { en: "of the symbols", "pt-BR": "dos símbolos" },
+  style: { en: "Style", "pt-BR": "Estilo" },
+  display: { en: "Display", "pt-BR": "Destaque" },
+  inline: { en: "Inline", "pt-BR": "Em linha" },
+  lineBreaks: { en: "Break long formulas (outputs)", "pt-BR": "Quebrar fórmulas longas (saídas)" },
+  maxWidth: { en: "Maximum width", "pt-BR": "Largura máxima" },
+  brailleAuto: { en: "Language's", "pt-BR": "Do idioma" },
+  animate: { en: "Written stroke by stroke (SVG output)", "pt-BR": "Escrita traço a traço (saída SVG)" },
+  strict: { en: "Strict mode: refuse invalid LaTeX, as TeX does", "pt-BR": "Modo estrito: recusar LaTeX inválido, como o TeX" },
+  pngSize: { en: "PNG size", "pt-BR": "Tamanho do PNG" },
 } satisfies Record<string, Words>;
 
 /** Escapes text for HTML. */

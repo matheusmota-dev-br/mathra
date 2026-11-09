@@ -2,7 +2,7 @@
 // returns place the cursor and the selection and read the clicks.
 
 import { init, render, type Options, type Result } from "@mathlabs/mathra";
-import { Editor, type ChangeKind } from "./model.ts";
+import { Editor, classOfTree, type ChangeKind } from "./model.ts";
 import { boxesById, caretRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
 import { TOKENS, UI, say } from "./shared.ts";
 
@@ -146,6 +146,7 @@ export class MathraField extends HTMLElement {
   private box: HTMLDivElement;
   private boxes = new Map<string, Box>();
   private plain: Result | null = null;
+  private refusal: string | null = null;
   private latexAtFocus = "";
   private dragging = false;
   private liveTimer = 0;
@@ -178,6 +179,8 @@ export class MathraField extends HTMLElement {
     this.box.addEventListener("pointerup", () => (this.dragging = false));
     this.box.addEventListener("dblclick", () => this.selectRow());
     this.editor.onChange((kind) => this.changed(kind));
+    // LaTeX the editor keeps as written gets the class mathra reads it into
+    this.editor.classifyRaw = (latex) => classOfTree(render(latex, { locale: this.locale as Options["locale"] }).tree);
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.placeOverlays()).observe(this.box);
   }
 
@@ -236,14 +239,26 @@ export class MathraField extends HTMLElement {
     if (ready) ready.then(() => this.draw());
   }
 
-  /** Everything mathra gives for the formula: SVG, MathML, speech, braille… (null while it is empty). */
+  /** Everything mathra gives for the formula, with all of `mathraOptions`: SVG, MathML, speech, braille… (null while it is empty, or refused). */
   get output(): Result | null {
     return this.plain;
   }
 
-  /** The options the field draws with. */
+  /** Why mathra refused the formula, in strict mode; null otherwise. */
+  get error(): string | null {
+    return this.refusal;
+  }
+
+  /** The options of the outputs: `mathraOptions`, the locale, and display unless set (inline fields: text style). */
   get options(): Options {
-    return { ...this._mathraOptions, locale: this.locale as Options["locale"], display: !this.hasAttribute("inline") };
+    return { ...this._mathraOptions, locale: this.locale as Options["locale"], display: this._mathraOptions.display ?? !this.hasAttribute("inline") };
+  }
+
+  /** The options of the box itself: the font, the language and the style; a maximum width, strict
+   * mode, braille and animation are for the outputs (the box is one line, edited as it is typed). */
+  private get drawingOptions(): Options {
+    const o = this.options;
+    return { locale: o.locale, display: o.display, font: o.font, fallbackFonts: o.fallbackFonts };
   }
 
   /** Runs an action, as a key, a palette or a virtual keyboard does:
@@ -333,7 +348,7 @@ export class MathraField extends HTMLElement {
     const t0 = performance.now();
     const locale = this.locale;
     this.editor.decimalComma = decimalComma(locale);
-    const r = render(this.editor.toLatex({ marked: true }), this.options);
+    const r = render(this.editor.toLatex({ marked: true }), this.drawingOptions);
     const t1 = performance.now();
     this.drawing.innerHTML = r.svg;
     // the field's description carries the speech: the drawing itself is hidden from screen readers
@@ -342,7 +357,14 @@ export class MathraField extends HTMLElement {
     for (const g of this.drawing.querySelectorAll("g[data-empty]")) g.setAttribute("part", "slot");
     // the plain formula: its speech (marks would make mathra read b² as "b to the power of 2") and the outputs
     const plain = this.editor.toLatex();
-    this.plain = plain ? render(plain, this.options) : null;
+    this.refusal = null;
+    try {
+      this.plain = plain ? render(plain, this.options) : null;
+    } catch (e) {
+      // strict mode refuses invalid LaTeX: the box still shows it, the outputs say why
+      this.plain = null;
+      this.refusal = e instanceof Error ? e.message : String(e);
+    }
     this.input.setAttribute("aria-label", this.getAttribute("aria-label") ?? say(UI.formula, locale));
     this.input.setAttribute("aria-description", this.plain?.speech ?? "");
     this.input.setAttribute("aria-roledescription", "math");

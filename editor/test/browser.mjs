@@ -325,6 +325,87 @@ await check("The keyboard and the outputs open and close from the bar", async ()
   await ed.locator('[data-act="outputs"]').click();
 });
 
+await check("The gallery: every LaTeX example, search, and one opens in the editor", async () => {
+  await ed.locator('[data-act="gallery"]').click();
+  const gallery = ed.locator("mathra-gallery");
+  await gallery.locator(".card").first().waitFor();
+  assert.equal(await gallery.locator(".card").count(), 110);
+  // every card shows its formula, drawn by mathra
+  assert.equal(await gallery.locator(".card .formula svg").count(), 110);
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/gallery.png` });
+  await gallery.locator("input").fill("Euler");
+  assert.ok((await gallery.locator(".card").count()) >= 1);
+  await gallery.locator('.card[title="Euler\'s identity"]').click();
+  assert.equal(await page.evaluate(() => document.getElementById("editor").shadowRoot.querySelector("dialog.gallery").open), false);
+  assert.equal(await value(), "e^{i\\pi}+1=0");
+  // it can be undone
+  await ed.locator('[data-act="undo"]').click();
+  assert.notEqual(await value(), "e^{i\\pi}+1=0");
+  await ed.locator('[data-act="redo"]').click();
+});
+
+await check("mathra's options: style, braille, strict, animation, PNG size, rules", async () => {
+  await ed.locator('[data-act="settings"]').click();
+  const s = ed.locator("mathra-settings");
+  await s.locator(".settings").waitFor();
+  const opts = () => page.evaluate(() => document.getElementById("editor").field.mathraOptions);
+  // style
+  await s.locator('[data-set="display"][data-value="inline"]').click();
+  assert.equal((await opts()).display, false);
+  await s.locator('[data-set="display"][data-value="display"]').click();
+  assert.equal((await opts()).display, undefined);
+  // braille: Nemeth, then the language's (CMU in pt-BR)
+  await s.locator('[data-set="braille"][data-value="nemeth"]').click();
+  assert.equal(await page.evaluate(() => document.getElementById("editor").field.output.braille_code), "nemeth");
+  await s.locator('[data-set="braille"][data-value="auto"]').click();
+  assert.equal(await page.evaluate(() => document.getElementById("editor").field.output.braille_code), "cmu");
+  // line breaking
+  await s.locator("#breaking").check();
+  assert.equal((await opts()).maxWidth, 30);
+  await s.locator("#breaking").uncheck();
+  // PNG size
+  await s.locator('[data-set="png"][data-value="2"]').click();
+  assert.equal(await ed.locator("mathra-output").getAttribute("png-scale"), "2");
+  // the written SVG, with a button to write it again
+  await s.locator("#animate").check();
+  const out = ed.locator("mathra-output");
+  await out.locator("[role=tab]").filter({ hasText: "SVG" }).click();
+  assert.match(await out.locator(".image svg").evaluate((svg) => svg.outerHTML), /mr-f|data-step/);
+  assert.equal(await out.locator('[data-act="replay"]').isVisible(), true);
+  await s.locator("#animate").uncheck();
+  // strict mode refuses invalid LaTeX, and says why; the box still shows it
+  await s.locator("#strict").check();
+  await setValue("\\frac{1}{2} + \\foo");
+  assert.equal(await out.locator(".refused").isVisible(), true);
+  assert.ok(await page.evaluate(() => document.getElementById("editor").field.shadowRoot.querySelector("svg") !== null));
+  await s.locator("#strict").uncheck();
+  // the rules mathra applied: the decimal comma of pt-BR
+  await setValue("3,14");
+  await out.locator("[role=tab]").filter({ hasText: "Regras" }).click();
+  assert.match(await out.locator(".rules").textContent(), /L-NUM/);
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/settings.png` });
+});
+
+await check("A font from the mathfonts catalog (needs the network)", async () => {
+  const s = ed.locator("mathra-settings");
+  await page.waitForFunction(() => {
+    const r = document.getElementById("editor").settings.shadowRoot;
+    return r.querySelectorAll(".fonts [data-font]").length > 1 || r.querySelector(".note");
+  }, null, { timeout: 15000 });
+  const count = await s.locator(".fonts [data-font]").count();
+  if (count <= 1) {
+    results.push("     (font catalog not reachable: skipped)");
+    return;
+  }
+  await s.locator('[data-font="euler-math"]').click();
+  await page.waitForFunction(() => /Euler/.test(document.getElementById("editor").field.output?.svg ?? ""), null, { timeout: 20000 });
+  await s.locator('[data-font=""]').click();
+  await ed.locator('.settings-panel [data-close]').click();
+  assert.equal(await page.evaluate(() => document.getElementById("editor").shadowRoot.querySelector(".settings-panel").hidden), true);
+});
+
 await check("No error in the console", async () => {
   assert.deepEqual(errors, []);
 });

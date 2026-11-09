@@ -18,6 +18,8 @@ export type { Key, KeyboardLayer } from "./keyboard.ts";
 export { MathraOutput } from "./output.ts";
 export type { Format } from "./output.ts";
 export { MathraEditor } from "./editor.ts";
+export { MathraSettings } from "./settings.ts";
+export { MathraGallery } from "./gallery-view.ts";
 export { PALETTES, STRUCTURES, CALCULUS, MATRICES, GREEK_LETTERS, OPERATORS, RELATIONS, ARROWS, SETS, FUNCTIONS, ACCENTS, commandCatalog, previewLatex } from "./sets.ts";
 export type { PaletteItem, PaletteSet } from "./sets.ts";
 export { FieldClient, TOKENS, UI, icon, say } from "./shared.ts";

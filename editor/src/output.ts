@@ -4,8 +4,8 @@
 import { FieldClient, TOKENS, html, icon, say, UI } from "./shared.ts";
 import type { MathraField } from "./field.ts";
 
-export type Format = "latex" | "mathml" | "svg" | "png" | "speech" | "braille" | "text";
-const ALL: Format[] = ["latex", "mathml", "svg", "png", "speech", "braille", "text"];
+export type Format = "latex" | "mathml" | "svg" | "png" | "speech" | "braille" | "text" | "rules";
+const ALL: Format[] = ["latex", "mathml", "svg", "png", "speech", "braille", "text", "rules"];
 
 const STYLE = `
 ${TOKENS}
@@ -29,6 +29,13 @@ pre { margin: 0; font: 13px/1.55 var(--_mono); white-space: pre-wrap; word-break
 .image { display: grid; place-items: center; padding: 8px; }
 .image img { max-width: 100%; height: auto; }
 .empty { color: var(--_muted); font-size: 13px; }
+.rules h4 { margin: 0 0 6px; font: 600 12px var(--_font); letter-spacing: 0.05em; text-transform: uppercase; color: var(--_muted); }
+.rules ul { margin: 0 0 14px; padding: 0; list-style: none; display: grid; gap: 6px; }
+.rules li { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; font-size: 13px; line-height: 1.45; }
+.rules code { font: 600 11px var(--_mono); padding: 2px 6px; border-radius: 4px; background: var(--_key-active); white-space: nowrap; }
+.rules .warn code { background: color-mix(in srgb, #c27c0e 20%, transparent); }
+.refused { padding: 10px 12px; border-radius: var(--_radius); background: color-mix(in srgb, #c0392b 12%, transparent); font-size: 13px; line-height: 1.45; }
+.refused b { display: block; margin-bottom: 4px; }
 `;
 
 export class MathraOutput extends FieldClient {
@@ -64,6 +71,11 @@ export class MathraOutput extends FieldClient {
         this.tabList.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
       } else if (b.dataset.act === "copy") this.copy(b);
       else if (b.dataset.act === "download") this.download();
+      else if (b.dataset.act === "replay") {
+        // inserted again, the SVG writes itself again
+        const img = this.body.querySelector(".image");
+        if (img) img.innerHTML = img.innerHTML;
+      }
     });
   }
 
@@ -102,6 +114,8 @@ export class MathraOutput extends FieldClient {
         return out.svg;
       case "png":
         return this.png();
+      case "rules":
+        return [...out.applied.map((r) => `${r.rule}: ${r.description}`), ...out.warnings.map((r) => `${r.rule}: ${r.description}`)].join("\n");
       default:
         return out[format];
     }
@@ -124,10 +138,23 @@ export class MathraOutput extends FieldClient {
     this.markEnd();
     this.acts.innerHTML =
       `<button type="button" class="act" part="action" data-act="copy" title="${html(say(UI.copy, locale))}" aria-label="${html(say(UI.copy, locale))}">${icon("copy")}<span>${html(say(UI.copy, locale))}</span></button>` +
+      (format === "svg" && this.field?.options.animate ? `<button type="button" class="act" part="action" data-act="replay" title="${html(say(UI.replay, locale))}" aria-label="${html(say(UI.replay, locale))}">${icon("play")}</button>` : "") +
       (image ? `<button type="button" class="act" part="action" data-act="download" title="${html(say(UI.download, locale))}" aria-label="${html(say(UI.download, locale))}">${icon("download")}</button>` : "");
     const out = this.field?.output;
+    const refused = this.field?.error;
+    if (refused) {
+      this.body.innerHTML = `<div class="refused" role="alert"><b>${html(say(UI.refused, locale))}</b>${html(refused)}</div>`;
+      return;
+    }
     if (!out) {
       this.body.innerHTML = `<div class="empty">${html(say(UI.empty, locale))}</div>`;
+      return;
+    }
+    if (format === "rules") {
+      const list = (rules: { rule: string; description: string }[], cls = "") => `<ul>${rules.map((r) => `<li class="${cls}"><code>${html(r.rule)}</code><span>${html(r.description)}</span></li>`).join("")}</ul>`;
+      this.body.innerHTML = out.applied.length || out.warnings.length
+        ? `<div class="rules">${out.applied.length ? `<h4>${html(say(UI.applied, locale))}</h4>${list(out.applied)}` : ""}${out.warnings.length ? `<h4>${html(say(UI.warnings, locale))}</h4>${list(out.warnings, "warn")}` : ""}</div>`
+        : `<div class="empty">${html(say(UI.noRules, locale))}</div>`;
       return;
     }
     if (format === "svg") this.body.innerHTML = `<div class="image">${out.svg}</div><pre>${html(out.svg.slice(0, 600))}${out.svg.length > 600 ? "…" : ""}</pre>`;

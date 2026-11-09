@@ -15,10 +15,11 @@ export function preview(latex: string): string {
   if (svg === undefined) {
     try {
       svg = render(latex, { display: true }).svg.replace("<svg ", '<svg aria-hidden="true" ');
+      drawn.set(latex, svg);
     } catch {
+      // not kept (mathra may not be ready yet): drawn again next time
       svg = `<span>${html(latex)}</span>`;
     }
-    drawn.set(latex, svg);
   }
   return svg;
 }
