@@ -488,3 +488,16 @@ fn a_scheme_whose_math_cannot_be_read_is_read_as_written() {
     assert_eq!(linear(&s, mathra::Locale::En), r"\skew{x}\hat{a}");
     assert_eq!(as_nodes(&s), Node::row(vec![Node::row(vec![])]));
 }
+
+#[test]
+fn a_label_counts_a_group_in_parentheses_as_many_times_as_its_number() {
+    use mathra::chem::model::Atom;
+    let count = |label: &str| {
+        let atom = Atom { label: label.to_string(), ..Atom::default() };
+        mathra::chem::formula::of(&Molecule { atoms: vec![atom], ..Molecule::default() }).written()
+    };
+    assert_eq!(count("(CH_2)_3CH_3"), "C₄H₉");
+    assert_eq!(count("C(CH_3)_3"), "C₄H₉");
+    // a ')' with no '(' before it counts nothing (#210)
+    assert_eq!(count("CH_3)_2"), "CH₃");
+}
