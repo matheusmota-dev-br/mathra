@@ -99,11 +99,13 @@ export function caretRect(cursor: Cursor, boxes: Map<string, Box>, thickness = 4
   if (row.children.length === 0) return { x: rb.x + rb.width / 2 - thickness / 2, y: rb.y, width: thickness, height: rb.height };
   const after = row.children[offset];
   const before = row.children[offset - 1];
-  const x = after ? atomRect(after, boxes)?.x : (() => {
-    const r = atomRect(before!, boxes);
+  // an atom without a box (LaTeX that acts on the alignment, kept unmarked): the neighbour's edge
+  const leftEdge = after ? atomRect(after, boxes)?.x : undefined;
+  const rightOfBefore = before ? (() => {
+    const r = atomRect(before, boxes);
     return r ? r.x + r.width : undefined;
-  })();
-  if (x === undefined) return null;
+  })() : undefined;
+  const x = leftEdge ?? rightOfBefore ?? rb.x;
   // the height of a neighbour symbol, so the cursor beside a tall fraction stays the size of a letter
   const neighbour = [before, after].find((a) => a && (a.kind === "symbol" || a.kind === "char")) ?? before ?? after;
   const nb = neighbour ? atomRect(neighbour, boxes) : null;

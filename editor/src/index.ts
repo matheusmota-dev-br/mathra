@@ -2,7 +2,9 @@
 // <mathra-toolbar>, <mathra-command-menu>, <mathra-keyboard>, <mathra-output>, <mathra-editor>).
 // `@mathlabs/mathra-editor/core` is the editor without a screen.
 
-export { Editor, TEMPLATES, childRows, numberRun } from "./model.ts";
+export { Editor, TEMPLATES, childRows, classOfTree, numberRun } from "./model.ts";
+export { GALLERY } from "./gallery.ts";
+export type { GalleryExample, GalleryGroup } from "./gallery.ts";
 export type { Atom, AtomClass, AtomSpec, ChangeKind, ChangeListener, Cursor, LatexOptions, Row, Selection } from "./model.ts";
 export { readLatex } from "./latex.ts";
 export { atomRect, boxesById, caretRect, cursorAt, rowRect, selectionRect } from "./geometry.ts";

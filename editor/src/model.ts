@@ -115,7 +115,36 @@ for (const s of ["mathbf", "mathbb", "mathcal", "mathscr", "mathfrak", "mathrm",
 export type ScriptTemplate = "sup" | "sub";
 
 /** Wrappers that keep a marked symbol's class: a group alone is an ordinary atom, as in TeX. */
-const CLASS_WRAPPER: Record<AtomClass, string | null> = { ord: null, bin: "\\mathbin", rel: "\\mathrel", open: "\\mathopen", close: "\\mathclose", punct: "\\mathpunct", op: null };
+const CLASS_WRAPPER: Record<AtomClass, string | null> = { ord: null, bin: "\\mathbin", rel: "\\mathrel", open: "\\mathopen", close: "\\mathclose", punct: "\\mathpunct", op: null, inner: "\\mathinner" };
+
+/** The class of LaTeX the editor keeps as written, from the tree mathra reads it into (`render(latex).tree`). */
+export function classOfTree(tree: unknown): AtomClass {
+  const node = tree as { type?: string; children?: unknown[] };
+  // spaces are not neighbors; of several pieces, the first sets the spacing on the left
+  const children = (node?.type === "row" ? (node.children ?? []) : [node]).filter((c) => (c as { type?: string })?.type !== "space");
+  if (!children.length) return "ord";
+  const n = children[0] as { type?: string; class?: string; base?: unknown; shape?: string };
+  switch (n?.type) {
+    case "operator":
+    case "forced-class":
+      return (n.class as AtomClass) ?? "ord";
+    case "function":
+    case "large-operator":
+      return "op";
+    case "fraction":
+    case "delimited":
+      return "inner";
+    case "table":
+      return n.shape && !/array|aligned|centered|substack|diagram/.test(n.shape) ? "inner" : "ord";
+    case "scripts":
+    case "attributed":
+    case "colored":
+    case "style":
+      return n.base ? classOfTree(n.base) : "ord";
+    default:
+      return "ord";
+  }
+}
 
 export interface LatexOptions {
   /** Mark every atom and row with `\htmlData{m=<id>}`, and draw empty rows as `\square`: what the editor draws. Off: the plain LaTeX to hand out. */
@@ -141,6 +170,9 @@ export class Editor {
   anchor: Cursor | null = null;
   /** The locale writes `3,14` for a decimal (pt-BR, fr, de…): a comma between digits is then part of the number. The field sets it from mathra. */
   decimalComma = false;
+  /** The class of LaTeX kept as written (`\pdv{u}{t}` is a fraction), so its mark keeps its spacing. The field asks mathra (`classOfTree(render(latex).tree)`); without it, ordinary. */
+  classifyRaw: ((latex: string) => AtomClass) | null = null;
+  private rawClasses = new Map<string, AtomClass>();
   private next = 0;
   private listeners = new Set<ChangeListener>();
   private undoStack: string[] = [];
@@ -1028,10 +1060,19 @@ export class Editor {
 
   // ---------- internals: LaTeX ----------
 
-  private rowLatex(row: Row, marked: boolean): string {
-    if (row.children.length === 0) return marked ? `\\htmlData{m=${row.id},empty=1}{\\square}` : "";
+  /** A row's LaTeX. `bare`: its atoms are marked but not the row around them (a cell of an alignment,
+   * where `&= …` must keep the relation's spacing); its box is then where its atoms are. */
+  private rowLatex(row: Row, marked: boolean, bare = false): string {
+    if (row.children.length === 0) {
+      if (!marked) return "";
+      // an empty cell of an alignment (the left of `&= …`) is part of the layout, not a place to fill:
+      // invisible and without width, still with a box for the cursor
+      const owner = row.parent;
+      if (bare && owner?.kind === "matrix" && /^(aligned|split|gathered|align\*?|alignat\*?)$/.test(owner.env)) return `\\htmlData{m=${row.id},empty=1}{\\vphantom{1}}`;
+      return `\\htmlData{m=${row.id},empty=1}{\\square}`;
+    }
     const inner = this.listLatex(row.children, marked);
-    return marked ? `\\htmlData{m=${row.id}}{${inner}}` : inner;
+    return marked && !bare ? `\\htmlData{m=${row.id}}{${inner}}` : inner;
   }
 
   private listLatex(atoms: Atom[], marked: boolean): string {
@@ -1061,7 +1102,10 @@ export class Editor {
     switch (atom.kind) {
       case "symbol": {
         if (!marked) return atom.latex;
+        if (UNMARKED.test(atom.latex)) return atom.latex;
         let cls = atom.cls;
+        // a command the editor does not know (\vdot, \grad): its class from mathra
+        if (cls === "ord" && /^\\[A-Za-z]+$/.test(atom.latex) && !(atom.latex.slice(1) in KNOWN_ORDINARY)) cls = this.rawClass(atom.latex);
         // a decimal comma, where the locale reads one: part of the number, as mathra reads it
         if (atom.latex === "," && this.decimalComma && isDigit(before) && isDigit(after)) cls = "ord";
         const wrapper = CLASS_WRAPPER[cls];
@@ -1074,8 +1118,13 @@ export class Editor {
       case "text":
         if (!marked) return `${atom.cmd}{${atom.body.children.map((c) => (c.kind === "char" ? escapeText(c.ch) : "")).join("")}}`;
         return mark(r(atom.body).replace(/\\text\{/g, `${atom.cmd}{`));
-      case "raw":
-        return marked ? mark(atom.latex) : atom.latex;
+      case "raw": {
+        // what acts on the alignment around it cannot be inside a mark
+        if (!marked || UNMARKED.test(atom.latex) || /(^|[^\\])&/.test(atom.latex)) return atom.latex;
+        const cls = this.rawClass(atom.latex);
+        const wrapper = cls === "op" ? "\\mathop" : CLASS_WRAPPER[cls ?? "ord"];
+        return wrapper ? `${wrapper}{${mark(atom.latex)}}` : mark(atom.latex);
+      }
       case "command":
         return marked ? mark(`\\mathtt{\\backslash ${atom.name}}`) : "";
       case "frac": {
@@ -1110,12 +1159,26 @@ export class Editor {
       }
       case "matrix": {
         const body = atom.cells
-          .map((line) => line.map((cell) => r(cell)).join(" & "))
+          .map((line) => line.map((cell) => this.rowLatex(cell, marked, true)).join(" & "))
           .join(" \\\\ ")
           .replace(/ {2,}/g, " ");
         return mark(`\\begin{${atom.env}}${body}\\end{${atom.env}}`);
       }
     }
+  }
+
+  /** The class mathra reads LaTeX into, asked once per piece of LaTeX. */
+  private rawClass(latex: string): AtomClass {
+    let cls = this.rawClasses.get(latex);
+    if (cls === undefined) {
+      try {
+        cls = this.classifyRaw ? this.classifyRaw(latex) : "ord";
+      } catch {
+        cls = "ord";
+      }
+      this.rawClasses.set(latex, cls);
+    }
+    return cls;
   }
 
   // ---------- internals: undo ----------
@@ -1189,6 +1252,13 @@ export class Editor {
     return steps;
   }
 }
+
+/** Commands that act on the alignment around them (mathtools, amsmath): never inside a mark. */
+const UNMARKED = /^\\(MoveEqLeft|shortvdotswithin|vdotswithin|Aboxed|intertext|shortintertext|tag\*?|notag|nonumber|label|hline|noalign)\b/;
+
+/** Commands known to be ordinary symbols: no need to ask mathra. */
+const KNOWN_ORDINARY: Record<string, true> = {};
+for (const n of "alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa varkappa lambda mu nu xi omicron pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega digamma Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega infty partial nabla hbar ell emptyset varnothing forall exists nexists neg prime cdots ldots vdots ddots aleph beth gimel daleth angle triangle square".split(" ")) KNOWN_ORDINARY[n] = true;
 
 /** An atom's rows, in the order the cursor visits them from left to right. */
 export function childRows(atom: Atom): Row[] {

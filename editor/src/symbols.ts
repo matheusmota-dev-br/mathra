@@ -2,7 +2,7 @@
 // structures a command makes, and the delimiters.
 
 /** TeX's atom classes, which set the spacing around a symbol. */
-export type AtomClass = "ord" | "bin" | "rel" | "open" | "close" | "punct" | "op";
+export type AtomClass = "ord" | "bin" | "rel" | "open" | "close" | "punct" | "op" | "inner";
 
 const BIN = "pm mp times div cdot ast star circ bullet cup cap sqcup sqcap vee wedge oplus ominus otimes oslash odot setminus wr amalg dagger ddagger triangleleft triangleright bigtriangleup bigtriangledown land lor";
 const REL =

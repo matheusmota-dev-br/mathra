@@ -65,7 +65,6 @@ class Reader {
     const start = this.pos;
     if (/[A-Za-z]/.test(this.peek())) {
       while (/[A-Za-z]/.test(this.peek())) this.pos++;
-      // a star belongs to the name: \operatorname*, \text* do not exist, but \cfrac* is harmless
       return this.src.slice(start, this.pos);
     }
     this.pos++;
@@ -142,10 +141,12 @@ class Reader {
       return;
     }
     if (c === "{") {
-      // a group adds its atoms in place
+      // a group adds its atoms in place; an empty one stays, as the base of a script ({}_{a}, R^{a}{}_{b})
       this.pos++;
-      out.push(...this.list());
+      const inner = this.list();
       if (this.peek() === "}") this.pos++;
+      if (inner.length) out.push(...inner);
+      else out.push({ kind: "symbol", latex: "{}", cls: "ord" });
       return;
     }
     this.atom(out);
@@ -267,24 +268,75 @@ class Reader {
       const body = name === "color" ? this.list(["&", "\\\\", "\\right", "\\end"]) : this.argument();
       return void out.push({ kind: "style", cmd: `\\${name}{${color}}`, body });
     }
+    // a scheme of chemfig is one block, as written
+    if (name === "schemestart") {
+      const start = this.pos;
+      const end = this.src.indexOf("\\schemestop", this.pos);
+      let stop = end < 0 ? this.src.length : end + "\\schemestop".length;
+      // the curved arrows of \chemmove point into the scheme: they go with it
+      const after = /^\s*\\chemmove(\[[^\]]*\])?/.exec(this.src.slice(stop));
+      if (after) {
+        this.pos = stop + after[0].length;
+        if (this.peek() === "{") {
+          this.pos++;
+          this.rawGroup();
+        }
+        stop = this.pos;
+      }
+      out.push({ kind: "raw", latex: `\\schemestart${this.src.slice(start, stop)}` });
+      this.pos = stop;
+      return;
+    }
+    // \xrightarrow[below]{above}: as written (one argument only is an editable label)
+    if (ACCENTS.has(name) && name.startsWith("x") && this.peek() === "[") return void out.push({ kind: "raw", latex: `\\${name}${this.rawArguments()}` });
     if (ACCENTS.has(name)) return void out.push({ kind: "accent", cmd: `\\${name}`, body: this.argument() });
     if (STYLES.has(name)) return void out.push({ kind: "style", cmd: `\\${name}`, body: this.argument() });
     if (SPACES.has(name)) return void out.push({ kind: "symbol", latex: `\\${name}`, cls: "ord" });
     if (name === "\\") return void out.push({ kind: "raw", latex: "\\\\" });
     if (/^[{}|#$%&_]$/.test(name)) return void out.push({ kind: "symbol", latex: `\\${name}`, cls: classOfCommand(name) });
+    // a starred command the editor does not know (\dv*, \abs*): with what follows, as written
+    if (this.peek() === "*") {
+      this.pos++;
+      const args = this.rawArguments();
+      // \dv*xt: two single-token arguments
+      const tokens = args ? "" : this.rawTokens(2);
+      out.push({ kind: "raw", latex: `\\${name}*${args}${tokens}` });
+      return;
+    }
     // an unknown command right before an argument keeps its arguments, as written
     if (!(name in KNOWN_NO_ARGUMENT) && (this.peek() === "{" || this.peek() === "[")) {
-      let latex = `\\${name}`;
-      while (this.peek() === "{" || this.peek() === "[") {
-        const open = this.peek();
-        const close = open === "{" ? "}" : "]";
-        this.pos++;
-        latex += `${open}${this.rawGroup(open, close)}${close}`;
-      }
-      out.push({ kind: "raw", latex });
+      out.push({ kind: "raw", latex: `\\${name}${this.rawArguments()}` });
       return;
     }
     out.push({ kind: "symbol", latex: `\\${name}`, cls: classOfCommand(name) });
+  }
+
+  /** The `{…}` and `[…]` right after a command, as written. */
+  private rawArguments(): string {
+    let latex = "";
+    while (this.peek() === "{" || this.peek() === "[") {
+      const open = this.peek();
+      const close = open === "{" ? "}" : "]";
+      this.pos++;
+      latex += `${open}${this.rawGroup(open, close)}${close}`;
+    }
+    return latex;
+  }
+
+  /** Up to `n` single tokens (a letter, a digit or a command), as written. */
+  private rawTokens(n: number): string {
+    let out = "";
+    for (let i = 0; i < n; i++) {
+      this.skipSpaces();
+      if (this.atEnd() || /[}&^_]/.test(this.peek())) break;
+      if (this.peek() === "\\") {
+        const start = this.pos;
+        this.pos++;
+        this.commandName();
+        out += this.src.slice(start, this.pos);
+      } else out += this.src[this.pos++];
+    }
+    return out;
   }
 
   private delimiter(): string {
