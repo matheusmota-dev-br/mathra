@@ -701,7 +701,13 @@ impl Parser<'_> {
                 Node::Scripts { base: Box::new(Node::row(vec![])), sup: sup.map(Box::new), sub: sub.map(Box::new) }
             }
             Kind::Over => Node::Operator { symbol: '/', class: Class::Ord },
-            Kind::Right(_) => unreachable!("expression() stops before a closing bracket"),
+            Kind::Right(close) => {
+                // sqrt), x^): where an argument or a script is expected, the argument is empty and
+                // the bracket is left to what it closes
+                self.pos -= 1;
+                self.tolerate(rules::E_REC_7, col, format!("missing argument before '{}'", close.map_or(":}".into(), String::from)), "left empty")?;
+                Node::row(vec![])
+            }
         })
     }
 }

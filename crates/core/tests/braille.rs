@@ -147,6 +147,32 @@ fn cmu_fractions_powers_and_roots() {
     );
 }
 
+/// #285: the auxiliary parentheses ⠢…⠔ are not used around an expression already in ( ) [ ] { } (§1.3),
+/// written with plain signs as with `\left…\right`. The grouping signs: ( ⠣ ) ⠜, [ ⠷ ] ⠾, { ⠐⠇ } ⠸⠂.
+#[test]
+fn cmu_no_auxiliary_parentheses_around_a_group() {
+    check(
+        BrailleCode::Cmu,
+        &[
+            // radicand
+            ("\\sqrt{(a+b)}", "⠫⠱⠣⠁⠖⠃⠜", "§1.3"),
+            ("\\sqrt{[a+b]}", "⠫⠱⠷⠁⠖⠃⠾", "§1.3"),
+            ("\\sqrt{\\{a+b\\}}", "⠫⠱⠐⠇⠁⠖⠃⠸⠂", "§1.3"),
+            ("\\sqrt{((a+b))}", "⠫⠱⠣⠣⠁⠖⠃⠜⠜", "§1.3"),
+            // numerator and denominator
+            ("\\frac{(a+b)}{c}", "⠣⠁⠖⠃⠜⠲⠉", "§1.3, §5.1"),
+            ("\\frac{a}{[c+d]}", "⠁⠲⠷⠉⠖⠙⠾", "§1.3, §5.1"),
+            // exponent
+            ("x^{(a+b)}", "⠭⠡⠣⠁⠖⠃⠜", "§1.3, §5.2"),
+            // index
+            ("\\sqrt[\\{n+1\\}]{x}", "⠫⠐⠇⠝⠖⠼⠁⠸⠂⠱⠭", "§1.3, §5.3"),
+            // more than one group is more than one term: the auxiliary parentheses stay
+            ("\\sqrt{(a)+(b)}", "⠫⠱⠢⠣⠁⠜⠖⠣⠃⠜⠔", "§1.3"),
+            ("\\sqrt{(a+b)(c+d)}", "⠫⠱⠢⠣⠁⠖⠃⠜⠣⠉⠖⠙⠜⠔", "§1.3"),
+        ],
+    );
+}
+
 #[test]
 fn cmu_sets_functions_and_calculus() {
     check(

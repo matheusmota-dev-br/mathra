@@ -153,9 +153,58 @@ fn e_rec_5_unpaired_brackets() {
     assert!(convert(&deep, &options(false)).unwrap_err().to_string().contains("nesting"));
 }
 
+/// A closing bracket where an argument or a script is expected (#282): the argument is left empty
+/// (E-REC-7, as LaTeX's `\sqrt}`) and the bracket goes to what it closes (a lone one is drawn, with
+/// its own E-REC-5).
+#[test]
+fn e_rec_7_closing_bracket_where_an_argument_is_expected() {
+    let empty = || Node::row(vec![]);
+    let x = || Node::Identifier { name: "x".into(), variant: Variant::Italic };
+    let close = Node::Operator { symbol: ')', class: mathra::Class::Close };
+    let sup = |base: Node| Node::Scripts { base: Box::new(base), sup: Some(Box::new(empty())), sub: None };
+    let sub = |base: Node| Node::Scripts { base: Box::new(base), sup: None, sub: Some(Box::new(empty())) };
+    let frac = Node::Fraction {
+        numerator_align: None,
+        num: Box::new(Node::Identifier { name: "a".into(), variant: Variant::Italic }),
+        den: Box::new(empty()),
+        style: FractionStyle::Auto,
+        rule: true,
+        thickness: None,
+    };
+    let in_parens = Node::Delimited { open: Some('('), close: Some(')'), parts: vec![Node::row(vec![sup(x())])], middles: vec![] };
+    for (src, column, tree, stray) in [
+        ("sqrt)", 5, Node::Root { radicand: Box::new(empty()), index: None }, true),
+        ("x^)", 3, sup(x()), true),
+        ("x_)", 3, sub(x()), true),
+        ("(x^)", 4, in_parens, false),
+        ("frac(a))", 8, frac, true),
+        ("color(red))", 11, Node::Colored { color: "red".into(), base: Box::new(empty()) }, true),
+        ("_)", 2, sub(empty()), true),
+        ("^)", 2, sup(empty()), true),
+    ] {
+        let r = convert(src, &options(false)).unwrap_or_else(|e| panic!("{src}: {e}"));
+        let mut children = vec![tree];
+        let mut rules = vec!["E-REC-7"];
+        let mut warnings = vec![format!("column {column}: missing argument before ')'; left empty")];
+        if stray {
+            children.push(close.clone());
+            rules.push("E-REC-5");
+            warnings.push(format!("column {column}: ')' closes nothing; drawn as is"));
+        }
+        assert_eq!(r.tree, Node::row(children), "{src}");
+        assert_eq!(r.warnings.iter().map(|a| a.rule).collect::<Vec<_>>(), rules, "{src}");
+        assert_eq!(r.warnings.iter().map(|a| a.description.clone()).collect::<Vec<_>>(), warnings, "{src}");
+        let e = convert(src, &options(true)).unwrap_err();
+        assert!(matches!(e, mathra::Error::Syntax { column: c, ref message } if c == column && message == "missing argument before ')'"), "{src}: {e:?}");
+    }
+    // the invisible bracket too, named as written
+    let r = convert("sqrt:}", &options(false)).unwrap();
+    assert!(r.warnings[0].description.contains("missing argument before ':}'"), "{:?}", r.warnings);
+}
+
 #[test]
 fn empty_and_odd_inputs_do_not_panic() {
-    for src in ["", "   ", "/", "^", "_", "((", "))", "[[", "]]", "|", "||", "\"unclosed", "text(", "color(red)", "frac", "root(3)", "{:", "a/", "sqrt"] {
+    for src in ["", "   ", "/", "^", "_", "((", "))", "[[", "]]", "|", "||", "\"unclosed", "text(", "color(red)", "frac", "root(3)", "{:", "a/", "sqrt", "root(3))", "x^]"] {
         let _ = convert(src, &options(false));
         let _ = convert(src, &options(true));
     }
