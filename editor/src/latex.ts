@@ -2,6 +2,7 @@
 // that is drawn as is and can be moved and deleted whole. In a snippet (a palette's insert), `#?` is
 // an empty place and `#0` where the selection goes.
 
+import { readDiagram, type ArrowData, type DiagramEnv } from "./diagram.ts";
 import {
   ACCENTS,
   CHAR_CLASS,
@@ -30,6 +31,8 @@ export type AtomSpec =
   | { kind: "style"; cmd: string; body: AtomSpec[] }
   | { kind: "matrix"; env: string; cells: AtomSpec[][][] }
   | { kind: "raw"; latex: string }
+  /** A commutative diagram: cells and arrows, labels as atoms. */
+  | { kind: "diagram"; env: DiagramEnv; cells: AtomSpec[][][]; arrows: ArrowData<AtomSpec[]>[] }
   | { kind: "command"; name: string }
   /** `#0` in a snippet: where the selection goes. */
   | { kind: "selection" };
@@ -226,11 +229,12 @@ class Reader {
       const save = this.pos;
       const env = this.peek() === "{" ? (this.pos++, this.rawGroup()) : "";
       if (MATRICES.has(env)) return void out.push(this.matrix(env));
-      // anything else stays as written, up to its \end
+      // anything else stays as written, up to its \end; a diagram the editor can edit becomes one
       const end = this.src.indexOf(`\\end{${env}}`, this.pos);
       const stop = end < 0 ? this.src.length : end + `\\end{${env}}`.length;
-      out.push({ kind: "raw", latex: `\\begin${this.src.slice(save, stop)}` });
+      const latex = `\\begin${this.src.slice(save, stop)}`;
       this.pos = stop;
+      out.push((env === "tikzcd" || env === "CD" ? diagramSpec(latex, this.auto) : null) ?? { kind: "raw", latex });
       return;
     }
     if (TEXTS.has(name)) {
@@ -267,6 +271,17 @@ class Reader {
       const color = this.peek() === "{" ? (this.pos++, this.rawGroup()) : "";
       const body = name === "color" ? this.list(["&", "\\\\", "\\right", "\\end"]) : this.argument();
       return void out.push({ kind: "style", cmd: `\\${name}{${color}}`, body });
+    }
+    if (name === "xymatrix") {
+      this.skipSpaces();
+      if (this.peek() === "{") {
+        const start = this.pos;
+        this.pos++;
+        this.rawGroup();
+        const latex = `\\xymatrix${this.src.slice(start, this.pos)}`;
+        out.push(diagramSpec(latex, this.auto) ?? { kind: "raw", latex });
+        return;
+      }
     }
     // a scheme of chemfig is one block, as written
     if (name === "schemestart") {
@@ -387,6 +402,19 @@ class Reader {
     for (const r of cells) while (r.length < width) r.push([]);
     return { kind: "matrix", env, cells };
   }
+}
+
+/** A diagram as atoms, or null if the editor cannot edit it (it stays a block of LaTeX). */
+function diagramSpec(latex: string, auto: boolean): AtomSpec | null {
+  const d = readDiagram(latex);
+  if (!d) return null;
+  const read = (s: string) => new Reader(s, auto).list();
+  return {
+    kind: "diagram",
+    env: d.env,
+    cells: d.cells.map((line) => line.map(read)),
+    arrows: d.arrows.map((a) => ({ ...a, label: a.label === null ? null : read(a.label), swapLabel: a.swapLabel === null ? null : read(a.swapLabel), extra: [...a.extra] })),
+  };
 }
 
 /** Commands that take no argument, even right before a brace (`\alpha{}` is α then a group). */

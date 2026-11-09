@@ -4,10 +4,12 @@
 // everything sits.
 
 import { readLatex, type AtomSpec } from "./latex.ts";
+import { writeDiagram, type ArrowData, type ArrowStyle, type DiagramEnv } from "./diagram.ts";
 import { CHAR_CLASS, CHAR_LATEX, CLOSING, DELIMITERS, LOWER_LIMIT_ONLY, classOfCommand, escapeText, type AtomClass } from "./symbols.ts";
 
 export type { AtomClass } from "./symbols.ts";
 export type { AtomSpec } from "./latex.ts";
+export type { ArrowStyle, DiagramEnv } from "./diagram.ts";
 
 /** A horizontal list: the whole formula, a numerator, an exponent, a cell… */
 export interface Row {
@@ -48,8 +50,15 @@ export interface Matrix extends Base { kind: "matrix"; env: string; cells: Row[]
 export interface Raw extends Base { kind: "raw"; latex: string }
 /** A command being typed after `\`, until a space or Enter turns it into what it names. */
 export interface Command extends Base { kind: "command"; name: string }
+/** An arrow of a diagram: from a cell to a cell, its labels rows to edit. */
+export type DiagramArrow = ArrowData<Row>;
+/** A commutative diagram (tikz-cd, amscd, xymatrix): a grid of cells and the arrows between them. */
+export interface Diagram extends Base { kind: "diagram"; env: DiagramEnv; cells: Row[][]; arrows: DiagramArrow[] }
 
-export type Atom = SymbolAtom | CharAtom | TextAtom | Fraction | Root | Scripts | Delimited | LargeOperator | Accent | Styled | Matrix | Raw | Command;
+export type Atom = SymbolAtom | CharAtom | TextAtom | Fraction | Root | Scripts | Delimited | LargeOperator | Accent | Styled | Matrix | Raw | Command | Diagram;
+
+/** Where a new arrow goes from a cell. */
+export type ArrowDirection = "up" | "down" | "left" | "right";
 
 /** Where the cursor is: between two atoms of a row, `offset` atoms from its start. */
 export interface Cursor {
@@ -118,10 +127,10 @@ export const BLOCKS: Record<string, string> = {
   pu: "\\pu{‸}",
   chemfig: "\\chemfig{‸}",
   schemestart: "\\schemestart ‸ \\schemestop",
-  tikzcd: "\\begin{tikzcd}\n‸\n\\end{tikzcd}",
-  xymatrix: "\\xymatrix{‸}",
-  CD: "\\begin{CD}\n‸\n\\end{CD}",
 };
+
+/** Commands typed after `\` that start a diagram: one empty cell, the cursor in it. */
+const DIAGRAMS: Record<string, string> = { tikzcd: "\\begin{tikzcd}#?\\end{tikzcd}", CD: "\\begin{CD}#?\\end{CD}", xymatrix: "\\xymatrix{#?}" };
 
 /** Editing a block's LaTeX: changes show at once; `commit` makes them one step of undo, `cancel` takes them back. */
 export interface BlockSession {
@@ -271,11 +280,11 @@ export class Editor {
     return !!owner && owner.kind === "text";
   }
 
-  /** The matrix around the cursor, with the cell it is in. */
-  matrixAtCursor(): { matrix: Matrix; i: number; j: number } | null {
+  /** The matrix or diagram around the cursor, with the cell it is in. */
+  matrixAtCursor(): { matrix: Matrix | Diagram; i: number; j: number } | null {
     for (let row: Row = this.cursor.row; row.parent; row = row.parent.parent!) {
       const owner = row.parent;
-      if (owner.kind === "matrix") {
+      if (owner.kind === "matrix" || owner.kind === "diagram") {
         for (let i = 0; i < owner.cells.length; i++) {
           const j = owner.cells[i].indexOf(row);
           if (j >= 0) return { matrix: owner, i, j };
@@ -489,6 +498,102 @@ export class Editor {
     };
   }
 
+  // ---------- diagrams ----------
+
+  /** The arrow whose label the cursor is in, with its diagram. */
+  arrowAtCursor(): { diagram: Diagram; arrow: DiagramArrow; index: number } | null {
+    const row = this.cursor.row;
+    const d = row.parent;
+    if (d?.kind !== "diagram") return null;
+    const index = d.arrows.findIndex((a) => a.label === row || a.swapLabel === row);
+    return index < 0 ? null : { diagram: d, arrow: d.arrows[index], index };
+  }
+
+  /** Draws an arrow between two cells of a diagram; the cursor goes to its label. */
+  addArrow(d: Diagram, from: [number, number], to: [number, number], style: ArrowStyle = "plain"): void {
+    if (from[0] === to[0] && from[1] === to[1]) return;
+    this.change(() => {
+      const label = this.row(d);
+      d.arrows.push({ from: [...from], to: [...to], label, swapLabel: null, labelExtra: "", swapExtra: "", style, bend: null, extra: [] });
+      this.cursor = { row: label, offset: 0 };
+      this.anchor = null;
+    });
+  }
+
+  /** From the cell the cursor is in, an arrow to the neighbour on that side (a line or a column is
+   * added at the edge); the cursor goes to its label. */
+  arrowFromCursor(direction: ArrowDirection, style: ArrowStyle = "plain"): void {
+    const at = this.matrixAtCursor();
+    if (!at || at.matrix.kind !== "diagram") return;
+    const d = at.matrix;
+    this.change(() => {
+      let { i, j } = at;
+      const [di, dj] = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[direction];
+      if (i + di < 0) {
+        this.insertMatrixRow(d, 0);
+        i++;
+      } else if (i + di >= d.cells.length) this.insertMatrixRow(d, d.cells.length);
+      if (j + dj < 0) {
+        this.insertMatrixColumn(d, 0);
+        j++;
+      } else if (j + dj >= d.cells[0].length) this.insertMatrixColumn(d, d.cells[0].length);
+      const label = this.row(d);
+      d.arrows.push({ from: [i, j], to: [i + di, j + dj], label, swapLabel: null, labelExtra: "", swapExtra: "", style, bend: null, extra: [] });
+      this.cursor = { row: label, offset: 0 };
+      this.anchor = null;
+    });
+  }
+
+  /** Puts the cursor in an arrow's label (one is made if it has none): what a click on the arrow does. */
+  selectArrow(d: Diagram, index: number): void {
+    const a = d.arrows[index];
+    if (!a) return;
+    this.change(() => {
+      const row = a.label ?? a.swapLabel ?? (a.label = this.row(d));
+      this.cursor = { row, offset: row.children.length };
+      this.anchor = null;
+    });
+  }
+
+  /** The arrow the cursor is on: its style, its bend, its label's side, or gone. */
+  setArrowStyle(style: ArrowStyle): void {
+    const at = this.arrowAtCursor();
+    if (at) this.change(() => void (at.arrow.style = style));
+  }
+
+  setArrowBend(bend: "left" | "right" | null): void {
+    const at = this.arrowAtCursor();
+    if (at) this.change(() => void (at.arrow.bend = bend));
+  }
+
+  /** The label goes to the arrow's other side. */
+  swapArrowLabel(): void {
+    const at = this.arrowAtCursor();
+    if (!at) return;
+    this.change(() => {
+      const a = at.arrow;
+      [a.label, a.swapLabel] = [a.swapLabel, a.label];
+      [a.labelExtra, a.swapExtra] = [a.swapExtra, a.labelExtra];
+    });
+  }
+
+  removeArrow(): void {
+    const at = this.arrowAtCursor();
+    if (!at) return;
+    this.change(() => {
+      const d = at.diagram;
+      d.arrows.splice(at.index, 1);
+      const cell = d.cells[at.arrow.from[0]][at.arrow.from[1]];
+      this.cursor = { row: cell, offset: cell.children.length };
+      this.anchor = null;
+    });
+  }
+
+  /** Is this row the cursor's (an empty one shows as a place to fill only there)? */
+  hasCursor(row: Row): boolean {
+    return this.cursor.row === row;
+  }
+
   // ---------- moving ----------
 
   /** Right: into the next structure, out at the end of a row. With `extend`, grows the selection by whole atoms. */
@@ -666,6 +771,7 @@ export class Editor {
       const m = at.matrix;
       if (m.cells.length === 1) return this.removeAtom(m);
       m.cells.splice(at.i, 1);
+      if (m.kind === "diagram") this.dropFromDiagram(m, 0, at.i);
       const i = Math.min(at.i, m.cells.length - 1);
       this.cursor = { row: m.cells[i][at.j], offset: 0 };
       this.anchor = null;
@@ -680,6 +786,7 @@ export class Editor {
       const m = at.matrix;
       if (m.cells[0].length === 1) return this.removeAtom(m);
       for (const line of m.cells) line.splice(at.j, 1);
+      if (m.kind === "diagram") this.dropFromDiagram(m, 1, at.j);
       const j = Math.min(at.j, m.cells[0].length - 1);
       this.cursor = { row: m.cells[at.i][j], offset: 0 };
       this.anchor = null;
@@ -849,6 +956,12 @@ export class Editor {
         a.cells = spec.cells.map((line) => line.map((cell) => rowOf(a, cell)!));
         return a;
       }
+      case "diagram": {
+        const a: Diagram = { ...base, kind: "diagram", env: spec.env, cells: [], arrows: [] };
+        a.cells = spec.cells.map((line) => line.map((cell) => rowOf(a, cell)!));
+        a.arrows = spec.arrows.map((x) => ({ ...x, from: [...x.from] as [number, number], to: [...x.to] as [number, number], extra: [...x.extra], label: rowOf(a, x.label), swapLabel: rowOf(a, x.swapLabel) }));
+        return a;
+      }
       case "selection":
         throw new Error("mathra-editor: #0 is placed by adoptInto");
     }
@@ -885,9 +998,13 @@ export class Editor {
     const made = this.adoptInto(row, specs, selected, offset);
     this.cursor = { row, offset: offset + made.length };
     if (options.cursorAfter) return;
-    // the first empty place inserted
+    // the first empty place inserted (the empty cells of a diagram with content are its layout, not places)
+    const isPlace = (r: Row) => {
+      const d = r.parent;
+      return !(d?.kind === "diagram" && d.cells.flat().some((c) => c.children.length > 0));
+    };
     for (const a of made) {
-      const empty = rowsOf(a).find((r) => r.children.length === 0);
+      const empty = rowsOf(a).find((r) => r.children.length === 0 && isPlace(r));
       if (empty) {
         this.cursor = { row: empty, offset: 0 };
         return;
@@ -911,6 +1028,10 @@ export class Editor {
     if (!name) return false;
     if (BLOCKS[name]) {
       this.placeBlock(BLOCKS[name]);
+      return true;
+    }
+    if (DIAGRAMS[name]) {
+      this.insertSpecs(readLatex(DIAGRAMS[name]));
       return true;
     }
     const snippet = TEMPLATES[name];
@@ -1002,13 +1123,22 @@ export class Editor {
     });
   }
 
-  private insertMatrixRow(m: Matrix, i: number): void {
+  private insertMatrixRow(m: Matrix | Diagram, i: number): void {
     const width = m.cells[0]?.length ?? 1;
     m.cells.splice(i, 0, Array.from({ length: width }, () => this.row(m)));
+    // a diagram's arrows keep their cells
+    if (m.kind === "diagram") for (const a of m.arrows) for (const p of [a.from, a.to]) if (p[0] >= i) p[0]++;
   }
 
-  private insertMatrixColumn(m: Matrix, j: number): void {
+  private insertMatrixColumn(m: Matrix | Diagram, j: number): void {
     for (const line of m.cells) line.splice(j, 0, this.row(m));
+    if (m.kind === "diagram") for (const a of m.arrows) for (const p of [a.from, a.to]) if (p[1] >= j) p[1]++;
+  }
+
+  /** A diagram loses a line or a column: the arrows that touch it go, the others follow their cells. */
+  private dropFromDiagram(d: Diagram, axis: 0 | 1, k: number): void {
+    d.arrows = d.arrows.filter((a) => a.from[axis] !== k && a.to[axis] !== k);
+    for (const a of d.arrows) for (const p of [a.from, a.to]) if (p[axis] > k) p[axis]--;
   }
 
   // ---------- internals: moving and deleting ----------
@@ -1058,6 +1188,27 @@ export class Editor {
   private leave(row: Row, side: 1 | -1): void {
     const owner = row.parent;
     if (!owner) return;
+    if (owner.kind === "diagram") {
+      // from a label: to the cell the arrow leaves (left) or reaches (right)
+      const a = owner.arrows.find((x) => x.label === row || x.swapLabel === row);
+      if (a) {
+        const [i, j] = side > 0 ? a.to : a.from;
+        const cell = owner.cells[i][j];
+        this.cursor = { row: cell, offset: side > 0 ? 0 : cell.children.length };
+        return;
+      }
+      // from a cell: the next cell, then out
+      const cells = owner.cells.flat();
+      const k = cells.indexOf(row) + side;
+      if (k >= 0 && k < cells.length) {
+        this.cursor = { row: cells[k], offset: side > 0 ? 0 : cells[k].children.length };
+        return;
+      }
+      const outer = owner.parent!;
+      const at = outer.children.indexOf(owner);
+      this.cursor = { row: outer, offset: side > 0 ? at + 1 : at };
+      return;
+    }
     const rows = childRows(owner);
     const i = rows.indexOf(row) + side;
     if (i >= 0 && i < rows.length) {
@@ -1073,7 +1224,7 @@ export class Editor {
     this.anchor = null;
     for (let row: Row = this.cursor.row; row.parent; row = row.parent.parent!) {
       const owner = row.parent;
-      if (owner.kind === "matrix") {
+      if (owner.kind === "matrix" || owner.kind === "diagram") {
         for (let i = 0; i < owner.cells.length; i++) {
           const j = owner.cells[i].indexOf(row);
           const line = owner.cells[i + side];
@@ -1117,6 +1268,26 @@ export class Editor {
   private leaveOrRemoveOwner(row: Row, side: 1 | -1): void {
     const owner = row.parent;
     if (!owner) return;
+    if (owner.kind === "diagram") {
+      const k = owner.arrows.findIndex((x) => x.label === row || x.swapLabel === row);
+      // Backspace in an empty label: the arrow goes
+      if (k >= 0 && side < 0 && row.children.length === 0) {
+        const [a] = owner.arrows.splice(k, 1);
+        const cell = owner.cells[a.from[0]][a.from[1]];
+        this.cursor = { row: cell, offset: cell.children.length };
+        return;
+      }
+      if (k >= 0) return this.leave(row, side);
+      // a whole diagram goes when it is one empty cell without arrows
+      if (owner.cells.flat().every((c) => c.children.length === 0) && owner.arrows.length === 0) {
+        const outer = owner.parent!;
+        const at = outer.children.indexOf(owner);
+        outer.children.splice(at, 1);
+        this.cursor = { row: outer, offset: at };
+        return;
+      }
+      return this.leave(row, side);
+    }
     const outer = owner.parent!;
     const at = outer.children.indexOf(owner);
     if (row.children.length === 0 && (owner.kind === "scripts" || owner.kind === "bigop") && (owner.sup === row || owner.sub === row)) {
@@ -1262,6 +1433,21 @@ export class Editor {
         const side = (latex: string, cls: "open" | "close", suffix: string) => (latex ? `\\math${cls}{\\htmlData{m=${atom.id}${suffix}}{${latex}}}` : "");
         return `${side(left.open, "open", "l")}${r(atom.body)}${side(right.close, "close", "r")}`;
       }
+      case "diagram": {
+        const cell = (row: Row) => {
+          if (!marked) return this.listLatex(row.children, false);
+          if (row.children.length) return this.rowLatex(row, true);
+          // an empty cell is a place to fill where the cursor is, and invisible elsewhere
+          // (even an empty mark changes tikz-cd's layout: the editor places an empty cell by its neighbours)
+          return this.hasCursor(row) ? `\\htmlData{m=${row.id},empty=1}{\\square}` : "";
+        };
+        const label = (row: Row) => {
+          if (!marked) return this.listLatex(row.children, false);
+          if (row.children.length) return this.rowLatex(row, true);
+          return this.hasCursor(row) ? `\\htmlData{m=${row.id},empty=1}{\\square}` : "";
+        };
+        return mark(writeDiagram(atom, cell, label));
+      }
       case "matrix": {
         const body = atom.cells
           .map((line) => line.map((cell) => this.rowLatex(cell, marked, true)).join(" & "))
@@ -1320,6 +1506,8 @@ export class Editor {
         return { kind: a.kind, cmd: a.cmd, body: l(a.body)! };
       case "matrix":
         return { kind: "matrix", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)) };
+      case "diagram":
+        return { kind: "diagram", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)), arrows: a.arrows.map((x) => ({ ...x, from: [...x.from] as [number, number], to: [...x.to] as [number, number], extra: [...x.extra], label: l(x.label), swapLabel: l(x.swapLabel) })) };
     }
   }
 
@@ -1425,6 +1613,8 @@ export function childRows(atom: Atom): Row[] {
       return [atom.body];
     case "matrix":
       return atom.cells.flat();
+    case "diagram":
+      return [...atom.cells.flat(), ...atom.arrows.flatMap((a) => [a.label, a.swapLabel].filter((r): r is Row => r !== null))];
     default:
       return [];
   }
@@ -1452,7 +1642,7 @@ function verticalRows(atom: Atom): Row[] {
 
 /** Something in the row is taller than a line: delimiters around it grow. */
 function isTall(row: Row): boolean {
-  return row.children.some((a) => a.kind === "frac" || a.kind === "bigop" || a.kind === "matrix" || (a.kind === "delim" && isTall(a.body)) || (a.kind === "raw" && /\\(begin|frac|dfrac|sum|int|prod)\b/.test(a.latex)) || ((a.kind === "sqrt" || a.kind === "style" || a.kind === "accent") && childRows(a).some(isTall)));
+  return row.children.some((a) => a.kind === "frac" || a.kind === "bigop" || a.kind === "matrix" || a.kind === "diagram" || (a.kind === "delim" && isTall(a.body)) || (a.kind === "raw" && /\\(begin|frac|dfrac|sum|int|prod)\b/.test(a.latex)) || ((a.kind === "sqrt" || a.kind === "style" || a.kind === "accent") && childRows(a).some(isTall)));
 }
 
 /** Atoms that must be marked as one group, from `atoms[i]`: primes (`''` is one double prime), and a

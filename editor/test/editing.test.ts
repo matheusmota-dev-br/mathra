@@ -288,10 +288,9 @@ test("blocks: cancel restores the LaTeX; an empty block just typed goes", () => 
   assert.equal(f.toLatex(), "");
 });
 
-test("blocks: the block beside the cursor, and diagrams typed by name", () => {
-  const e = new Editor("a\\xymatrix{A \\ar[r] & B}");
-  assert.equal(e.blockAtCursor()?.latex, "\\xymatrix{A \\ar[r] & B}");
-  const d = new Editor();
-  d.typeText("\\tikzcd ");
-  assert.equal(d.takePendingBlock()?.atom.latex, "\\begin{tikzcd}\n\n\\end{tikzcd}");
+test("blocks: the block beside the cursor; a diagram the editor cannot edit stays one", () => {
+  const e = new Editor("a\\xymatrix{A \\rtwocell^{f}_{g}{\\alpha} & B}");
+  assert.equal(e.blockAtCursor()?.latex, "\\xymatrix{A \\rtwocell^{f}_{g}{\\alpha} & B}");
+  const c = new Editor("\\ce{H2O}");
+  assert.equal(c.blockAtCursor()?.latex, "\\ce{H2O}");
 });
