@@ -197,3 +197,16 @@ mod tests {
         assert!(get(char::from_u32(LLCEIL as u32 + ALL.len() as u32).unwrap()).is_none());
     }
 }
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::*;
+
+    #[test]
+    fn a_symbol_built_at_run_time_is_the_one_in_the_table() {
+        // `c` builds the table at compile time; at run time it builds the same symbol
+        let k = c(LLCEIL, "llceil", Class::Open, "⌈⌈", None);
+        assert_eq!(get(LLCEIL), Some(&k));
+        assert_eq!(source(&k), r"\llceil");
+    }
+}

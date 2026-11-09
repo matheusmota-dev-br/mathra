@@ -136,3 +136,70 @@ fn every_trailing_parameter_in_order() {
     assert!(text.contains("(3)") && text.contains("[1]"), "{text}");
     assert!(json["mathml"].as_str().unwrap().starts_with("<math"));
 }
+
+#[test]
+fn locales_is_the_json_list() {
+    assert_eq!(mathra_wasm::locales(), mathra_wasm::locales_json());
+}
+
+#[test]
+fn load_font_and_load_fallback_font_answer_json() {
+    let lm = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tools/fonts/latinmodern-math.otf")).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&mathra_wasm::load_font(lm.clone()).unwrap()).unwrap();
+    assert_eq!(json["name"], "Latin Modern Math");
+    // the same bytes again: the same id
+    assert_eq!(json["id"], mathra_wasm::load_font_bytes(lm).unwrap().0);
+    let a = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../core/tests/fonts/fallback-a.ttf")).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&mathra_wasm::load_fallback_font(a.clone()).unwrap()).unwrap();
+    assert_eq!((json["name"].as_str(), json["fallback"].as_bool()), (Some("fallback-a"), Some(true)));
+    assert_eq!(json["id"], mathra_wasm::load_fallback_font_bytes(a).unwrap().0);
+    // what is not a font is refused before it becomes a `JsError`
+    assert!(mathra_wasm::load_font_bytes(b"not a font".to_vec()).unwrap_err().contains("not a font"));
+    assert!(mathra_wasm::load_fallback_font_bytes(b"not a font".to_vec()).unwrap_err().contains("not a font"));
+    assert!(mathra_wasm::font_by_id(Some(999)).unwrap_err().contains("no font loaded with id 999"));
+}
+
+#[test]
+fn tex_to_pen_writes_the_equation() {
+    let svg = mathra_wasm::tex_to_pen("x+1", None, None, None, Some(2.0), None, None).unwrap();
+    assert!(svg.starts_with("<svg") && svg.contains("<animate"), "{svg}");
+    let inline = mathra_wasm::tex_to_pen("sqrt(x)", Some("pt-BR".into()), Some(false), Some("asciimath".into()), None, None, Some(vec![])).unwrap();
+    assert!(inline.starts_with("<svg"));
+    assert!(mathra_wasm::pen_svg("x", Some("xx"), true, None, None, None).unwrap_err().contains("unknown locale"));
+    assert!(mathra_wasm::pen_svg("x", None, true, Some("word"), None, None).unwrap_err().contains("unknown input format"));
+    assert!(mathra_wasm::pen_svg("x", None, true, None, None, Some(999)).unwrap_err().contains("no font loaded"));
+    assert!(mathra_wasm::pen_svg_with("x", None, true, None, None, None, &[999]).unwrap_err().contains("no fallback font loaded"));
+    // a math font id as a fallback (-(id + 1)) that no load_font gave
+    assert!(mathra_wasm::pen_svg_with("x", None, true, None, None, None, &[-1000]).unwrap_err().contains("no font loaded with id 999"));
+    let deep = format!("{}x{}", "{".repeat(100), "}".repeat(100));
+    assert!(mathra_wasm::pen_svg(&deep, None, true, None, None, None).unwrap_err().contains("nesting"));
+}
+
+#[test]
+fn labels_must_be_numbers() {
+    assert!(mathra_wasm::numbers(None, "labels").unwrap().is_empty());
+    assert!(mathra_wasm::numbers(Some("{"), "labels").unwrap_err().starts_with("labels: "));
+    assert_eq!(mathra_wasm::numbers(Some(r#"{"a": true}"#), "labels").unwrap_err(), "labels: a is true, not a string or a number");
+}
+
+/// The exported functions turn a refused input into a `JsError`, which only a wasm host can create:
+/// outside it, wasm-bindgen panics there. That panic shows the error path was taken (no SVG came
+/// out); the error text itself is checked above and in tests/web.rs.
+#[test]
+fn refused_input_reaches_js_error() {
+    fn refused(f: impl FnOnce() + std::panic::UnwindSafe) {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let caught = std::panic::catch_unwind(f);
+        std::panic::set_hook(hook);
+        let payload = caught.expect_err("the input is refused");
+        let message = payload.downcast_ref::<String>().map(String::as_str).or_else(|| payload.downcast_ref::<&str>().copied()).unwrap_or_default();
+        assert!(message.contains("wasm"), "{message}");
+    }
+    refused(|| drop(mathra_wasm::load_font(b"not a font".to_vec())));
+    refused(|| drop(mathra_wasm::load_fallback_font(b"not a font".to_vec())));
+    refused(|| drop(tex_to_svg("x", Some("xx".into()), None, None, None, None, None, None, None, None, None, None, None)));
+    refused(|| drop(tex_to_tree("x", Some("xx".into()))));
+    refused(|| drop(mathra_wasm::render("x", Some("xx".into()), None, None, None, None, None, None, None, None, None, None, None)));
+    refused(|| drop(mathra_wasm::tex_to_pen("x", Some("xx".into()), None, None, None, None, None)));
+}
