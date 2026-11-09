@@ -293,10 +293,41 @@ fn multline_keeps_a_shoved_first_line() {
 }
 
 #[test]
-fn multline_aligns_only_lines_of_one_cell() {
-    // a line split by '&' is not a line multline can push to a side: it keeps its cells
-    let (t, _) = tolerant(r"\begin{multline}a&b\\c\end{multline}");
-    has(&t, &[r#"rows: [[Identifier { name: "a", variant: Italic }, Identifier { name: "b", variant: Italic }], [Multicolumn { columns: 1, alignment: 'r'"#]);
+fn multline_aligns_a_line_split_by_an_ampersand_as_one_cell() {
+    // '&' has no place in multline (amsmath: "Misplaced alignment tab character &"): tolerant mode
+    // joins the cells, and the joined line is pushed to the left like any first line
+    let t = recovers(r"\begin{multline}a&b\\c\end{multline}", "E-REC-9");
+    has(
+        &t,
+        &[
+            r#"rows: [[Multicolumn { columns: 1, alignment: 'l', base: Row { children: [Identifier { name: "a", variant: Italic }, Identifier { name: "b", variant: Italic }] } }], [Multicolumn { columns: 1, alignment: 'r'"#,
+        ],
+    );
+}
+
+#[test]
+fn an_ampersand_in_a_single_column_environment_is_refused_in_strict_mode() {
+    for env in ["multline", "multline*", "gather", "gather*", "gathered"] {
+        let tex = format!(r"\begin{{{env}}}a&b\\c&&d\end{{{env}}}");
+        assert!(strict_error(&tex).contains(&format!("'&' in line 1 of {env}, which has one column")), "{tex}");
+        let (t, a) = tolerant(&tex);
+        assert_eq!(a.len(), 2, "{tex}: {a:?}");
+        assert!(a[1].starts_with("E-REC-9") && a[1].contains(&format!("line 2 of {env}")), "{tex}: {a:?}");
+        // one cell per line: the cells joined, an empty one left out
+        let (ab, cd) = (
+            r#"Row { children: [Identifier { name: "a", variant: Italic }, Identifier { name: "b", variant: Italic }] }"#,
+            r#"Row { children: [Identifier { name: "c", variant: Italic }, Identifier { name: "d", variant: Italic }] }"#,
+        );
+        if env.starts_with("multline") {
+            has(&t, &[&format!("rows: [[Multicolumn {{ columns: 1, alignment: 'l', base: {ab} }}], [Multicolumn {{ columns: 1, alignment: 'r', base: {cd} }}]]")]);
+        } else {
+            has(&t, &[&format!("rows: [[{ab}], [{cd}]]")]);
+        }
+    }
+    // split and the aligned environments keep their '&'
+    for env in ["split", "aligned", "align"] {
+        tree(&format!(r"\begin{{{env}}}a&b\end{{{env}}}"));
+    }
 }
 
 // ---------- HTML attributes ----------

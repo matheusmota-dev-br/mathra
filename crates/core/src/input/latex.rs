@@ -1028,6 +1028,27 @@ impl Reader<'_> {
         Ok(())
     }
 
+    /// amsmath's "Misplaced alignment tab character &": a line of `gather`, `gathered` or `multline`,
+    /// which have one column, split by `&` (E-REC-9; refused in strict mode). The cells are joined
+    /// into the one cell of the line. Out of line, as `extra_cells`.
+    #[inline(never)]
+    fn misplaced_tabs(&mut self, rows: &mut [Vec<Node>], name: &str, col: usize) -> R<()> {
+        for (r, row) in rows.iter_mut().enumerate() {
+            if row.len() > 1 {
+                self.tolerate(rules::E_REC_9, col, format!("'&' in line {} of {name}, which has one column", r + 1), "the cells joined")?;
+                let mut joined = Vec::new();
+                for cell in row.drain(..) {
+                    match cell {
+                        Node::Row { children } => joined.extend(children),
+                        other => joined.push(other),
+                    }
+                }
+                row.push(Node::row(joined).simplify());
+            }
+        }
+        Ok(())
+    }
+
     /// mathtools' `\vdotswithin` and `\shortvdotswithin`, and the accents package's `\underaccent` and
     /// `\accentset`, asked by `mod_command`: not in `structure_command`, which is on the path of every
     /// nested environment, nor in `accent_command`, on the path of every nested `\not`, where arms widen
@@ -2294,6 +2315,9 @@ impl Reader<'_> {
         }
 
         let (mut rows, horizontals, intertexts) = self.table_body(Some(&name), col)?;
+        if matches!(base, "gather" | "gathered" | "multline") {
+            self.misplaced_tabs(&mut rows, &name, col)?;
+        }
         if base == "multline" {
             multline_alignments(&mut rows);
         }
