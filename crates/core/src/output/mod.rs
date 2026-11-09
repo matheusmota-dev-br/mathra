@@ -1,3 +1,4 @@
+pub mod boxes;
 pub mod braille;
 pub mod mathml;
 pub mod pen;

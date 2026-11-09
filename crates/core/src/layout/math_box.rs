@@ -29,8 +29,10 @@ pub enum Item {
     /// as SVG's `matrix()`. Turned and unevenly scaled boxes (`\rotatebox`, `\scalebox{2}[1]`).
     Transformed { matrix: [f32; 6], items: Vec<Item> },
     /// Items drawn inside a group that carries HTML attributes (`class`, `id`, `style`, `data-*`):
-    /// `\class`, `\htmlId`… The names and values are already safe to write.
-    Group { attributes: Vec<(String, String)>, items: Vec<Item> },
+    /// `\class`, `\htmlId`… The names and values are already safe to write. `bounds` is the box the
+    /// content was set in, as `[x, baseline, width, height, depth]`, (x, baseline) the left end of its
+    /// baseline: the logical box, not the ink, so an editor knows where each piece sits.
+    Group { attributes: Vec<(String, String)>, items: Vec<Item>, bounds: [f32; 5] },
 }
 
 impl Item {
@@ -54,7 +56,9 @@ impl Item {
                 matrix[4] += dx;
                 matrix[5] += dy;
             }
-            Item::Group { items, .. } => {
+            Item::Group { items, bounds, .. } => {
+                bounds[0] += dx;
+                bounds[1] += dy;
                 for item in items {
                     item.shift(dx, dy);
                 }
@@ -180,7 +184,12 @@ impl MathBox {
                         *m *= f;
                     }
                 }
-                Item::Group { items, .. } => scale(items, f),
+                Item::Group { items, bounds, .. } => {
+                    for b in bounds.iter_mut() {
+                        *b *= f;
+                    }
+                    scale(items, f);
+                }
             }
         }
         scale(&mut self.items, f);
@@ -216,7 +225,10 @@ impl MathBox {
                     matrix[2] = -matrix[2];
                     matrix[4] = w - matrix[4];
                 }
-                Item::Group { items, .. } => mirror_items(items, w),
+                Item::Group { items, bounds, .. } => {
+                    bounds[0] = w - bounds[0] - bounds[2];
+                    mirror_items(items, w);
+                }
             }
         }
         let w = self.width;
@@ -240,7 +252,8 @@ impl MathBox {
     /// keeps its size and its metrics.
     pub fn group(&mut self, attributes: Vec<(String, String)>) {
         let items = std::mem::take(&mut self.items);
-        self.items.push(Item::Group { attributes, items });
+        let bounds = [0.0, 0.0, self.width, self.height, self.depth];
+        self.items.push(Item::Group { attributes, items, bounds });
     }
 
     pub fn colorize(&mut self, color: &str) {

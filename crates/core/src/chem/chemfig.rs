@@ -67,6 +67,7 @@ struct Pending {
     closures: Vec<(Option<String>, usize)>,
     charges: Vec<Charge>,
     skip_align: bool,
+    attributes: Vec<(String, String)>,
 }
 
 /// Reads a `\chemfig{…}` body.
@@ -99,6 +100,11 @@ pub fn molecule(src: &str, reader: &mut Reader) -> R<Molecule> {
         p.chain(start, 0.0, None)?;
     }
     // a ?[name] no other mark names draws nothing, as in chemfig
+    // a submolecule rewrote the code: the places read are not those written
+    if p.expansions > 0 {
+        p.m.atoms.iter_mut().for_each(|a| a.span = None);
+        p.m.bonds.iter_mut().for_each(|b| b.span = None);
+    }
     Ok(p.m)
 }
 
@@ -261,7 +267,9 @@ impl Mol<'_, '_> {
                     }
                 }
                 c if is_bond_start(c) => {
+                    let bond_start = self.pos;
                     let (kind, gaps, args) = self.bond_spec()?;
+                    let bond_span = Some((bond_start, self.pos));
                     // a node on the bond, before its angle: [@{name,coeff}angle,…]
                     let (bond_hook, written) = bond_hook(args.first().map(|a| a.trim()).unwrap_or(""));
                     let mut bond_angle = match default_angle {
@@ -301,8 +309,13 @@ impl Mol<'_, '_> {
                         }
                         None => match preset.take() {
                             Some(p) => {
+                                let span_start = self.pos;
                                 let (label, lewis) = self.label()?;
+                                let span = self.trimmed_span(span_start);
                                 let atom = &mut self.m.atoms[p];
+                                if span.1 > span.0 || atom.span.is_none() {
+                                    atom.span = Some(span);
+                                }
                                 if atom.label.is_empty() && !label.is_empty() {
                                     atom.pieces = pieces(&label);
                                     atom.label = label;
@@ -326,6 +339,7 @@ impl Mol<'_, '_> {
                         start_gap: gaps.0,
                         end_gap: gaps.1,
                         hook: bond_hook,
+                        span: bond_span,
                     });
                     self.attach(to)?;
                     if let Some(r) = ring {
@@ -458,6 +472,7 @@ impl Mol<'_, '_> {
                     start_gap: None,
                     end_gap: None,
                     hook: None,
+                    span: None,
                 });
             }
         }
@@ -555,6 +570,7 @@ impl Mol<'_, '_> {
         let atom = &mut self.m.atoms[id];
         atom.charges.extend(pending.charges);
         atom.skip_align |= pending.skip_align;
+        atom.attributes.extend(pending.attributes);
         for (spec, piece) in pending.closures {
             self.closure(id, piece, spec)?;
         }
@@ -644,15 +660,29 @@ impl Mol<'_, '_> {
     /// that reaches it, which picks the piece it attaches to.
     fn atom(&mut self, arriving: Option<f32>, explicit: Option<usize>) -> R<AtomId> {
         self.arriving = arriving;
+        let span_start = self.pos;
         let (label, lewis) = self.label()?;
+        let span = Some(self.trimmed_span(span_start));
         let pieces = pieces(&label);
         let anchor = match explicit {
             Some(k) => k.min(pieces.len().saturating_sub(1)),
             None => default_arrival(&pieces, arriving),
         };
         let hook = self.hook.take();
-        self.m.atoms.push(Atom { label, pieces, anchor, lewis, hook, ..Atom::default() });
+        self.m.atoms.push(Atom { label, pieces, anchor, lewis, hook, span, ..Atom::default() });
         Ok(self.m.atoms.len() - 1)
+    }
+
+    /// From `start` to where the reader is, without the spaces at either end.
+    fn trimmed_span(&self, start: usize) -> (usize, usize) {
+        let (mut a, mut b) = (start, self.pos.min(self.c.len()));
+        while a < b && self.c[a].is_whitespace() {
+            a += 1;
+        }
+        while b > a && self.c[b - 1].is_whitespace() {
+            b -= 1;
+        }
+        (a, b)
     }
 
     /// The raw label up to the next bond or structure character, without spaces; `\lewis{…,X}` gives X and its marks.
@@ -742,6 +772,20 @@ impl Mol<'_, '_> {
                             let charges = self.charges(&args[0], piece)?;
                             self.pending.charges.extend(charges);
                             s.push_str(args[1].trim());
+                        }
+                        // a mark around the label (\htmlData, \class, \htmlId): read through, kept on the atom
+                        "htmlData" | "class" | "htmlClass" | "htmlId" | "cssId" => {
+                            let start = self.pos - name.chars().count() - 1;
+                            let mut args = Vec::new();
+                            for _ in 0..2 {
+                                self.skip_spaces();
+                                args.push(if self.current() == Some('{') { self.group('{', '}')? } else { String::new() });
+                            }
+                            self.pending.attributes.extend(crate::input::latex::html_attribute_list(&name, &args[0]));
+                            // what the mark holds is read in its place, as if written there (\charge, \lewis…)
+                            let end = self.pos;
+                            self.c.splice(start..end, args[1].trim().chars());
+                            self.pos = start;
                         }
                         // chemfig manual, section 5.4.3
                         "chemskipalign" => self.pending.skip_align = true,

@@ -50,6 +50,20 @@ jobs:
           node-version: 22
       # the npm package as users get it: packed, installed, imported with ESM and require
       - run: npm/build.sh && npm/test/run.sh
+      # the editor, on the package just built: its unit tests and Chromium together must run every line
+      # and function of editor/src (Node 24 runs the TypeScript tests as they are)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - working-directory: editor
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec playwright-core install --with-deps chromium
+          node --no-warnings scripts/coverage.mjs --fail-under 100
 
   python:
     runs-on: ubuntu-latest
