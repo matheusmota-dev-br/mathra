@@ -96,6 +96,31 @@ pub fn molecule(src: &str, reader: &mut Reader) -> R<Molecule> {
     Ok(p.m)
 }
 
+/// A bond's `#(dim1,dim2)`: the space at its start and at its end, in em, when it sets them.
+type Gaps = (Option<f32>, Option<f32>);
+
+/// `[angle,length,departure,arrival,tikz]` as defaults: each field left empty keeps `inherited`'s,
+/// and a relative angle (`::x`) is relative to `previous`.
+fn defaults_from(args: &[String], previous: f32, inherited: &Defaults) -> Defaults {
+    let field = |i: usize| args.get(i).map(|a| a.trim()).filter(|a| !a.is_empty());
+    let piece = |i: usize| field(i).and_then(|v| v.parse::<usize>().ok()).filter(|v| *v > 0).map(|v| v - 1);
+    let tikz = args.get(4..).map(|t| t.join(",")).filter(|t| !t.trim().is_empty());
+    Defaults {
+        angle: field(0).map(|a| resolve_angle(a, previous)).or(inherited.angle),
+        length: field(1).and_then(|l| l.parse::<f32>().ok()).filter(|l| *l > 0.0).unwrap_or(inherited.length),
+        departure: piece(2).or(inherited.departure),
+        arrival: piece(3).or(inherited.arrival),
+        tikz: tikz.unwrap_or_else(|| inherited.tikz.clone()),
+    }
+}
+
+/// A TeX dimension in em (`2pt`, `0.5em`, `1mm`), as chemfig's `#(…)` takes them; 10pt is an em.
+fn dimension_em(s: &str) -> Option<f32> {
+    let s = s.trim();
+    let units = [("pt", 0.1), ("bp", 0.1004), ("em", 1.0), ("ex", 0.45), ("mm", 0.2845), ("cm", 2.845), ("in", 7.227)];
+    units.iter().find_map(|(u, f)| s.strip_suffix(u).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite()).map(|v| v * f))
+}
+
 fn is_bond_start(ch: char) -> bool {
     matches!(ch, '-' | '=' | '~' | '<' | '>')
 }
@@ -152,9 +177,28 @@ impl Mol<'_, '_> {
             match ch {
                 ')' => break,
                 '(' => {
-                    let default = self.bisector.get(&cur).copied().unwrap_or(self.defaults.angle.unwrap_or(angle));
+                    let mut default = self.bisector.get(&cur).copied().unwrap_or(self.defaults.angle.unwrap_or(angle));
                     self.pos += 1;
+                    self.skip_spaces();
+                    // a branch may start with defaults of its own, valid in all of it (chemfig manual,
+                    // section 2.6: `B([:60]-D-E)`, `([::-30,1.5]-X-Y)`); a relative angle is relative to
+                    // the bond that reached the atom
+                    let saved = (self.current() == Some('[')).then(|| {
+                        let parent = std::mem::take(&mut self.defaults);
+                        (parent, angle)
+                    });
+                    if let Some((parent, previous)) = &saved {
+                        let args = split_top(&self.group('[', ']')?, ',');
+                        let own = defaults_from(&args, *previous, parent);
+                        if let Some(a) = own.angle {
+                            default = a;
+                        }
+                        self.defaults = own;
+                    }
                     self.chain(cur, default, None)?;
+                    if let Some((parent, _)) = saved {
+                        self.defaults = parent;
+                    }
                     self.skip_spaces();
                     if self.current() == Some(')') {
                         self.pos += 1;
@@ -189,7 +233,7 @@ impl Mol<'_, '_> {
                     }
                 }
                 c if is_bond_start(c) => {
-                    let (kind, args) = self.bond_spec()?;
+                    let (kind, gaps, args) = self.bond_spec()?;
                     let written = args.first().map(|a| a.trim()).unwrap_or("");
                     let mut bond_angle = match default_angle {
                         Some(d) if written.is_empty() => d,
@@ -241,7 +285,7 @@ impl Mol<'_, '_> {
                         },
                     };
                     let arrival = if target.is_some() { explicit(3).unwrap_or(self.m.atoms[to].anchor) } else { self.m.atoms[to].anchor };
-                    self.add_bond(Bond { from: cur, to, kind, angle: normalize(bond_angle), length, departure, arrival, ring: ring_id });
+                    self.add_bond(Bond { from: cur, to, kind, angle: normalize(bond_angle), length, departure, arrival, ring: ring_id, start_gap: gaps.0, end_gap: gaps.1 });
                     self.attach(to)?;
                     if let Some(r) = ring {
                         if target.is_none() && !self.m.rings[r.id].atoms.contains(&to) {
@@ -275,6 +319,18 @@ impl Mol<'_, '_> {
         if aromatic {
             self.pos += 1;
         }
+        // **[angle1,angle2,tikz]: the part of the circle drawn, and how (chemfig manual, section 3.2)
+        let (mut arc, mut dashed) = (None, false);
+        if aromatic && self.current() == Some('[') {
+            let args = split_top(&self.group('[', ']')?, ',');
+            let angle = |i: usize, default: f32| args.get(i).map(|a| a.trim()).filter(|a| !a.is_empty()).and_then(|a| a.parse::<f32>().ok()).unwrap_or(default);
+            let (from, to) = (angle(0, 0.0), angle(1, 360.0));
+            if (to - from).abs() < 360.0 {
+                arc = Some((from, to));
+            }
+            let tikz = args.get(2..).map(|t| t.join(",")).unwrap_or_default();
+            dashed = tikz.contains("dash") || tikz.contains("dotted");
+        }
         let mut digits = String::new();
         while let Some(d) = self.current().filter(char::is_ascii_digit) {
             digits.push(d);
@@ -300,7 +356,7 @@ impl Mol<'_, '_> {
             }
             None => (incoming - 90.0 + 180.0 / size as f32, step),
         };
-        self.m.rings.push(Ring { size, atoms: vec![at], aromatic });
+        self.m.rings.push(Ring { size, atoms: vec![at], aromatic, arc, dashed });
         let start_outward = first - turn / 2.0 - 90.0 * turn.signum();
         self.bisector.entry(at).or_insert(normalize(start_outward));
         let state = RingState { id, first, turn, bonds: size, close: at };
@@ -349,7 +405,7 @@ impl Mol<'_, '_> {
                 let link = parts.get(1).map(String::as_str).unwrap_or("");
                 let tikz = parts.get(2..).map(|t| t.join(",")).unwrap_or_default();
                 let kind = tikz_kind(&tikz, hook_kind(link));
-                self.add_bond(Bond { from: other, to: at, kind, angle: 0.0, length: 1.0, departure: other_piece, arrival: piece, ring: None });
+                self.add_bond(Bond { from: other, to: at, kind, angle: 0.0, length: 1.0, departure: other_piece, arrival: piece, ring: None, start_gap: None, end_gap: None });
             }
         }
         Ok(())
@@ -372,20 +428,12 @@ impl Mol<'_, '_> {
     /// current character is `[`.
     fn read_defaults(&mut self) -> R<()> {
         let args = split_top(&self.group('[', ']')?, ',');
-        let field = |i: usize| args.get(i).map(|a| a.trim()).filter(|a| !a.is_empty());
-        let piece = |i: usize| field(i).and_then(|v| v.parse::<usize>().ok()).filter(|v| *v > 0).map(|v| v - 1);
-        self.defaults = Defaults {
-            angle: field(0).map(|a| resolve_angle(a, 0.0)),
-            length: field(1).and_then(|l| l.parse::<f32>().ok()).filter(|l| *l > 0.0).unwrap_or(1.0),
-            departure: piece(2),
-            arrival: piece(3),
-            tikz: args.get(4..).map(|t| t.join(",")).unwrap_or_default(),
-        };
+        self.defaults = defaults_from(&args, 0.0, &Defaults::default());
         Ok(())
     }
 
-    /// A bond character and its optional `[angle,length,departure,arrival,tikz]`.
-    fn bond_spec(&mut self) -> R<(BondKind, Vec<String>)> {
+    /// A bond character, its `#(dim1,dim2)` gaps and its optional `[angle,length,departure,arrival,tikz]`.
+    fn bond_spec(&mut self) -> R<(BondKind, Gaps, Vec<String>)> {
         let ch = self.current().unwrap_or('-');
         self.pos += 1;
         let kind = match ch {
@@ -418,9 +466,41 @@ impl Mol<'_, '_> {
             }
             _ => BondKind::Single,
         };
+        let gaps = self.bond_gaps()?;
         self.skip_spaces();
         let args = if self.current() == Some('[') { split_top(&self.group('[', ']')?, ',') } else { Vec::new() };
-        Ok((kind, args))
+        Ok((kind, gaps, args))
+    }
+
+    /// chemfig manual, section 2.2: `#(dim1,dim2)` right after the bond sign (also written `\#` or
+    /// `\CFhash`) sets the space between the bond and the letters at its start and at its end; a field
+    /// left empty, or `dim2` left out, keeps the standard space. A dimension mathra cannot read warns.
+    fn bond_gaps(&mut self) -> R<Gaps> {
+        let rest: String = self.c[self.pos..].iter().take(8).collect();
+        let marker = ["\\CFhash", "\\#", "#"].into_iter().find(|m| rest.starts_with(m));
+        let Some(marker) = marker else { return Ok((None, None)) };
+        let after = self.pos + marker.chars().count();
+        if self.c.get(after) != Some(&'(') {
+            return Ok((None, None));
+        }
+        self.pos = after;
+        let spec = self.group('(', ')')?;
+        let mut fields = spec.splitn(2, ',').map(str::trim);
+        let mut gap = |field: Option<&str>| -> R<Option<f32>> {
+            match field.filter(|f| !f.is_empty()) {
+                None => Ok(None),
+                Some(f) => match dimension_em(f) {
+                    Some(em) => Ok(Some(em.clamp(-5.0, 5.0))),
+                    None => {
+                        self.reader.tolerate(rules::E_REC_9, format!("bond spacing #({spec}): unrecognized dimension {f}"), "the standard space")?;
+                        Ok(None)
+                    }
+                },
+            }
+        };
+        let start = gap(fields.next())?;
+        let end = gap(fields.next())?;
+        Ok((start, end))
     }
 
     /// Reads an atom label (possibly empty) and creates the atom. `arriving`: the direction of the bond

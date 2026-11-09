@@ -168,6 +168,12 @@ pub struct Bond {
     /// The ring this bond is a side of: a double bond is then drawn inside it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ring: Option<usize>,
+    /// chemfig's `#(dim1,dim2)` (manual, section 2.2): the space left between the bond and the letters
+    /// at its start and at its end, in em, instead of the standard one (C-LAY-3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_gap: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_gap: Option<f32>,
 }
 
 fn is_one(v: &f32) -> bool {
@@ -219,6 +225,13 @@ pub struct Ring {
     /// `**6(…)`: a circle inside for the delocalized bonds.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub aromatic: bool,
+    /// `**[angle1,angle2,tikz]6(…)` (chemfig manual, section 3.2): the circle only from `angle1` to
+    /// `angle2`, absolute, counterclockwise (0 and 360 by default, the whole circle).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arc: Option<(f32, f32)>,
+    /// The circle dashed or dotted, as its TikZ options ask.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dashed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

@@ -19,7 +19,10 @@ The reader takes, as written: `\chemfig[options]{…}`, `\schemestart … \schem
 | `>` `<` · `>:` `<:` · `>|` `<|` | wedge, hashed wedge, hollow wedge; `>` is wide at the end, `<` at the start |
 | `-[a,len,dep,arr,tikz]` | `a`: `n` × 45°, `:x` absolute, `::x` relative to the previous bond, empty keeps the previous direction; `len` a length factor; `dep`, `arr` the pieces (from 1) the bond leaves from and arrives at; `tikz`: `draw=none` hides the bond, `dash…`/`dotted` dashes it |
 | `(…)` | a branch from the current atom; on a ring vertex its first bond points outward |
+| `([a,len,dep,arr,tikz]…)` | a branch with defaults of its own (chemfig manual, section 2.6), valid in all of it and in its own branches, as the structure's are; a field left empty keeps the enclosing one's, and `::x` is relative to the bond that reached the atom: `B([:60]-D-E)`, `([::-30,1.5]-X-Y)` |
+| `-#(d1,d2)` | chemfig manual, section 2.2, right after the bond sign (also `\#` or `\CFhash`): the space between the bond and the letters at its start and at its end (C-LAY-4); an empty field or a missing `d2` keeps the standard space |
 | `*n(…)`, `**n(…)` | a ring of n sides (3 to 40), with a circle for `**`; it may list fewer bonds than sides |
+| `**[a1,a2,tikz]n(…)` | chemfig manual, section 3.2: the circle only from `a1` to `a2` degrees, absolute and counterclockwise (0 and 360 by default); dashed or dotted when the TikZ options say so (C-LAY-5) |
 | a ring at a ring vertex | fused: it lies outside and shares the parent's next side, coming back along it |
 | `[a,len,dep,arr,tikz]` at the start | the structure's defaults (chemfig manual, section 2.6): every bond whose field is empty takes them; with a default angle, an empty angle is that angle (in a branch from a ring vertex, the vertex's outward direction) instead of the previous bond's |
 | `?`, `?[name]`, `?[name,link,tikz]` | chemfig manual, section 2.8: the first mark of a name is the hook, each later mark of the name draws a bond to it, with the link it gives (a number 1–9 or the bond's characters in braces, `{=}`, `{>}`) and its TikZ options; a mark belongs to the piece it follows, or at the start of a group to its first piece (`-?[a]B`); a lone mark draws nothing |
@@ -80,11 +83,11 @@ The first atom is at the origin. Each other atom is placed by the first bond tha
 
 ### C-LAY-4 · Labels
 
-A label is typeset by mathra in upright type, piece by piece, and placed so that the middle of the piece the bond arrives at sits on the atom's position. A bond leaves a label from its last piece going right, its first going left, and its first non-hydrogen piece going vertically; it arrives at the first piece from the left, the last from the right, the first non-hydrogen piece vertically (so `H_3C` above a ring attaches at C). A bond stops 0.09 em from the letters of the piece it touches.
+A label is typeset by mathra in upright type, piece by piece, and placed so that the middle of the piece the bond arrives at sits on the atom's position. A bond leaves a label from its last piece going right, its first going left, and its first non-hydrogen piece going vertically; it arrives at the first piece from the left, the last from the right, the first non-hydrogen piece vertically (so `H_3C` above a ring attaches at C). A bond stops 0.09 em from the letters of the piece it touches. A bond's `#(d1,d2)` sets that space at its start and at its end instead.
 
 ### C-LAY-5 · Aromatic circle
 
-The circle of an aromatic ring is centered on the ring's atoms, with a radius of 0.6 of its inner radius.
+The circle of an aromatic ring is centered on the ring's atoms, with a radius of 0.6 of its inner radius. With `**[a1,a2,…]`, only the arc from `a1` to `a2` is drawn; a dashed one has dashes of 0.12 em and gaps of 0.09 em, as a dashed bond.
 
 ### C-LAY-6 · Double bonds
 
