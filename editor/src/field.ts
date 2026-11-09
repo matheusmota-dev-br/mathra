@@ -92,6 +92,7 @@ textarea { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; 
 `;
 
 let ready: Promise<void> | null = null;
+let loaded = false;
 const decimalCommaByLocale = new Map<string, boolean>();
 
 /** Does mathra read `1,2` as one number in this locale? Asked once per locale. */
@@ -515,6 +516,15 @@ export class MathraField extends HTMLElement {
   }
 
   private draw(): void {
+    // a formula set before mathra has loaded is drawn once it has
+    if (!loaded) {
+      ready ??= init();
+      ready.then(() => {
+        loaded = true;
+        this.draw();
+      });
+      return;
+    }
     const t0 = performance.now();
     const locale = this.locale;
     this.editor.decimalComma = decimalComma(locale);

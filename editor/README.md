@@ -80,17 +80,19 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 | Backspace, Delete | delete; a structure with something inside is entered first; at the start of parentheses, they go and what they held stays |
 | Ctrl/⌘+A, C, X, V | select all, copy, cut, paste (LaTeX; `$…$`, `\(…\)` and `\[…\]` around it are dropped) |
 | Ctrl/⌘+Z, Shift+Ctrl/⌘+Z, Ctrl+Y | undo, redo |
-| Escape | leaves a command being typed, or the selection |
+| Escape | leaves a command being typed, a structure, or the selection |
+| Alt+arrow | in a diagram's cell, an arrow (Alt+Shift: dashed); on a structure's atom, a bond |
 
-### Chemistry and diagrams: blocks edited as LaTeX
+### Chemistry and diagrams, edited as boxes
 
-mhchem (`\ce`, `\pu`), chemfig (`\chemfig`, `\schemestart…\schemestop`) and commutative diagrams (`tikzcd`, `CD`, `\xymatrix`) have languages of their own, so the editor keeps each as a block and edits it as LaTeX, in a panel under it, while the formula follows as it is typed and mathra says whether it reads it without a warning:
+Reactions, structures, schemes and commutative diagrams are edited piece by piece, like the rest of the formula. mathra draws them and says where each piece is (a mark around a species, an atom or a cell moves nothing); the editor writes the LaTeX back.
 
-- type `\ce`, `\pu`, `\chemfig`, `\tikzcd`, `\xymatrix` or `\CD` (then `{` or a space), or use the chemistry and diagram palettes (reactions, structures, schemes, squares, triangles, pullbacks);
-- double-click a block (it is outlined under the pointer), or press Enter beside it;
-- Ctrl/⌘+Enter or "Done" finishes, Esc takes the edit back; the whole edit is one step of undo.
+- **Reactions** (`\ce`). Type `\ce` and a space, or use the chemistry palette. Species (coefficient, formula, state), `+` and arrows build themselves as you type: `2H2(g) + O2(g) ->[spark] 2H2O(l)`. A digit starts the coefficient, `(` the state, `->`, `<=>`, `<->` an arrow, `[` what goes over it and a second `[` what goes under it; a space moves on. While the cursor is in a reaction, each piece is outlined, and a bar switches the arrow (→ ⇌ ⥂ ⥄ ↔ ←), sets the state, adds `+`, ↑ or ↓, or removes a piece.
+- **Structures** (`\chemfig`). Click an atom or a bond to pick it, then type the atom's label. Alt+arrow, the bar's eight directions, or a drag from an atom (snapped to 30°) draws a bond to a new atom; the arrows move between atoms. The bar changes a bond's kind (single, double, triple, wedge, hashed) and hangs rings (benzene, six, five); Backspace removes an atom. The palette has skeletons with a substituent `R` (rings, chain, carbonyl, acid, ester, alcohol, ether, amine, amide), and the `R` comes picked, ready to type over. Each edit changes only the spot it touches, so the rest of the chemfig code stays as written. (mathra gives the place of each atom and bond: `span` in its tree.)
+- **Schemes** (`\schemestart`). Structures, arrows and `\+`: type a structure, a space, `->`, its conditions in `[…]`, then the next structure. The bar picks chemfig's arrow (→ ⇌ ↔ ← ↛) and adds a structure or a `+`.
+- **Diagrams** (`tikzcd`, `CD`, `\xymatrix`). Type in a cell. Alt+arrow (Alt+Shift for dashed), or a drag from one cell to another, draws an arrow, and its label is typed in place. Click an arrow to pick its style (plain, dashed, dotted, hook, two heads, double, equals, maps to, squiggly), bend it, flip its label to the other side, or remove it. An amscd or xymatrix diagram stays in its own syntax while that syntax can say what was drawn.
 
-`field.run("block:\\ce{‸}")` inserts a block and opens it (`‸` is where its cursor starts); `field.openBlock(atom)` opens one.
+Each bar also has **Edit as LaTeX**, an escape hatch that opens the piece in a panel under it. The formula follows as you type, and mathra says whether it reads it without a warning. Ctrl/⌘+Enter or "Done" finishes, Esc takes the edit back, and the whole edit is one step of undo. When done, it is read back into boxes. Whatever the editor cannot take apart stays a LaTeX block, as written: `\pu`, a scheme with `\chemmove` or named arrows, a structure built from submolecules. Double-click such a block, or press Enter beside it, to open it. `field.run("block:\\pu{‸}")` inserts a block and opens it (`‸` is where its cursor starts); `field.openBlock(atom)` opens one.
 
 `field.keymap = { "Mod+B": "insert:mathbf", "Mod+R": "latex:\\sqrt{#0}", "Mod+Enter": "" }` adds, changes or turns off keys (`Mod` is Ctrl, or ⌘ on a Mac).
 
@@ -151,7 +153,7 @@ e.toLatex(); // "x=\\frac{1}{2}"
 
 Marking moves nothing: for 48 formulas, in English and in pt-BR, the marked LaTeX draws exactly what the plain one draws, each formula read and written back draws what it drew, and the cursor sits in its row at every place (`test/corpus.test.ts`).
 
-Every example of mathra's gallery (110 in LaTeX) opens in the editor and draws as it did, read and written back and marked (`test/gallery.test.ts`). Getting there: cells of an alignment are not wrapped (`&= …` keeps the relation's spacing) and an empty one is an invisible place; LaTeX kept as written, and commands the editor does not know (`\pdv`, `\vdot`), are marked with the class mathra reads them into (the field asks it); commands that act on the alignment (`\Aboxed`, `\MoveEqLeft`) stay unmarked; a chemfig scheme, with its `\chemmove`, is one block.
+Every example of mathra's gallery (110 in LaTeX) opens in the editor and draws as it did, read and written back and marked (`test/gallery.test.ts`). Getting there: cells of an alignment are not wrapped (`&= …` keeps the relation's spacing) and an empty one is an invisible place; LaTeX kept as written, and commands the editor does not know (`\pdv`, `\vdot`), are marked with the class mathra reads them into (the field asks it); commands that act on the alignment (`\Aboxed`, `\MoveEqLeft`) stay unmarked; a chemfig scheme with its `\chemmove` is one block; every reaction, structure and scheme of the gallery reads into pieces and draws as written (`test/reactions.test.ts`, `test/structures.test.ts`, `test/schemes.test.ts`).
 
 **Limits.** A brace group the reader takes apart loses TeX's grouping (`{x}^2` reads as `x^2`, which may move an exponent by an italic correction). `\color{c}` colors to the end of its group, as mathra draws it. Typing `^` inside an index makes an exponent of the index, as in other editors: the right arrow leaves the index first.
 
