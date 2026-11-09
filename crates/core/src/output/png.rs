@@ -142,5 +142,7 @@ pub fn from_svg(svg: &str, options: &PngOptions) -> Result<Vec<u8>, PngError> {
         let scale = per_em / FONT_SIZE;
         resvg::render(&tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
     }
-    pixmap.encode_png().map_err(|e| PngError::Svg(e.to_string()))
+    // the png encoder fails only on a zero side or pixels that do not fill the image; a pixmap has
+    // neither, and it writes into memory
+    Ok(pixmap.encode_png().expect("a pixmap encodes as a PNG"))
 }

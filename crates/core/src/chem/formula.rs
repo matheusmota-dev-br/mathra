@@ -192,17 +192,15 @@ fn label(atom: &Atom, f: &mut Formula) {
             i += 1;
             let n = number(&c, &mut i).unwrap_or(1);
             // a ')' with no '(' before it (the reader warned about it) counts nothing (#210)
-            if stack.len() < 2 {
-                continue;
-            }
-            let inner = stack.pop().unwrap_or_default();
-            let Some(top) = stack.last_mut() else { continue };
+            let [.., top, inner] = stack.as_mut_slice() else { continue };
+            let inner = std::mem::take(inner);
             for (e, k) in inner.counts {
                 top.add(&e, k * n);
             }
             for _ in 0..n {
                 top.unknown.extend(inner.unknown.iter().cloned());
             }
+            stack.pop();
             continue;
         }
         if ch == '^' {
@@ -312,6 +310,7 @@ fn charge(c: &[char], i: &mut usize) -> (i32, u32) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::model::{Charge, Ring};
     use super::*;
 
     fn atom(label: &str) -> Formula {
@@ -322,6 +321,24 @@ mod tests {
 
     fn label_into(text: &str, f: &mut Formula) {
         label(&Atom { label: text.to_string(), ..Atom::default() }, f);
+    }
+
+    fn charged(label: &str, tex: &str) -> Atom {
+        let charge = Charge { angle: 0.0, offset: 0.0, piece: 0, anchor: None, content: ChargeContent::Text { tex: tex.to_string() } };
+        Atom { label: label.to_string(), charges: vec![charge], ..Atom::default() }
+    }
+
+    #[test]
+    fn a_molecule_counts_its_vertices_labels_and_formal_charges() {
+        // a lone vertex of an aromatic ring: a carbon, its shared delocalized bond and three hydrogens
+        let ring = Ring { size: 1, atoms: vec![0], aromatic: true, arc: None, dashed: false };
+        let molecule = Molecule { atoms: vec![Atom::default(), charged("N", "$\\oplus$")], rings: vec![ring], ..Molecule::default() };
+        let f = of(&molecule);
+        assert_eq!(f.written(), "CH₃N⁺");
+        // a δ+ is no formal charge; the sizes and styles around a sign are not read
+        assert_eq!(of(&Molecule { atoms: vec![charged("O", "$\\delta^+$")], ..Molecule::default() }).charge, 0);
+        assert_eq!(formal_charge("$\\scriptstyle 2-$"), -2);
+        assert_eq!(formal_charge("{x+}"), 0);
     }
 
     #[test]

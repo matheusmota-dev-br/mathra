@@ -66,3 +66,32 @@ fn a_math_font_without_an_x_height_takes_its_accent_base_height() {
     // and the equation is still set
     assert!(convert(r"\hat{x}", &Options { font, ..Options::default() }).unwrap().svg.contains("<use "));
 }
+
+/// The `ssty` coverage of tests/fonts/ssty.ttf (tools/fonts/test_fonts.py): format 1, two glyphs, A (1)
+/// and B (3).
+const SSTY_COVERAGE: [u8; 8] = [0, 1, 0, 2, 0, 1, 0, 3];
+
+#[test]
+fn script_forms_come_from_a_coverage_that_lists_its_glyphs() {
+    // the embedded fonts give their ssty coverage as ranges (format 2); a font may list glyphs instead
+    let font = FallbackFont::load(bytes("tests/fonts/ssty.ttf")).unwrap().get();
+    let (a, b) = (font.glyph('A').unwrap(), font.glyph('B').unwrap());
+    assert_eq!((a.0, b.0), (1, 3));
+    assert_eq!(font.script_form(a, 1).0, 2);
+    assert_eq!(font.script_form(b, 1).0, 4);
+    // past the last form, the last one
+    assert_eq!(font.script_form(b, 2).0, 4);
+}
+
+#[test]
+fn script_forms_past_the_end_of_their_coverage_are_left_out() {
+    // the coverage cut to one glyph while two alternate sets follow: the second set covers nothing
+    let mut ssty = bytes("tests/fonts/ssty.ttf");
+    assert_eq!(ssty.windows(8).filter(|w| *w == SSTY_COVERAGE).count(), 1);
+    let at = ssty.windows(8).position(|w| w == SSTY_COVERAGE).expect("the ssty coverage");
+    ssty[at + 3] = 1;
+    let font = FallbackFont::load(ssty).unwrap().get();
+    let (a, b) = (font.glyph('A').unwrap(), font.glyph('B').unwrap());
+    assert_eq!(font.script_form(a, 1).0, 2);
+    assert_eq!(font.script_form(b, 1), b);
+}

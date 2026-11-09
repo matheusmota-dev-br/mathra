@@ -7,7 +7,7 @@
 //! breaks. The operator is not repeated on the next line (as TeX and MathJax). The recursive
 //! layout is untouched: this pass composes the row's children one by one, as `compose_row` does.
 
-use super::{class_of, classes, compose, em, mu_space, Context, MathBox, Style, R};
+use super::{classes, compose, em, mu_space, Context, MathBox, Style, R};
 use crate::output::svg::n;
 use crate::rules;
 use crate::tree::{Class, Node, TableKind};
@@ -233,14 +233,13 @@ fn is_alignment(node: &Node) -> bool {
     }
 }
 
-/// How a break point reads in a note: the operator, or `→` for an arrow.
+/// How a break point reads in a note: the operator, or "a relation" for an arrow (or another
+/// relation that is not an operator). A break point is a relation or one of `tier`'s operators, and
+/// `classes` changes the class of operators only, so any other node there is a relation.
 fn symbol(children: &[Node], i: usize) -> String {
     match &children[i] {
         Node::Operator { symbol, .. } => format!("'{symbol}'"),
-        other => match class_of(other) {
-            Some(Class::Rel) => "a relation".to_string(),
-            _ => "an operator".to_string(),
-        },
+        _ => "a relation".to_string(),
     }
 }
 

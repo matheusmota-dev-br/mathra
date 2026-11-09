@@ -583,20 +583,23 @@ impl Writer {
             self.put(ctx, &"⠄".repeat(primes), Kind::Other);
         }
         if let Some(s) = sub {
-            let numeric = matches!(s, Node::Number { value, .. } if !value.contains('.'));
+            // the digits of a whole-number subscript
+            let numeric = match s {
+                Node::Number { value, .. } if !value.contains('.') => Some(value),
+                _ => None,
+            };
             // a letter, also an upright one (H in H₂O), or an abbreviated function name
             let base = script_letter(base);
             let on_letter = matches!(base, Node::Identifier { name, .. } if name.chars().count() == 1)
                 || matches!(base, Node::Function { .. })
                 || matches!(base, Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(t)] if !t.is_empty() && t.chars().all(|c| c.is_ascii_alphabetic())));
-            if numeric && on_letter && ctx.level.is_empty() {
+            match numeric {
                 // x₁: a numeric subscript of first order needs no indicator (§14.6)
-                if let Node::Number { value, .. } = s {
+                Some(value) if on_letter && ctx.level.is_empty() => {
                     let digits: String = value.chars().map(|d| cells(digit(d))).collect();
                     self.put(ctx, &digits, Kind::Other);
                 }
-            } else {
-                self.node(s, &ctx.at(format!("{}{SUBSCRIPT}", ctx.level)));
+                _ => self.node(s, &ctx.at(format!("{}{SUBSCRIPT}", ctx.level))),
             }
         }
         if let Some(s) = sup {

@@ -141,3 +141,14 @@ fn a_png_to_a_closed_stdout_is_an_error() {
     assert_eq!(o.status.code(), Some(1));
     assert!(stderr(&o).starts_with("mathra: could not write the PNG: "), "{}", stderr(&o));
 }
+
+#[test]
+fn a_chemfig_structure_is_read_by_its_formula() {
+    // benzene: six vertices of an aromatic ring, each a carbon with one hydrogen; ammonium by its \charge
+    let o = mathra(&["--speech", r"\chemfig{**6(------)} \quad \chemfig{\charge{90=$\oplus$}{N}H_4}"], None);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "structure of C6 H6, with 1 aromatic ring structure of H4 N, charge +1");
+    // propane drawn as a skeleton: each vertex a carbon with the hydrogens its bonds leave room for
+    let o = mathra(&["--speech", r"\chemfig{-[:30]-[:-30]}"], None);
+    assert_eq!(stdout(&o).trim(), "structure of C3 H8");
+}

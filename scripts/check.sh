@@ -3,7 +3,7 @@
 # `rust` before each commit, `wasm` and `python` before each push.
 #
 #   scripts/check.sh            every check
-#   scripts/check.sh rust       fmt, clippy and the Rust tests, with a coverage floor
+#   scripts/check.sh rust       fmt, clippy and the Rust tests, every line and function run
 #   scripts/check.sh wasm       the wasm tests, the site and the npm package as users get it
 #   scripts/check.sh python     the Python module with pytest
 #
@@ -17,9 +17,9 @@ name=mathra
 check_rust() {
   cargo fmt --all --check
   cargo clippy --workspace --exclude "$name-python" --all-targets -- -D warnings
-  # the tests, measured, with Latin Modern on so its font settings run too. The floor is what tests alone
-  # reach; what is left is code no input reaches (and two bugs), to remove and then raise the floor to 100
-  cargo llvm-cov --workspace --exclude "$name-python" --features "$name/latin-modern" --fail-under-lines 99.74 --fail-under-functions 99.53
+  # the tests, measured, with Latin Modern on so its font settings run too: every line and function of the
+  # workspace (the Python bindings aside) must run
+  cargo llvm-cov --workspace --exclude "$name-python" --features "$name/latin-modern" --fail-under-lines 100 --fail-under-functions 100
   # the command line without the png feature refuses .png (the workspace build turns the feature on)
   cargo clippy -p "$name-cli" --no-default-features --all-targets -- -D warnings
   cargo test -p "$name-cli" --no-default-features

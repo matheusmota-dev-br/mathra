@@ -235,8 +235,8 @@ impl Writer {
                 }
             }
             // a mixed number: the whole part, then the fraction (§3.2.2: 2 3/4 = ⠼⠃⠼⠒⠙)
-            if let (Node::Number { value, thousands, .. }, Some(f @ Node::Fraction { .. })) = (&children[i], children.get(i + 1)) {
-                if numeric_fraction(f).is_some() && !value.contains('.') {
+            if let (Node::Number { value, thousands, .. }, Some(f @ Node::Fraction { num, den, rule, .. })) = (&children[i], children.get(i + 1)) {
+                if numeric_fraction(num, den, *rule).is_some() && !value.contains('.') {
                     self.number(value, thousands.is_some());
                     self.node(f);
                     i += 2;
@@ -462,9 +462,7 @@ impl Writer {
         }
         // §3.2.2: a numeric fraction, the numerator in the lower part of the cell after ⠼, the
         // denominator in the upper part without ⠼: 3/4 = ⠼⠒⠙
-        if let Some((n, d)) =
-            numeric_fraction(&Node::Fraction { numerator_align: None, num: Box::new(num.clone()), den: Box::new(den.clone()), style: FractionStyle::Auto, rule, thickness: None })
-        {
+        if let Some((n, d)) = numeric_fraction(num, den, rule) {
             let lower: String = n.chars().map(|c| cells(lower_digit(c))).collect();
             let upper: String = d.chars().map(|c| cells(upper_digit(c))).collect();
             self.push(&format!("⠼{lower}{upper}"));
@@ -639,7 +637,7 @@ fn simple(n: &Node) -> bool {
     match n {
         Node::Number { .. } | Node::Identifier { .. } | Node::Operator { .. } | Node::Root { .. } | Node::Function { .. } => true,
         Node::Delimited { open: Some(_), close: Some(_), .. } => true,
-        Node::Fraction { .. } => numeric_fraction(n).is_some(),
+        Node::Fraction { num, den, rule, .. } => numeric_fraction(num, den, *rule).is_some(),
         Node::Scripts { base, sup, sub } => simple(base) && sup.as_deref().is_none_or(simple) && sub.as_deref().is_none_or(simple),
         Node::Accent { base, .. } | Node::Bar { base, .. } => simple(base),
         Node::Colored { base, .. } | Node::Attributed { base, .. } | Node::ForcedClass { base, .. } | Node::Style { base, .. } | Node::Unit { base, .. } => simple(base),
@@ -674,13 +672,10 @@ fn bracketed(children: &[Node]) -> bool {
     })
 }
 
-/// The digits of a fraction of two whole numbers.
-fn numeric_fraction(n: &Node) -> Option<(String, String)> {
-    match n {
-        Node::Fraction { num, den, rule: true, .. } => match (num.as_ref(), den.as_ref()) {
-            (Node::Number { value: a, .. }, Node::Number { value: b, .. }) if !a.contains('.') && !b.contains('.') => Some((a.clone(), b.clone())),
-            _ => None,
-        },
+/// The digits of a fraction (its numerator, its denominator, whether it has a rule) of two whole numbers.
+fn numeric_fraction(num: &Node, den: &Node, rule: bool) -> Option<(String, String)> {
+    match (num, den) {
+        (Node::Number { value: a, .. }, Node::Number { value: b, .. }) if rule && !a.contains('.') && !b.contains('.') => Some((a.clone(), b.clone())),
         _ => None,
     }
 }

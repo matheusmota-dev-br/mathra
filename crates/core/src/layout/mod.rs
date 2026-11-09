@@ -330,14 +330,16 @@ fn upright_text(t: &str, e: Style, ctx: &mut Context) -> R<MathBox> {
         if c == '\u{200B}' {
             continue;
         }
-        match glyph(c, e) {
-            Ok(g) => {
-                last_italic = if italic > 0 { g.italic } else { 0.0 };
-                math_box.append(&g);
+        // (`glyph` fails only for a character the font lacks)
+        let g = match glyph(c, e) {
+            Err(Error::MissingGlyph { character }) => {
+                math_box.append(&missing(character, e, ctx)?);
+                continue;
             }
-            Err(Error::MissingGlyph { character }) => math_box.append(&missing(character, e, ctx)?),
-            Err(error) => return Err(error),
-        }
+            other => other?,
+        };
+        last_italic = if italic > 0 { g.italic } else { 0.0 };
+        math_box.append(&g);
     }
     math_box.single_glyph = false;
     Ok(math_box)
@@ -362,9 +364,8 @@ fn missing_leaf(node: &Node, character: char, e: Style, ctx: &mut Context) -> R<
             let mut math_box = MathBox::empty();
             for c in name.chars() {
                 let g = match glyph(alphabet::character(c, *variant), e).or_else(|_| glyph(c, e)) {
-                    Ok(g) => g,
                     Err(Error::MissingGlyph { character }) => missing(character, e, ctx)?,
-                    Err(error) => return Err(error),
+                    other => other?,
                 };
                 math_box.append(&g);
             }

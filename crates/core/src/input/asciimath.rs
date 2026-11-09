@@ -22,18 +22,12 @@ pub fn read_with(source: &str, locale: Locale, registry: &mut Registry, strict: 
     let mut children = Vec::new();
     loop {
         children.extend(parser.expression(false)?);
-        match parser.peek() {
-            None => break,
-            Some(Token { kind: Kind::Right(c), col, .. }) => {
-                // a closing bracket nothing opened
-                let (c, col) = (*c, *col);
-                parser.pos += 1;
-                parser.tolerate(rules::E_REC_5, col, format!("'{}' closes nothing", c.map_or(":)".into(), String::from)), "drawn as is")?;
-                if let Some(c) = c {
-                    children.push(symbol_node(c));
-                }
-            }
-            Some(_) => unreachable!("an expression stops only at the end or at a closing bracket"),
+        // an expression stops only at the end or at a closing bracket, here one nothing opened
+        let Some(&Token { kind: Kind::Right(c), col }) = parser.peek() else { break };
+        parser.pos += 1;
+        parser.tolerate(rules::E_REC_5, col, format!("'{}' closes nothing", c.map_or(":)".into(), String::from)), "drawn as is")?;
+        if let Some(c) = c {
+            children.push(symbol_node(c));
         }
     }
     Ok(Node::row(children))
@@ -736,11 +730,14 @@ fn class_of(n: &Node) -> Class {
 /// Without the outer brackets: `(a+b)/2` has no parentheses on top, `x^(2n)` neither.
 fn unbracket(n: Node) -> Node {
     match n {
-        Node::Delimited { open: Some('(' | '[' | '{') | None, close: Some(')' | ']' | '}') | None, mut parts, middles } if parts.len() == 1 && middles.is_empty() => {
-            parts.pop().expect("one part").simplify()
-        }
+        Node::Delimited { open, close, mut parts, middles } if plain_brackets(open, close) && parts.len() == 1 && middles.is_empty() => parts.pop().expect("one part").simplify(),
         other => other,
     }
+}
+
+/// Brackets `unbracket` takes off: parentheses, square brackets, braces, or none.
+fn plain_brackets(open: Option<char>, close: Option<char>) -> bool {
+    matches!(open, Some('(' | '[' | '{') | None) && matches!(close, Some(')' | ']' | '}') | None)
 }
 
 fn unary(name: &str, arg: Node) -> Node {
@@ -798,10 +795,10 @@ fn with_variant(node: Node, variant: Variant) -> Node {
         Node::Identifier { name, .. } => Node::Identifier { name, variant },
         // #203: digits in bold, sans-serif and typewriter (`bb(1)`)
         Node::Number { value, group, thousands, .. } => Node::Number { value, group, thousands, variant: variant.of_digits() },
-        Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(_)]) => match parts.into_iter().next() {
-            Some(TextPart::Text(t)) => Node::Identifier { name: t, variant },
-            _ => unreachable!("one text part"),
-        },
+        // the one part's text, as the guard asks
+        Node::Text { parts } if matches!(parts.as_slice(), [TextPart::Text(_)]) => {
+            Node::Identifier { name: parts.into_iter().filter_map(|p| if let TextPart::Text(t) = p { Some(t) } else { None }).collect(), variant }
+        }
         Node::Row { children } => Node::Row { children: children.into_iter().map(|c| with_variant(c, variant)).collect() },
         Node::Scripts { base, sup, sub } => Node::Scripts { base: Box::new(with_variant(*base, variant)), sup, sub },
         other => other,
