@@ -528,9 +528,10 @@ impl Reader<'_> {
             }
             if let Some(label) = label {
                 let l = self.element(label, variant)?;
-                if let Some(last) = cells.pop() {
-                    cells.push(Node::row(vec![last, Node::Space { em: 2.0 }, l]));
-                }
+                // a row with only its label keeps it, alone in the row, after the same space as \tag
+                let mut end: Vec<Node> = cells.pop().into_iter().collect();
+                end.extend([Node::Space { em: 2.0 }, l]);
+                cells.push(Node::row(end));
             }
             rows.push(cells);
         }
