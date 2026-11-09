@@ -1,7 +1,7 @@
 // From the boxes mathra returns for the marked LaTeX to where the cursor is drawn and where a click
 // lands. Everything in the SVG's own coordinates (its viewBox, y down).
 
-import { childRows, type Atom, type Cursor, type Editor, type Row } from "./model.ts";
+import { childRows, numberRun, type Atom, type Cursor, type Editor, type Row, type Selection } from "./model.ts";
 
 /** A box as `render(…).boxes` gives it (only the fields used here). */
 export interface Box {
@@ -39,14 +39,55 @@ function union(rects: Rect[]): Rect | null {
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
-/** Where an atom is drawn. A script has no box of its own: it is where its rows are. */
+/** Where an atom is drawn. A script has no box of its own (it is where its rows are), nor small
+ * delimiters (each side has one, `<id>l` and `<id>r`). */
 export function atomRect(atom: Atom, boxes: Map<string, Box>): Rect | null {
-  if (atom.kind === "scripts") return union(childRows(atom).map((r) => boxes.get(r.id)).filter((b): b is Box => !!b));
-  return boxes.get(atom.id) ?? null;
+  const own = boxes.get(atom.id);
+  if (own) return own;
+  const inNumber = numberPart(atom, boxes);
+  if (inNumber) return inNumber;
+  const parts: Rect[] = [];
+  for (const id of [`${atom.id}l`, `${atom.id}r`]) {
+    const b = boxes.get(id);
+    if (b) parts.push(b);
+  }
+  for (const r of childRows(atom)) {
+    const b = rowRect(r, boxes);
+    if (b) parts.push(b);
+  }
+  return union(parts);
 }
 
+/** A digit or separator of a number drawn as one group (`<first id>n`): its share of the group's
+ * width, a separator taking half a digit (as in the math fonts, whose digits all have one width). */
+function numberPart(atom: Atom, boxes: Map<string, Box>): Rect | null {
+  const row = atom.parent;
+  if (!row) return null;
+  const atoms = row.children;
+  const k = atoms.indexOf(atom);
+  for (let i = k; i >= 0; i--) {
+    const group = boxes.get(`${atoms[i].id}n`);
+    if (!group) continue;
+    const run = numberRun(atoms, i);
+    if (!run || !run.includes(atom)) return null;
+    const weight = (a: Atom) => (a.kind === "symbol" && /^[0-9]$/.test(a.latex) ? 1 : 0.5);
+    const total = run.reduce((s, a) => s + weight(a), 0);
+    const before = run.slice(0, run.indexOf(atom)).reduce((s, a) => s + weight(a), 0);
+    const unit = group.width / total;
+    return { x: group.x + before * unit, y: group.y, width: weight(atom) * unit, height: group.height };
+  }
+  return null;
+}
+
+/** Where a row is drawn: its own box, or where its atoms are. */
 export function rowRect(row: Row, boxes: Map<string, Box>): Rect | null {
-  return boxes.get(row.id) ?? null;
+  return boxes.get(row.id) ?? union(row.children.map((a) => atomRect(a, boxes)).filter((r): r is Rect => !!r));
+}
+
+/** Where the selection is: one rectangle over the selected atoms. */
+export function selectionRect(selection: Selection | null, boxes: Map<string, Box>): Rect | null {
+  if (!selection) return null;
+  return union(selection.row.children.slice(selection.start, selection.end).map((a) => atomRect(a, boxes)).filter((r): r is Rect => !!r));
 }
 
 /** The cursor as a thin rectangle: at the left edge of the atom after it (or the right edge of the
@@ -64,9 +105,9 @@ export function caretRect(cursor: Cursor, boxes: Map<string, Box>, thickness = 4
   })();
   if (x === undefined) return null;
   // the height of a neighbour symbol, so the cursor beside a tall fraction stays the size of a letter
-  const neighbour = [before, after].find((a) => a && a.kind === "symbol") ?? before ?? after;
+  const neighbour = [before, after].find((a) => a && (a.kind === "symbol" || a.kind === "char")) ?? before ?? after;
   const nb = neighbour ? atomRect(neighbour, boxes) : null;
-  const v = nb && neighbour!.kind === "symbol" ? nb : rb;
+  const v = nb && (neighbour!.kind === "symbol" || neighbour!.kind === "char") && nb.height > 0 ? nb : rb;
   return { x: x - thickness / 2, y: v.y, width: thickness, height: v.height };
 }
 

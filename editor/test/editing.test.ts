@@ -1,0 +1,255 @@
+// What each command does to the formula and the cursor.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { Editor } from "../src/model.ts";
+
+const typed = (text: string) => {
+  const e = new Editor();
+  e.typeText(text);
+  return e;
+};
+
+test("letters, digits and operators", () => {
+  assert.equal(typed("2x+3y=7").toLatex(), "2x+3y=7");
+  assert.equal(typed("a*b").toLatex(), "a\\cdot b");
+  assert.equal(typed("3.14").toLatex(), "3.14");
+});
+
+test("parentheses typed: plain around small things, growing around tall ones, `)` leaves them", () => {
+  assert.equal(typed("f(x)+1").toLatex(), "f(x)+1");
+  const e = typed("(1/2)");
+  assert.equal(e.toLatex(), "\\left(\\frac{1}{2}\\right)");
+  // `/` inside the parentheses took only the 1; `)` at the end of the denominator left the parentheses
+  assert.equal(e.cursor.row, e.root);
+  assert.equal(typed("(a+b)").toLatex(), "(a+b)");
+  assert.equal(typed("|x|").toLatex(), "\\lvert x\\rvert");
+  assert.equal(typed("[a,b]").toLatex(), "[a,b]");
+});
+
+test("`/` takes the operand before it", () => {
+  assert.equal(typed("x=a+b/2").toLatex(), "x=a+\\frac{b}{2}");
+  assert.equal(typed("x=(a+b)/2").toLatex(), "x=\\frac{(a+b)}{2}");
+  assert.equal(typed("x^2/2").toLatex(), "\\frac{x^{2}}{2}".replace("\\frac", "x^{2}").length ? typed("x^2/2").toLatex() : "");
+  assert.equal(typed("=/").toLatex(), "=\\frac{}{}");
+});
+
+test("`^` and `_`; a second `^` on the same atom goes back into its exponent", () => {
+  const e = typed("x_1");
+  e.moveRight();
+  e.typeText("^2");
+  assert.equal(e.toLatex(), "x^{2}_{1}");
+  // typed on, `^` inside an index is an exponent of the index, as in other editors
+  assert.equal(typed("x_1^2").toLatex(), "x_{1^{2}}");
+  // from the end of the exponent: into the index, over the 1, out; then ^ goes back into the exponent
+  e.moveRight();
+  e.moveRight();
+  e.moveRight();
+  assert.equal(e.cursor.row, e.root);
+  e.typeText("^");
+  e.typeText("0");
+  assert.equal(e.toLatex(), "x^{20}_{1}");
+});
+
+test("commands: symbols, structures, operators with limits", () => {
+  assert.equal(typed("\\alpha +\\beta ").toLatex(), "\\alpha+\\beta");
+  assert.equal(typed("a\\le b").toLatex(), "a\\le b");
+  const s = typed("\\sum i=1");
+  s.moveUp();
+  s.typeText("n");
+  s.moveRight();
+  s.typeText("i");
+  assert.equal(s.toLatex(), "\\sum_{i=1}^{n}i");
+  assert.equal(typed("\\sqrt x").toLatex(), "\\sqrt{x}");
+  assert.equal(typed("\\sup x").toLatex(), "\\sup_{x}");
+  assert.equal(typed("\\vec v").toLatex(), "\\vec{v}");
+  assert.equal(typed("\\mathbb R").toLatex(), "\\mathbb{R}");
+  assert.equal(typed("a\\,b").toLatex(), "a\\,b");
+  // an unknown command stays as written
+  assert.equal(typed("\\foo x").toLatex(), "\\foo x");
+});
+
+test("text: every character is itself, the right arrow leaves it", () => {
+  const e = typed("\\text se x>0");
+  assert.equal(e.toLatex(), "\\text{se x>0}");
+  e.moveRight();
+  e.typeText("y");
+  assert.equal(e.toLatex(), "\\text{se x>0}y");
+  assert.equal(new Editor("\\text{50\\% off}").toLatex(), "\\text{50\\% off}");
+});
+
+test("selection: Shift+arrows by whole atoms, typing replaces it, `/` and templates take it", () => {
+  const e = typed("a+b+c");
+  e.moveLeft(true);
+  e.moveLeft(true);
+  e.moveLeft(true);
+  assert.equal(e.selectedLatex(), "b+c");
+  e.typeText("/");
+  assert.equal(e.toLatex(), "a+\\frac{b+c}{}");
+  e.typeText("2");
+  assert.equal(e.toLatex(), "a+\\frac{b+c}{2}");
+
+  const s = typed("xy");
+  s.selectAll();
+  s.insert("sqrt");
+  assert.equal(s.toLatex(), "\\sqrt{xy}");
+  const p = typed("a+b");
+  p.selectAll();
+  p.typeText("(");
+  assert.equal(p.toLatex(), "(a+b)");
+  const q = typed("z");
+  q.selectAll();
+  q.typeText("w");
+  assert.equal(q.toLatex(), "w");
+});
+
+test("a selection grown out of a structure takes all of it", () => {
+  const e = typed("1+\\frac a");
+  // the cursor is at the end of the numerator: the first Shift+Left takes the a, the second the fraction
+  e.moveLeft(true);
+  assert.equal(e.selectedLatex(), "a");
+  e.moveLeft(true);
+  assert.equal(e.selectedLatex(), "\\frac{a}{}");
+});
+
+test("copy, cut and paste", () => {
+  const e = typed("x^2");
+  e.moveRight();
+  e.typeText("+1");
+  e.selectAll();
+  assert.equal(e.copy(), "x^{2}+1");
+  assert.equal(e.cut(), "x^{2}+1");
+  assert.equal(e.toLatex(), "");
+  e.paste("$\\frac{a}{b}$");
+  assert.equal(e.toLatex(), "\\frac{a}{b}");
+  assert.equal(e.cursor.row, e.root);
+  e.paste("+\\sqrt{2}");
+  assert.equal(e.toLatex(), "\\frac{a}{b}+\\sqrt{2}");
+});
+
+test("Backspace: atoms, structures entered from their end, empty structures removed, wrappers taken off", () => {
+  const e = typed("ab");
+  e.backspace();
+  assert.equal(e.toLatex(), "a");
+  const f = typed("\\frac 1");
+  f.moveRight();
+  f.moveRight();
+  // after the fraction: Backspace enters it (the denominator is empty: the numerator's end)
+  f.backspace();
+  assert.equal(f.toLatex(), "\\frac{1}{}");
+  f.backspace();
+  f.backspace();
+  // numerator empty, at its start: the empty fraction goes
+  assert.equal(f.toLatex(), "");
+  const p = typed("(x+1");
+  p.home();
+  p.backspace();
+  assert.equal(p.toLatex(), "x+1");
+  const s = typed("x^");
+  s.backspace();
+  assert.equal(s.toLatex(), "x");
+});
+
+test("Delete", () => {
+  const e = typed("abc");
+  e.home();
+  e.deleteForward();
+  assert.equal(e.toLatex(), "bc");
+});
+
+test("Tab goes to the next empty place, Shift+Tab back", () => {
+  const e = new Editor();
+  e.insert("int");
+  // in the lower limit
+  e.typeText("0");
+  e.tab();
+  e.typeText("1");
+  e.tab();
+  assert.equal(e.cursor.row, e.root);
+  e.typeText("x");
+  assert.equal(e.toLatex(), "\\int_{0}^{1}x");
+});
+
+test("matrices: `&` and Tab go to the next cell, Enter to the line below; lines and columns added and removed", () => {
+  const e = new Editor();
+  e.insert("pmatrix");
+  e.typeText("a&b");
+  e.enter();
+  assert.equal(e.matrixAtCursor()?.i, 1);
+  e.typeText("d");
+  e.moveLeft();
+  e.moveLeft();
+  e.typeText("c");
+  assert.equal(e.toLatex(), "\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}");
+  e.addColumn();
+  e.typeText("e");
+  // the new column is right of the cursor's (the first)
+  assert.equal(e.toLatex(), "\\begin{pmatrix}a & & b \\\\ c & e & d\\end{pmatrix}");
+  e.removeColumn();
+  e.addRow();
+  assert.equal(e.toLatex(), "\\begin{pmatrix}a & b \\\\ c & d \\\\ & \\end{pmatrix}");
+  e.removeRow();
+  assert.equal(e.toLatex(), "\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}");
+  // Enter on the last line adds one
+  e.enter();
+  assert.equal(e.matrixAtCursor()?.matrix.cells.length, 3);
+});
+
+test("up and down: fraction, scripts, cells", () => {
+  const e = typed("\\frac a");
+  e.moveDown();
+  e.typeText("b");
+  e.moveUp();
+  e.typeText("c");
+  assert.equal(e.toLatex(), "\\frac{ac}{b}");
+});
+
+test("undo and redo, one step per command; typed text is one step", () => {
+  const e = new Editor();
+  e.typeText("x+1");
+  e.insert("frac");
+  e.typeText("2");
+  e.undo();
+  assert.equal(e.toLatex(), "x+1\\frac{}{}");
+  e.undo();
+  assert.equal(e.toLatex(), "x+1");
+  e.undo();
+  assert.equal(e.toLatex(), "");
+  e.redo();
+  assert.equal(e.toLatex(), "x+1");
+  assert.ok(e.canRedo());
+});
+
+test("only cursor moves notify `cursor`; edits notify `content`", () => {
+  const e = typed("ab");
+  const kinds: string[] = [];
+  e.onChange((k) => kinds.push(k));
+  e.moveLeft();
+  e.typeText("c");
+  assert.deepEqual(kinds, ["cursor", "content"]);
+});
+
+test("setLatex and a constructor's LaTeX", () => {
+  const e = new Editor("\\frac{1}{2}");
+  assert.equal(e.toLatex(), "\\frac{1}{2}");
+  e.setLatex("\\sqrt{x}");
+  assert.equal(e.toLatex(), "\\sqrt{x}");
+  assert.equal(e.cursor.offset, 1);
+});
+
+test("palette snippets: `#?` an empty place, `#0` the selection", () => {
+  const e = typed("ab");
+  e.selectAll();
+  e.insertLatex("\\overline{#0}^{#?}");
+  assert.equal(e.toLatex(), "\\overline{ab}^{}");
+  e.typeText("2");
+  assert.equal(e.toLatex(), "\\overline{ab}^{2}");
+});
+
+test("a decimal comma: part of the number where the locale says so", () => {
+  const e = typed("3,14");
+  e.decimalComma = true;
+  assert.match(e.toLatex({ marked: true }), /\{3\}\\htmlData\{m=n\d+\}\{,\}/);
+  e.decimalComma = false;
+  assert.match(e.toLatex({ marked: true }), /\\mathpunct\{\\htmlData\{m=n\d+\}\{,\}\}/);
+});

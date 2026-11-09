@@ -2,7 +2,7 @@
 // returns place the cursor and read the clicks.
 
 import { init, render, type Options } from "@mathlabs/mathra";
-import { Editor, type Template } from "./model.ts";
+import { Editor } from "./model.ts";
 import { boxesById, caretRect, cursorAt, type Box } from "./geometry.ts";
 
 const STYLE = `
@@ -103,7 +103,7 @@ export class MathraField extends HTMLElement {
   }
 
   /** Inserts a structure at the cursor (what a palette button does). */
-  insert(template: Template): void {
+  insert(template: string): void {
     this.editor.insert(template);
     this.input.focus();
   }
