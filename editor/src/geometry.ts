@@ -115,7 +115,8 @@ export function cellRect(d: Diagram, i: number, j: number, boxes: Map<string, Bo
     if (known[k] !== null) return known[k];
     const idx = known.map((v, m) => (v === null ? -1 : m)).filter((m) => m >= 0);
     if (!idx.length) return null;
-    if (idx.length === 1) return known[idx[0]]! + (k - idx[0]) * 1500;
+    // one known: tikz-cd's spacing, about 1.9 em from line to line and 2.4 em from column to column
+    if (idx.length === 1) return known[idx[0]]! + (k - idx[0]) * (axis === "y" ? 1911 : 2400);
     const step = (known[idx[idx.length - 1]]! - known[idx[0]]!) / (idx[idx.length - 1] - idx[0]);
     const near = idx.reduce((a, b) => (Math.abs(b - k) < Math.abs(a - k) ? b : a));
     return known[near]! + (k - near) * step;

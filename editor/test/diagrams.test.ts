@@ -22,14 +22,14 @@ test("Alt+arrow from a cell: an arrow to the neighbour, the grid grows at the ed
   e.typeText("f");
   const d = diagramOf(e);
   assert.equal(d.cells[0].length, 2);
-  assert.equal(e.toLatex(), '\\begin{tikzcd}A \\arrow[r, "f"] &\\end{tikzcd}');
+  assert.equal(e.toLatex(), '\\begin{tikzcd}A \\arrow[r, "f"] & {}\\end{tikzcd}');
   // into the new cell: right from the label goes to the arrow's target
   e.moveRight();
   e.typeText("B");
   e.arrowFromCursor("down", "dashed");
   e.typeText("g");
   assert.equal(d.cells.length, 2);
-  assert.equal(e.toLatex(), '\\begin{tikzcd}A \\arrow[r, "f"] & B \\arrow[d, "g", dashed] \\\\ &\\end{tikzcd}');
+  assert.equal(e.toLatex(), '\\begin{tikzcd}A \\arrow[r, "f"] & B \\arrow[d, "g", dashed] \\\\ & {}\\end{tikzcd}');
   // up from the top line adds a line above: the arrows follow their cells
   e.moveLeft();
   e.moveLeft();

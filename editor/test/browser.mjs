@@ -457,18 +457,93 @@ await check("Chemistry: Esc takes the edit back; Enter beside a block opens it",
   assert.equal(await blockPanel.isVisible(), false);
 });
 
-await check("Diagrams: a square from its palette, its labels edited", async () => {
+const dbar = ed.locator("mathra-field").locator(".dbar");
+
+await check("Diagrams by keyboard: a new one, Alt+arrow draws arrows, labels typed in place", async () => {
+  await setValue("");
+  await focus();
+  await tab("Diagramas").click();
+  await button("Diagrama novo: digite na célula, Alt+seta cria uma seta").click();
+  await k.type("A");
+  await k.press("Alt+ArrowRight");
+  await k.type("f");
+  await k.press("ArrowRight");
+  await k.type("B");
+  await k.press("Alt+Shift+ArrowDown");
+  await k.type("g");
+  assert.equal(await value(), '\\begin{tikzcd}A \\arrow[r, "f"] & B \\arrow[d, "g", dashed] \\\\ & {}\\end{tikzcd}');
+  // mathra draws all of it: no warning (an empty line reached by an arrow is kept)
+  assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
+  // on an arrow, its bar of styles
+  assert.equal(await dbar.locator('[data-run="arrowStyle:dashed"]').getAttribute("aria-pressed"), "true");
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/diagram-keys.png` });
+});
+
+await check("Diagrams by mouse: a drag from one cell to another draws an arrow; a click on an arrow edits it", async () => {
+  // the cells are outlined while the cursor is in the diagram: A, B, (empty), (empty)
+  const cells = await page.evaluate(() => {
+    const f = document.getElementById("editor").field;
+    return [...f.shadowRoot.querySelectorAll(".dgov rect")].map((r) => { const b = r.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; });
+  });
+  assert.equal(cells.length, 4, "four cells outlined");
+  const [, B, C] = cells;
+  // from B down-left to the empty cell
+  await page.mouse.move(B[0], B[1]);
+  await page.mouse.down();
+  await page.mouse.move((B[0] + C[0]) / 2, (B[1] + C[1]) / 2, { steps: 4 });
+  await page.mouse.move(C[0], C[1], { steps: 4 });
+  await settle(page);
+  if (shots) await page.screenshot({ path: `${shots}/diagram-drag.png` });
+  await page.mouse.up();
+  await k.type("h");
+  assert.match(await value(), /B \\arrow\[d, "g", dashed\] \\arrow\[dl, "h"\]/);
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.selection()), null, "the drag selected nothing");
+  assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
+  // a click on the arrow f: its label, and the bar to restyle it
+  const f = await page.evaluate(() => {
+    const field = document.getElementById("editor").field;
+    const r = [...field.shadowRoot.querySelectorAll(".dgov rect")].map((x) => x.getBoundingClientRect());
+    return [(r[0].right + r[1].left) / 2, (r[0].top + r[0].bottom) / 2];
+  });
+  await page.mouse.click(f[0], f[1]);
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.arrowAtCursor()?.index), 0);
+  await dbar.locator('[data-run="arrowStyle:hook"]').click();
+  await dbar.locator('[data-run="arrowBend:left"]').click();
+  assert.match(await value(), /A \\arrow\[r, "f", hook, bend left\]/);
+  await dbar.locator('[data-run="arrowRemove"]').click();
+  assert.doesNotMatch(await value(), /"f"/);
+});
+
+await check("Diagrams: the gallery's amscd square, a cell edited, stays amscd", async () => {
+  await setValue("\\begin{CD} A @>f>> B \\\\ @VgVV @VVhV \\\\ C @>k>> D \\end{CD}");
+  await focus();
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[0].cells[1][1], offset: 1 }); });
+  assert.equal(await ed.locator("mathra-field").locator(".dgov rect").count(), 4);
+  await k.type("'");
+  assert.equal(await value(), "\\begin{CD} A @>f>> B \\\\ @VgVV @VVhV \\\\ C @>k>> D' \\end{CD}");
+});
+
+await check("Diagrams: edit as LaTeX, and back to boxes when done", async () => {
+  await dbar.locator('[data-run="editAsLatex"]').click();
+  assert.equal(await blockPanel.isVisible(), true);
+  const src = await blockSource.inputValue();
+  await blockSource.fill(src.replace("@>f>>", "@>\\varphi>>"));
+  await k.press(`${mod}+Enter`);
+  assert.match(await value(), /varphi/);
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.root.children[0].kind), "diagram");
+});
+
+await check("Diagrams: a square from its palette, a label retyped in place", async () => {
   await setValue("");
   await focus();
   await tab("Diagramas").click();
   await button("Quadrado comutativo").click();
-  assert.equal(await blockPanel.isVisible(), true);
-  const src = await blockSource.inputValue();
-  assert.match(src, /tikzcd/);
-  await blockSource.fill(src.replace('"f"', '"\\varphi"'));
-  assert.match(await value(), /varphi/);
-  assert.match(await blockPanel.locator(".status").textContent(), /sem avisos/);
-  await k.press(`${mod}+Enter`);
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.selectArrow(e.root.children[0], 0); });
+  await k.press("Backspace");
+  await k.type("\\varphi ");
+  assert.match(await value(), /"\\varphi"/);
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root, offset: 1 }); });
   // the cursor sits after the diagram, at its right edge
   const c = await page.evaluate(() => { const f = document.getElementById("editor").field; return [f.shadowRoot.querySelector(".caret").getBoundingClientRect().x, f.shadowRoot.querySelector(".drawing svg").getBoundingClientRect().right]; });
   assert.ok(Math.abs(c[0] - c[1]) < 6, `caret at ${c[0]}, diagram ends at ${c[1]}`);

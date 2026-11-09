@@ -180,6 +180,8 @@ export function classOfTree(tree: unknown): AtomClass {
 export interface LatexOptions {
   /** Mark every atom and row with `\htmlData{m=<id>}`, and draw empty rows as `\square`: what the editor draws. Off: the plain LaTeX to hand out. */
   marked?: boolean;
+  /** Also mark the empty cells of diagrams (which moves tikz-cd's layout a little): only to measure where they are. */
+  probeEmptyCells?: boolean;
 }
 
 export type ChangeKind = "content" | "cursor";
@@ -228,8 +230,20 @@ export class Editor {
 
   /** The formula as LaTeX: plain to hand out, or marked to draw with mathra. */
   toLatex(options: LatexOptions = {}): string {
-    return this.rowLatex(this.root, options.marked ?? false);
+    this.probing = !!options.probeEmptyCells;
+    try {
+      return this.rowLatex(this.root, options.marked ?? false);
+    } finally {
+      this.probing = false;
+    }
   }
+
+  /** Does the formula have a diagram with an empty cell (placed by a probe drawing)? */
+  hasEmptyDiagramCells(): boolean {
+    return this.rows().some((r) => r.parent?.kind === "diagram" && r.children.length === 0 && r.parent.cells.some((line) => line.includes(r)));
+  }
+
+  private probing = false;
 
   /** Every row, in document order (outer before inner, left to right). */
   rows(): Row[] {
@@ -441,6 +455,15 @@ export class Editor {
     this.change(() => this.placeBlock(template));
   }
 
+  /** Turns a structure into a block of LaTeX (what "edit as LaTeX" does); its editor reads it back when done. */
+  toBlock(atom: Atom): Raw | null {
+    const row = atom.parent;
+    if (!row) return null;
+    const raw: Raw = { id: this.id(), parent: row, kind: "raw", latex: this.listLatex([atom], false) };
+    row.children.splice(row.children.indexOf(atom), 1, raw);
+    return raw;
+  }
+
   /** The block just inserted that wants its LaTeX edited, once. */
   takePendingBlock(): { atom: Raw; caret: number } | null {
     const p = this.pendingBlock;
@@ -475,7 +498,16 @@ export class Editor {
           const i = row.children.indexOf(atom);
           row.children.splice(i, 1);
           editor.cursor = { row, offset: i };
-        } else if (row) editor.cursor = { row, offset: row.children.indexOf(atom) + 1 };
+        } else if (row) {
+          // read back: LaTeX the editor can take apart (a diagram) becomes boxes again
+          const specs = readLatex(atom.latex);
+          const i = row.children.indexOf(atom);
+          if (specs.length === 1 && specs[0].kind !== "raw") {
+            const made = editor.adoptInto(row, specs, [], i);
+            row.children.splice(i + made.length, 1);
+            editor.cursor = { row, offset: i + made.length };
+          } else editor.cursor = { row, offset: i + 1 };
+        }
         editor.anchor = null;
         if (atom.latex !== original || !atom.latex.trim()) {
           editor.undoStack.push(before);
@@ -1434,12 +1466,16 @@ export class Editor {
         return `${side(left.open, "open", "l")}${r(atom.body)}${side(right.close, "close", "r")}`;
       }
       case "diagram": {
+        // an empty cell an arrow reaches is written {}: a line of empty cells alone would be dropped, and the arrow with it
+        const ends = new Set(atom.arrows.flatMap((a) => [a.from, a.to].map(([i, j]) => atom.cells[i]?.[j])));
         const cell = (row: Row) => {
-          if (!marked) return this.listLatex(row.children, false);
+          const hold = ends.has(row) ? "{}" : "";
+          if (!marked) return row.children.length ? this.listLatex(row.children, false) : hold;
           if (row.children.length) return this.rowLatex(row, true);
           // an empty cell is a place to fill where the cursor is, and invisible elsewhere
           // (even an empty mark changes tikz-cd's layout: the editor places an empty cell by its neighbours)
-          return this.hasCursor(row) ? `\\htmlData{m=${row.id},empty=1}{\\square}` : "";
+          if (this.hasCursor(row)) return `\\htmlData{m=${row.id},empty=1}{\\square}`;
+          return this.probing ? `\\htmlData{m=${row.id},empty=1}{{}}` : hold;
         };
         const label = (row: Row) => {
           if (!marked) return this.listLatex(row.children, false);

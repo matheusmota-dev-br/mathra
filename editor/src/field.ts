@@ -3,8 +3,9 @@
 
 import { init, render, type Options, type Result } from "@mathlabs/mathra";
 import { Editor, classOfTree, type ChangeKind } from "./model.ts";
-import { atomRect, blockAt, boxesById, caretRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
-import type { BlockSession, Raw } from "./model.ts";
+import { arrowAt, arrowPath, atomRect, blockAt, boxesById, caretRect, cellAt, cellRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
+import type { ArrowStyle, BlockSession, Diagram, Raw } from "./model.ts";
+import { icon } from "./shared.ts";
 import { TOKENS, UI, say } from "./shared.ts";
 
 const STYLE = `
@@ -68,6 +69,22 @@ textarea { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; 
 .block button.primary { background: var(--_accent); border-color: var(--_accent); color: var(--_background); }
 .block button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .block { animation: none; } }
+.dgov { position: absolute; pointer-events: none; overflow: visible; }
+.dgov .cell { fill: none; stroke: var(--_border); stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.dgov .cell.here { stroke: var(--_accent); stroke-dasharray: none; fill: color-mix(in srgb, var(--_accent) 7%, transparent); }
+.dgov .cell.target { stroke: var(--_slot); stroke-width: 2; stroke-dasharray: none; fill: color-mix(in srgb, var(--_slot) 12%, transparent); }
+.dgov .arrow { fill: none; stroke: var(--_accent); stroke-width: 9; stroke-linecap: round; opacity: 0.28; vector-effect: non-scaling-stroke; }
+.dgov .ghost { fill: none; stroke: var(--_slot); stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.dbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: calc(100% - 16px); padding: 6px; background: var(--_background); border: 1px solid var(--_border); border-radius: calc(var(--_radius) + 2px); box-shadow: 0 8px 24px rgb(0 0 0 / 0.14); font: 12px var(--_font); animation: drop 0.14s ease-out; }
+.dbar[hidden] { display: none; }
+.dbar button { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; color: var(--_ink); background: var(--_key); border: 1px solid var(--_border); border-radius: var(--_radius); font: 15px var(--_font); cursor: pointer; }
+.dbar button.text { font-size: 12px; }
+.dbar button[aria-pressed="true"] { border-color: var(--_accent); color: var(--_accent); background: color-mix(in srgb, var(--_accent) 10%, transparent); }
+.dbar button:hover { border-color: var(--_accent); }
+.dbar button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
+.dbar .sep { width: 1px; height: 22px; background: var(--_border); margin: 0 4px; }
+.dbar .hint { color: var(--_muted); padding: 0 6px; }
+.box.dragging-arrow { cursor: crosshair; }
 .live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
 
@@ -132,6 +149,14 @@ export const DEFAULT_KEYMAP: Keymap = {
   "Mod+Y": "redo",
   "Mod+Enter": "addRow",
   "Mod+Shift+Enter": "addColumn",
+  "Alt+ArrowUp": "arrowUp",
+  "Alt+ArrowDown": "arrowDown",
+  "Alt+ArrowLeft": "arrowLeft",
+  "Alt+ArrowRight": "arrowRight",
+  "Alt+Shift+ArrowUp": "arrowUp:dashed",
+  "Alt+Shift+ArrowDown": "arrowDown:dashed",
+  "Alt+Shift+ArrowLeft": "arrowLeft:dashed",
+  "Alt+Shift+ArrowRight": "arrowRight:dashed",
 };
 
 /** The key combination of a keyboard event, in the keymap's notation. */
@@ -173,12 +198,17 @@ export class MathraField extends HTMLElement {
   private blockPanel!: HTMLDivElement;
   private blockSource!: HTMLTextAreaElement;
   private block: BlockSession | null = null;
+  private dgov!: SVGSVGElement;
+  private dbar!: HTMLDivElement;
+  /** A drag from a cell of a diagram: an arrow being drawn once it leaves the cell. */
+  private arrowDrag: { diagram: Diagram; from: [number, number]; to: [number, number] | null; x: number; y: number; active: boolean } | null = null;
+  private dbarKey = "";
   private ownValue: string | null = null;
 
   constructor() {
     super();
     const root = this.attachShadow({ mode: "open", delegatesFocus: true });
-    root.innerHTML = `<style>${STYLE}</style><div class="box" part="box"><div class="drawing" part="drawing"></div><div class="overlay selection" part="selection" hidden></div><div class="overlay caret" part="caret"></div><div class="overlay hover" part="block-hover" hidden></div><div class="placeholder" part="placeholder" hidden></div><textarea part="input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea><div class="live" aria-live="polite"></div></div><div class="block" part="block-editor" role="dialog" hidden><div class="title"><b></b><span class="hint"></span></div><textarea class="src" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea><div class="status" aria-live="polite"></div><div class="actions"><button type="button" data-block="cancel"></button><button type="button" class="primary" data-block="done"></button></div></div>`;
+    root.innerHTML = `<style>${STYLE}</style><div class="box" part="box"><div class="drawing" part="drawing"></div><div class="overlay selection" part="selection" hidden></div><div class="overlay caret" part="caret"></div><div class="overlay hover" part="block-hover" hidden></div><svg class="dgov" part="diagram-overlay" aria-hidden="true"></svg><div class="placeholder" part="placeholder" hidden></div><textarea part="input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea><div class="live" aria-live="polite"></div></div><div class="dbar" part="diagram-bar" role="toolbar" hidden></div><div class="block" part="block-editor" role="dialog" hidden><div class="title"><b></b><span class="hint"></span></div><textarea class="src" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea><div class="status" aria-live="polite"></div><div class="actions"><button type="button" data-block="cancel"></button><button type="button" class="primary" data-block="done"></button></div></div>`;
     this.box = root.querySelector(".box")!;
     this.drawing = root.querySelector(".drawing")!;
     this.caret = root.querySelector(".caret")!;
@@ -187,6 +217,16 @@ export class MathraField extends HTMLElement {
     this.input = root.querySelector("textarea")!;
     this.live = root.querySelector(".live")!;
     this.hoverBox = root.querySelector(".hover")!;
+    this.dgov = root.querySelector(".dgov")!;
+    this.dbar = root.querySelector(".dbar")!;
+    this.dbar.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    this.dbar.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>("button[data-run]");
+      if (b) this.run(b.dataset.run!);
+    });
     this.blockPanel = root.querySelector(".block")!;
     this.blockSource = root.querySelector("textarea.src")!;
     this.blockSource.addEventListener("input", () => this.blockInput());
@@ -218,7 +258,14 @@ export class MathraField extends HTMLElement {
     });
     this.box.addEventListener("pointerdown", (e) => this.pointerdown(e));
     this.box.addEventListener("pointermove", (e) => this.pointermove(e));
-    this.box.addEventListener("pointerup", () => (this.dragging = false));
+    this.box.addEventListener("pointerup", () => {
+      this.dragging = false;
+      const drag = this.arrowDrag;
+      this.arrowDrag = null;
+      this.box.classList.remove("dragging-arrow");
+      if (drag?.active && drag.to) this.editor.addArrow(drag.diagram, drag.from, drag.to);
+      else if (drag?.active) this.placeDiagram();
+    });
     this.box.addEventListener("dblclick", (e) => {
       const b = this.blockUnder(e);
       if (b && !this.readOnly) this.openBlock(b);
@@ -311,7 +358,10 @@ export class MathraField extends HTMLElement {
    * `moveLeft` `moveRight` `moveUp` `moveDown` `selectLeft` `selectRight` `home` `end` `selectHome`
    * `selectEnd` `selectAll` `backspace` `deleteForward` `enter` `tab` `tabBack` `undo` `redo` `clear`
    * `addRow` `addRowAbove` `addColumn` `addColumnLeft` `removeRow` `removeColumn` `sup` `sub`,
-   * `editBlock` (the LaTeX block beside the cursor), or `insert:<template>`, `latex:<snippet>`,
+   * `editBlock` (the LaTeX block beside the cursor), `arrowUp` `arrowDown` `arrowLeft` `arrowRight`
+   * (`:<style>` for a style: an arrow from the diagram cell the cursor is in), `arrowStyle:<style>`,
+   * `arrowBend:left|right|none`, `arrowSwap`, `arrowRemove` (the arrow whose label the cursor is in),
+   * `editAsLatex` (the diagram around the cursor), or `insert:<template>`, `latex:<snippet>`,
    * `type:<text>`, `symbol:<latex>`, `block:<latex>` (a block of mhchem, chemfig or a diagram, its
    * editor opened, `‸` where its cursor starts). */
   run(action: string): void {
@@ -353,6 +403,21 @@ export class MathraField extends HTMLElement {
       type: () => e.typeText(arg),
       symbol: () => e.insertSymbol(arg),
       block: () => e.insertBlock(arg),
+      arrowUp: () => e.arrowFromCursor("up", (arg || "plain") as ArrowStyle),
+      arrowDown: () => e.arrowFromCursor("down", (arg || "plain") as ArrowStyle),
+      arrowLeft: () => e.arrowFromCursor("left", (arg || "plain") as ArrowStyle),
+      arrowRight: () => e.arrowFromCursor("right", (arg || "plain") as ArrowStyle),
+      arrowStyle: () => e.setArrowStyle(arg as ArrowStyle),
+      arrowBend: () => e.setArrowBend(arg === "left" || arg === "right" ? arg : null),
+      arrowSwap: () => e.swapArrowLabel(),
+      arrowRemove: () => e.removeArrow(),
+      editAsLatex: () => {
+        const at = e.matrixAtCursor();
+        const d = at?.matrix.kind === "diagram" ? at.matrix : null;
+        if (!d) return;
+        const raw = e.toBlock(d);
+        if (raw) this.openBlock(raw);
+      },
       editBlock: () => {
         const b = e.blockAtCursor();
         if (b) this.openBlock(b);
@@ -410,6 +475,16 @@ export class MathraField extends HTMLElement {
     // the field's description carries the speech: the drawing itself is hidden from screen readers
     this.drawing.querySelector("svg")?.setAttribute("aria-hidden", "true");
     this.boxes = boxesById(r.boxes as Box[]);
+    // a diagram's empty cells have no mark (any changes tikz-cd's layout): a second drawing, with
+    // them marked, says where they are, near enough to place them
+    if (this.editor.hasEmptyDiagramCells()) {
+      try {
+        const probe = boxesById(render(this.editor.toLatex({ marked: true, probeEmptyCells: true }), this.drawingOptions).boxes as Box[]);
+        for (const [id, b] of probe) if (b.attributes["data-empty"] && !this.boxes.has(id)) this.boxes.set(id, { ...b, x: b.x - 250, y: b.y - 500, width: 500, height: 700 });
+      } catch {
+        // without it, the cells are placed by their neighbours
+      }
+    }
     for (const g of this.drawing.querySelectorAll("g[data-empty]")) g.setAttribute("part", "slot");
     // the plain formula: its speech (marks would make mathra read b² as "b to the power of 2") and the outputs
     const plain = this.editor.toLatex();
@@ -447,6 +522,7 @@ export class MathraField extends HTMLElement {
   }
 
   private placeOverlays(): void {
+    this.placeDiagram();
     const caret = caretRect(this.editor.cursor, this.boxes);
     const p = caret && this.toBox(caret);
     if (p) {
@@ -500,6 +576,18 @@ export class MathraField extends HTMLElement {
     this.input.focus();
     const at = this.pointAt(e);
     if (!at || this.readOnly) return;
+    const p = this.svgPoint(e);
+    if (p) {
+      // on an arrow: its label to edit
+      const arrow = arrowAt(this.editor, this.boxes, p.x, p.y);
+      const cell = cellAt(this.editor, this.boxes, p.x, p.y);
+      if (arrow && !cell) {
+        this.editor.selectArrow(arrow.diagram, arrow.index);
+        return;
+      }
+      // in a cell: maybe the start of an arrow, once the pointer leaves it
+      if (cell) this.arrowDrag = { diagram: cell.diagram, from: [cell.i, cell.j], to: null, x: p.x, y: p.y, active: false };
+    }
     this.editor.setCursor(at, e.shiftKey);
     this.dragging = true;
     this.box.setPointerCapture?.(e.pointerId);
@@ -508,6 +596,23 @@ export class MathraField extends HTMLElement {
   private pointermove(e: PointerEvent): void {
     if (!e.buttons) this.hoverBlock(e);
     if (!this.dragging || !(e.buttons & 1)) return;
+    const drag = this.arrowDrag;
+    const p = this.svgPoint(e);
+    // a drag that starts in a diagram's cell draws an arrow, never a selection
+    if (drag && !p) return;
+    if (drag && p) {
+      const over = cellAt(this.editor, this.boxes, p.x, p.y);
+      const away = !over || over.diagram !== drag.diagram || over.i !== drag.from[0] || over.j !== drag.from[1];
+      if (away) drag.active = true;
+      if (drag.active) {
+        drag.x = p.x;
+        drag.y = p.y;
+        drag.to = over && over.diagram === drag.diagram && away ? [over.i, over.j] : null;
+        this.box.classList.add("dragging-arrow");
+        this.placeDiagram();
+      }
+      return;
+    }
     const at = this.pointAt(e);
     if (at) this.editor.setCursor(at, true);
   }
@@ -526,6 +631,117 @@ export class MathraField extends HTMLElement {
   private selectRow(): void {
     const { row } = this.editor.cursor;
     if (row.children.length && !this.readOnly) this.editor.select(row, 0, row.children.length);
+  }
+
+  /** A pointer's position in the SVG's coordinates. */
+  private svgPoint(e: MouseEvent): { x: number; y: number } | null {
+    const svg = this.drawing.querySelector("svg");
+    if (!svg) return null;
+    const vb = svg.viewBox.baseVal;
+    const b = svg.getBoundingClientRect();
+    if (!b.width) return null;
+    const k = b.width / vb.width;
+    return { x: vb.x + (e.clientX - b.left) / k, y: vb.y + (e.clientY - b.top) / k };
+  }
+
+  /** The diagram the cursor is in, if any. */
+  private diagramAtCursor(): Diagram | null {
+    for (let row = this.editor.cursor.row; row.parent; row = row.parent.parent!) if (row.parent.kind === "diagram") return row.parent;
+    return null;
+  }
+
+  /** Over the diagram the cursor is in (or an arrow is drawn in): its cells outlined, the arrow being
+   * edited highlighted, the arrow being drawn; and its bar of tools. */
+  private placeDiagram(): void {
+    const svg = this.drawing.querySelector("svg");
+    const drag = this.arrowDrag?.active ? this.arrowDrag : null;
+    const d = drag?.diagram ?? this.diagramAtCursor();
+    if (!svg || !d || this.readOnly) {
+      this.dgov.innerHTML = "";
+      this.dbar.hidden = true;
+      this.dbarKey = "";
+      return;
+    }
+    // the overlay sits exactly on the drawing, with its viewBox
+    const vb = svg.viewBox.baseVal;
+    const s = svg.getBoundingClientRect();
+    const b = this.box.getBoundingClientRect();
+    this.dgov.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+    Object.assign(this.dgov.style, { left: `${s.left - b.left + this.box.scrollLeft}px`, top: `${s.top - b.top}px`, width: `${s.width}px`, height: `${s.height}px` });
+    const here = this.editor.matrixAtCursor();
+    const current = this.editor.arrowAtCursor();
+    let out = "";
+    d.cells.forEach((line, i) =>
+      line.forEach((_, j) => {
+        const r = cellRect(d, i, j, this.boxes);
+        if (!r) return;
+        const pad = 60;
+        const cls = drag?.to && drag.to[0] === i && drag.to[1] === j ? "cell target" : here?.matrix === d && here.i === i && here.j === j ? "cell here" : "cell";
+        out += `<rect class="${cls}" x="${r.x - pad}" y="${r.y - pad}" width="${r.width + 2 * pad}" height="${r.height + 2 * pad}" rx="50"/>`;
+      }),
+    );
+    const path = (pts: { x: number; y: number }[]) => `M${pts.map((p) => `${p.x} ${p.y}`).join(" L")}`;
+    if (current?.diagram === d) {
+      const pts = arrowPath(d, current.arrow, this.boxes);
+      if (pts) out += `<path class="arrow" d="${path(pts)}"/>`;
+    }
+    if (drag) {
+      const r = cellRect(d, drag.from[0], drag.from[1], this.boxes);
+      if (r) out += `<line class="ghost" x1="${r.x + r.width / 2}" y1="${r.y + r.height / 2}" x2="${drag.x}" y2="${drag.y}"/>`;
+    }
+    this.dgov.innerHTML = out;
+    this.paintDiagramBar(d, !!current, current?.arrow.style ?? null, current?.arrow.bend ?? null);
+  }
+
+  private paintDiagramBar(d: Diagram, onArrow: boolean, style: ArrowStyle | null, bend: "left" | "right" | null): void {
+    const l = this.locale;
+    const key = `${l}|${onArrow}|${style}|${bend}`;
+    if (key !== this.dbarKey) {
+      this.dbarKey = key;
+      const btn = (run: string, label: string, title: string, pressed?: boolean, text = false) =>
+        `<button type="button" data-run="${run}" title="${title}" aria-label="${title}"${pressed === undefined ? "" : ` aria-pressed="${pressed}"`}${text ? ' class="text"' : ""}>${label}</button>`;
+      const w = (k: keyof typeof UI) => say(UI[k], l);
+      if (onArrow) {
+        const styles: [ArrowStyle, string, keyof typeof UI][] = [["plain", "→", "stylePlain"], ["dashed", "⇢", "styleDashed"], ["dotted", "⋯", "styleDotted"], ["hook", "↪", "styleHook"], ["twohead", "↠", "styleTwohead"], ["double", "⇒", "styleDouble"], ["equal", "=", "styleEqual"], ["mapsto", "↦", "styleMapsto"], ["squiggly", "⇝", "styleSquiggly"]];
+        this.dbar.innerHTML =
+          styles.map(([s, glyph, k]) => btn(`arrowStyle:${s}`, glyph, w(k), style === s)).join("") +
+          '<span class="sep"></span>' +
+          btn("arrowBend:none", "—", w("bendNone"), bend === null) +
+          btn("arrowBend:left", "↶", w("bendLeft"), bend === "left") +
+          btn("arrowBend:right", "↷", w("bendRight"), bend === "right") +
+          '<span class="sep"></span>' +
+          btn("arrowSwap", "⇅", w("swapLabel")) +
+          btn("arrowRemove", icon("clear"), w("removeArrow")) +
+          `<span class="hint">${w("arrowHint")}</span>`;
+      } else {
+        this.dbar.innerHTML =
+          btn("addRowAbove", icon("rowAdd"), w("rowAbove")) +
+          btn("addRow", icon("rowAdd"), w("rowBelow")) +
+          btn("addColumnLeft", icon("columnAdd"), w("colLeft")) +
+          btn("addColumn", icon("columnAdd"), w("colRight")) +
+          btn("removeRow", icon("rowRemove"), w("rowRemove")) +
+          btn("removeColumn", icon("columnRemove"), w("colRemove")) +
+          '<span class="sep"></span>' +
+          btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, true) +
+          `<span class="hint">${w("cellHint")}</span>`;
+      }
+    }
+    this.dbar.hidden = false;
+    // under the diagram and its outlined cells (empty ones included), inside the field
+    const cellRects = d.cells.flatMap((line, i) => line.map((_, j) => cellRect(d, i, j, this.boxes))).filter((x): x is Rect => !!x);
+    const own = atomRect(d, this.boxes);
+    const all = [...cellRects, ...(own ? [own] : [])];
+    const r = all.length ? { x: Math.min(...all.map((q) => q.x)), y: Math.min(...all.map((q) => q.y)), width: Math.max(...all.map((q) => q.x + q.width)) - Math.min(...all.map((q) => q.x)), height: Math.max(...all.map((q) => q.y + q.height)) - Math.min(...all.map((q) => q.y)) + 120 } : null;
+    const p = r && this.toBox(r);
+    const host = this.getBoundingClientRect();
+    const box = this.box.getBoundingClientRect();
+    if (!p) return;
+    const width = this.dbar.offsetWidth;
+    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
+    left = Math.max(8, Math.min(left, host.width - width - 8));
+    let top = box.top - host.top + p.top + p.height + 14;
+    if (top + this.dbar.offsetHeight > host.height - 4) top = Math.max(4, box.top - host.top + p.top - this.dbar.offsetHeight - 14);
+    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
   }
 
   /** The block of LaTeX under the pointer. */
