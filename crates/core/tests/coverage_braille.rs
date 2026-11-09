@@ -80,6 +80,25 @@ fn nemeth_modified_arrows_take_their_uncontracted_form() {
 }
 
 #[test]
+fn nemeth_arrows_as_modifiers() {
+    // ⠐ the expression ⠣ over / ⠩ under, the arrow, ⠻ (§15). Only the right arrow has a contracted
+    // form, ⠫⠕ (§22); the left arrow (⠫⠪ alone is the angle, Rule 17) and the two-headed one keep
+    // their full signs from the arrow table (§22.1)
+    check(
+        BrailleCode::Nemeth,
+        Input::Latex,
+        &[
+            (r"\overrightarrow{x}", format!("⠐⠭⠣{}⠻", dots("1246 135")), "§15, §22: contracted right arrow"),
+            (r"\overleftarrow{x}", format!("⠐⠭⠣{}⠻", dots("1246 246 25 25")), "§15, §22.1: left arrow"),
+            (r"\overleftrightarrow{AB}", format!("⠐⠠⠁⠠⠃⠣{}⠻", dots("1246 246 25 25 135")), "§15, §22.1: two-headed arrow"),
+            (r"\underrightarrow{x}", format!("⠐⠭⠩{}⠻", dots("1246 135")), "§15, §22: under"),
+            (r"\underleftarrow{x}", format!("⠐⠭⠩{}⠻", dots("1246 246 25 25")), "§15, §22.1: under"),
+            (r"\underleftrightarrow{x}", format!("⠐⠭⠩{}⠻", dots("1246 246 25 25 135")), "§15, §22.1: under"),
+        ],
+    );
+}
+
+#[test]
 fn nemeth_a_table_between_different_fences_has_them_enlarged_on_every_line() {
     // §19.6: enlarged grouping signs (dot 6 after the prefix) at both ends of every line; §25.8.1: a numeric
     // indicator on every number; no English-letter indicator in a matrix

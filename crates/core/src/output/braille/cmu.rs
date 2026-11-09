@@ -647,10 +647,31 @@ fn simple(n: &Node) -> bool {
         Node::Row { children } => match children.as_slice() {
             [one] => simple(one),
             [Node::Operator { symbol: '−' | '+', .. }, one] => simple(one),
-            _ => false,
+            _ => bracketed(children),
         },
         _ => false,
     }
+}
+
+/// A row that is one group in ( ), [ ] or { }, as `(a+b)` arrives: the opening sign first, its closing
+/// sign last, and the group closed nowhere before it (`(a)+(b)` is two terms). Already in grouping signs (§1.3).
+fn bracketed(children: &[Node]) -> bool {
+    let sign = |n: &Node| match n {
+        Node::Operator { symbol: '(' | '[' | '{', .. } => 1,
+        Node::Operator { symbol: ')' | ']' | '}', .. } => -1,
+        _ => 0,
+    };
+    let pair = matches!(
+        (children.first(), children.last()),
+        (Some(Node::Operator { symbol: '(', .. }), Some(Node::Operator { symbol: ')', .. }))
+            | (Some(Node::Operator { symbol: '[', .. }), Some(Node::Operator { symbol: ']', .. }))
+            | (Some(Node::Operator { symbol: '{', .. }), Some(Node::Operator { symbol: '}', .. }))
+    );
+    let mut depth = 0;
+    pair && children.iter().enumerate().all(|(i, n)| {
+        depth += sign(n);
+        (depth == 0) == (i + 1 == children.len())
+    })
 }
 
 /// The digits of a fraction of two whole numbers.
