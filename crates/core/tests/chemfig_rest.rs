@@ -431,3 +431,46 @@ fn an_arrow_can_move_the_compound_it_brings() {
     assert!(out.warnings.iter().any(|w| w.description.contains("compound style [fill=blue]")), "{:?}", out.warnings);
     assert!(!out.warnings.iter().any(|w| w.description.contains("yshift")), "{:?}", out.warnings);
 }
+
+#[test]
+fn a_compound_name_breaks_into_lines() {
+    // chemfig manual, section 6.3: \\ in a \chemname breaks it, each line centered under the compound
+    let out = strict(r"\schemestart \chemname{\chemfig{R-OH}}{Acide\\carboxylique} \schemestop");
+    assert!(out.speech.starts_with("Acide carboxylique, structure of"), "{}", out.speech);
+    let one = mathra::typeset(r"\schemestart \chemname{\chemfig{R-OH}}{Acide carboxylique} \schemestop", &Options::default()).unwrap().0;
+    let two = mathra::typeset(r"\schemestart \chemname{\chemfig{R-OH}}{Acide\\carboxylique} \schemestop", &Options::default()).unwrap().0;
+    assert!(two.depth > one.depth && two.width < one.width, "two lines go lower and narrower");
+}
+
+#[test]
+fn chemleft_takes_its_delimiter_between_braces() {
+    // the manual writes \chemleft{[}…\chemright{]}, as \chemleft[…\chemright]
+    assert_eq!(strict(r"\chemleft{[}\chemfig{A-B}\chemright{]}").tree, strict(r"\chemleft[\chemfig{A-B}\chemright]").tree);
+}
+
+#[test]
+fn an_arrow_can_leave_a_subscheme_box() {
+    // chemfig manual, section 6.8: a \subscheme's box has its name, before its first compound's; an
+    // arrow from it leaves the box around its compounds
+    let tex = r"\schemestart \subscheme{\chemfig{A-B} \arrow{0}[,0]\+\chemfig{C-D}} \arrow(@c1--olefin){<=>}[-90] \chemfig{E-F} \schemestop";
+    let arrows: Vec<_> = scheme_of(strict(tex).tree.single()).items.iter().filter_map(|i| if let Item::Arrow(a) = i { Some(a.clone()) } else { None }).collect();
+    assert_eq!(arrows.last().unwrap().from_box, Some((0, 2)));
+    // a box holding only a sign has no compound to leave from: it warns, as before
+    warns(r"\schemestart A\subscheme{\+}BCDEF \arrow G \arrow(@c2--)[-90]H \schemestop", "E-REC-9");
+}
+
+#[test]
+fn a_plus_right_after_an_arrow_is_drawn() {
+    // the manual's "Alignement du signe +": \arrow{0}[,0]\+ puts the sign with the next compound
+    let with = mathra::typeset(r"\schemestart \chemfig{A-B} \arrow{0}[,0]\+\chemfig{C-D} \schemestop", &Options::default()).unwrap().0;
+    let without = mathra::typeset(r"\schemestart \chemfig{A-B} \arrow{0}[,0]\chemfig{C-D} \schemestop", &Options::default()).unwrap().0;
+    assert!(with.width > without.width, "the + takes its place");
+}
+
+#[test]
+fn a_mechanism_arrow_point_may_move_and_name_an_anchor() {
+    // the manual's ([yshift=7pt]b1.180): the hook is b1; the point's own move and anchor are left out
+    let out = strict(r"\schemestart \chemfig{@{a}A-B} \arrow \chemfig{@{b}C-D} \chemmove{\draw(a)..([yshift=7pt]b.180);} \schemestop");
+    let s = scheme_of(out.tree.single());
+    assert_eq!((s.moves.len(), s.moves[0].to.as_str()), (1, "b"));
+}

@@ -353,6 +353,16 @@ fn head(d: &mut Drawing, tip: P, u: P, half: Option<f32>) {
     }
 }
 
+/// Where an arrow leaves from when it names one (section 6.7): a compound, or the box around a
+/// `\subscheme`'s compounds (section 6.8).
+fn arrow_source(arrow: &Arrow, placed: &[Rect]) -> Option<Rect> {
+    if let Some((first, end)) = arrow.from_box {
+        let inside = placed.get(first..end.min(placed.len()))?;
+        return inside.iter().copied().reduce(Rect::union);
+    }
+    arrow.from.and_then(|k| placed.get(k).copied())
+}
+
 /// C-SCH-2: a reaction arrow from `a` to `b`.
 fn reaction_arrow(d: &mut Drawing, kind: ArrowKind, a: P, b: P) {
     let u = unit(sub(b, a));
@@ -509,14 +519,25 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                     (Some((arrow, above, below)), Some(prev), _) => {
                         // C-SCH-1: the arrow leaves the previous compound along its direction
                         let u = direction(arrow.angle);
-                        let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
+                        let prev = arrow_source(arrow, &placed_boxes).unwrap_or(prev);
                         let len = base_length(arrow, above, below) * arrow.length;
                         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                         // a compound moved by its style (xshift, yshift): the arrow reaches it there
                         let moved = arrow.shift.map_or((0.0, 0.0), |(x, y)| (x * EM, y * EM));
                         let end = add(add(start, mul(u, len)), moved);
                         draw_arrow(&mut out, arrow, start, end, above, below);
-                        let center = add(sub(end, moved), mul(u, gap + b.reach(u)));
+                        let mut center = add(sub(end, moved), mul(u, gap + b.reach(u)));
+                        if plus_pending {
+                            // a \+ right after the arrow belongs to the compound it brings (chemfig manual,
+                            // section 6.12, "Alignement du signe +"): the sign first, then the compound
+                            let plus = ctx.typeset("+")?;
+                            let space = 0.35 * EM;
+                            let half = (plus.width / 2.0, (plus.height + plus.depth) / 2.0);
+                            let sign = Rect { x0: -half.0, y0: -half.1, x1: half.0, y1: half.1 };
+                            let mid = add(sub(end, moved), mul(u, sign.reach(u)));
+                            out.math(plus.clone(), (mid.0 - half.0, mid.1 - (plus.height - plus.depth) / 2.0));
+                            center = add(mid, mul(u, sign.reach(u) + space + b.reach(u)));
+                        }
                         sub(add(center, moved), b.center())
                     }
                     (None, Some(prev), true) => {
@@ -554,7 +575,7 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                 if let (Some((arrow, ab, be)), Some(prev)) = (pending.take(), last) {
                     // an arrow with no compound after it ends in empty space, as two arrows in a row do
                     let u = direction(arrow.angle);
-                    let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
+                    let prev = arrow_source(arrow, &placed_boxes).unwrap_or(prev);
                     let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                     let end = add(start, mul(u, 2.6 * EM * arrow.length));
                     draw_arrow(&mut out, arrow, start, end, &ab, &be);
@@ -570,7 +591,7 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
             Item::Arrow(a) => {
                 let above = label_drawing(&a.above, ctx)?;
                 let below = label_drawing(&a.below, ctx)?;
-                let source = a.from.and_then(|k| placed_boxes.get(k).copied()).or(last);
+                let source = arrow_source(a, &placed_boxes).or(last);
                 if let (Some(target), Some(source)) = (a.to.and_then(|k| placed_boxes.get(k).copied()), source) {
                     // chemfig manual, section 6.7: an arrow between two compounds already placed, straight
                     // from border to border; the next arrow leaves from its target
@@ -584,7 +605,7 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                 if let (Some((arrow, ab, be)), Some(prev)) = (pending.take(), last) {
                     // two arrows in a row: the first one ends in empty space
                     let u = direction(arrow.angle);
-                    let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
+                    let prev = arrow_source(arrow, &placed_boxes).unwrap_or(prev);
                     let start = add(prev.center(), mul(u, prev.reach(u) + gap));
                     let end = add(start, mul(u, 2.6 * EM * arrow.length));
                     draw_arrow(&mut out, arrow, start, end, &ab, &be);
@@ -596,7 +617,7 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
     }
     if let (Some((arrow, above, below)), Some(prev)) = (pending, last) {
         let u = direction(arrow.angle);
-        let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
+        let prev = arrow_source(arrow, &placed_boxes).unwrap_or(prev);
         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
         let end = add(start, mul(u, base_length(arrow, &above, &below) * arrow.length));
         draw_arrow(&mut out, arrow, start, end, &above, &below);
@@ -683,13 +704,52 @@ fn compound(c: &Compound, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Placed> {
         }
     };
     if let Some(name) = &c.name {
-        let m = ctx.text(name)?;
+        // chemfig manual, section 6.3: `\\` breaks the name into lines, each centered under the compound
         let b = drawing.bounds();
-        let x = b.center().0 - m.width / 2.0;
-        let y = b.y0 - 0.35 * EM - m.height;
-        drawing.math(m, (x, y));
+        let mut y = b.y0 - 0.35 * EM;
+        for line in split_lines(name) {
+            let m = ctx.text(&line)?;
+            let x = b.center().0 - m.width / 2.0;
+            y -= m.height;
+            drawing.math(m.clone(), (x, y));
+            y -= m.depth + 0.15 * EM;
+        }
     }
     Ok(Placed { drawing })
+}
+
+/// A compound's name split at its `\\` outside braces: its lines, from the top.
+pub(super) fn split_lines(name: &str) -> Vec<String> {
+    let c: Vec<char> = name.chars().collect();
+    let (mut lines, mut line, mut level, mut i) = (Vec::new(), String::new(), 0i32, 0);
+    while i < c.len() {
+        match c[i] {
+            '\\' if level == 0 && c.get(i + 1) == Some(&'\\') => {
+                lines.push(std::mem::take(&mut line));
+                i += 2;
+                continue;
+            }
+            '\\' => {
+                line.push('\\');
+                if let Some(&next) = c.get(i + 1) {
+                    line.push(next);
+                    i += 1;
+                }
+            }
+            '{' => {
+                level += 1;
+                line.push('{');
+            }
+            '}' => {
+                level -= 1;
+                line.push('}');
+            }
+            ch => line.push(ch),
+        }
+        i += 1;
+    }
+    lines.push(line);
+    lines.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
 }
 
 /// The label above an arrow goes on its left side, the one below on its right (C-SCH-3).

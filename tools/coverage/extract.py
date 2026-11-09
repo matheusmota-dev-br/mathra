@@ -25,6 +25,9 @@ What is not a formula, though it looks like one:
 - anything with a macro parameter (#1): it is inside a definition (a \\tikzset style, say);
 - \\schemestart right after or before a | : the manual quoting the command in its text (|\\schemestart|).
 
+A $ inside braces does not close a $…$: it is the inner math of \\text{$x$} or of mhchem's
+\\ce{NaOH(aq,$\\infty$)}.
+
 Each line of the output is one distinct formula of one document:
   {"id", "area", "source", "doc", "file", "line", "kind", "display", "tex", "expanded", "count"}
 """
@@ -436,12 +439,18 @@ def formulas(text: str):
                 yield i, "$$ $$", True, text[i + 2 : j]
                 i = j + 2
                 continue
-            j = i + 1
+            # a $ inside braces belongs to them (\\text{$x$}, mhchem's \\ce{NaOH(aq,$\\infty$)}): it does
+            # not close the formula
+            j, depth = i + 1, 0
             while j < n:
                 if text[j] == "\\":
                     j += 2
                     continue
-                if text[j] == "$":
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth = max(depth - 1, 0)
+                elif text[j] == "$" and depth == 0:
                     break
                 j += 1
             if j >= n or crosses_paragraph(text[i + 1 : j]):

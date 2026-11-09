@@ -83,8 +83,16 @@ impl Reader<'_> {
     pub(super) fn chem_delimiters(&mut self, name: &str, start: usize, col: usize) -> R<()> {
         match name {
             // \chemleft<d>…\chemright<d>: \left and \right, both sized to the material between them
-            "chemleft" => self.inject(start, "\\left", col),
-            "chemright" => self.inject(start, "\\right", col),
+            // the delimiter may come between braces, as in the manual's \chemleft{[}…\chemright{]}
+            "chemleft" | "chemright" => {
+                let side = if name == "chemleft" { "\\left" } else { "\\right" };
+                self.skip_spaces();
+                let braced = if self.current() == Some('{') { Some(self.raw_text()?) } else { None };
+                match braced {
+                    Some(d) => self.inject(start, &format!("{side}{} ", d.trim()), col),
+                    None => self.inject(start, side, col),
+                }
+            }
             // \chemup<d>…\chemdown<d>: the delimiters turned a quarter, over and under the material
             "chemup" => {
                 let open = self.raw_delimiter();

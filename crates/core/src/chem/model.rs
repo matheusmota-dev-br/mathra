@@ -46,7 +46,18 @@ pub struct Merge {
 impl Merge {
     /// The arrow a merge ends in, as speech, text and braille read it: "reacts to give", with its labels.
     pub fn as_arrow(&self) -> Arrow {
-        Arrow { kind: ArrowKind::Forward, above: self.above.clone(), below: self.below.clone(), angle: self.angle, length: 1.0, arc: None, from: None, to: None, shift: None }
+        Arrow {
+            kind: ArrowKind::Forward,
+            above: self.above.clone(),
+            below: self.below.clone(),
+            angle: self.angle,
+            length: 1.0,
+            arc: None,
+            from: None,
+            to: None,
+            shift: None,
+            from_box: None,
+        }
     }
 }
 
@@ -266,6 +277,10 @@ pub struct Arrow {
     /// moved by that much, in em (x to the right, y up); the arrow reaches it where it moved to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shift: Option<(f32, f32)>,
+    /// `\arrow(@ck--…)` naming a `\subscheme`'s box (section 6.8): the arrow leaves from the box around
+    /// those compounds, as indices from the first to the one after the last.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_box: Option<(usize, usize)>,
 }
 
 /// The arc of a `-U>` arrow: its radius as a multiple of the arrow's length (negative: below the
