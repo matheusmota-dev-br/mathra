@@ -49,6 +49,9 @@ class Result(TypedDict):
     """Rules that changed something in this equation, in the order they acted."""
     warnings: List[Rule]
     """Input problems the tolerant mode worked around (E-REC-*); empty in strict mode."""
+    boxes: List[Dict[str, Any]]
+    """The boxes of the groups marked with \\htmlData, \\htmlId, \\class...: ``attributes``, ``x``, ``y``,
+    ``width``, ``height``, ``baseline`` and ``level``, in the SVG's coordinates (y down). Empty when nothing is marked."""
 
 
 @dataclass(frozen=True)
@@ -255,7 +258,7 @@ def tex_to_tree(tex: str, locale: str = "en", *, display: bool = True, strict: b
 
 
 def render(tex: str, locale: str = "en", *, display: bool = True, strict: bool = False, input: str = "latex", braille: Optional[str] = None, animate: bool = False, steps: bool = False, font: Optional[Font] = None, max_width: Optional[float] = None, fallback_fonts: FallbackFonts = None, labels: Optional[Numbers] = None, citations: Optional[Numbers] = None) -> Result:
-    """Every output at once: svg, speech, text, braille, braille_code, mathml, tree, applied and warnings."""
+    """Every output at once: svg, speech, text, braille, braille_code, mathml, tree, applied, warnings and boxes."""
     return json.loads(_mathra.render(tex, locale, display=display, strict=strict, input=input, braille=braille, animate=animate, steps=steps, font=_font_id(font), max_width=max_width, fallback_fonts=_fallback_ids(fallback_fonts), labels=_numbers(labels), citations=_numbers(citations)))
 
 

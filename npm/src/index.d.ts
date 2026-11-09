@@ -69,6 +69,25 @@ export interface Result {
   applied: Rule[];
   /** Input problems the tolerant mode worked around (E-REC-*); empty in strict mode. */
   warnings: Rule[];
+  /** The boxes of the groups the equation marks with `\htmlData`, `\htmlId`, `\class`…: where each marked piece sits, for an editor's cursor and clicks. Empty when nothing is marked. */
+  boxes: GroupBox[];
+}
+
+/** A marked group's box, in the SVG's own coordinates (those of its `viewBox`, y down): the box the content was set in (advance width, height and depth), not the ink. */
+export interface GroupBox {
+  /** The group's attributes as the SVG writes them, e.g. `{ "data-m": "7" }` for `\htmlData{m=7}{…}`. */
+  attributes: Record<string, string>;
+  /** Left edge. */
+  x: number;
+  /** Top edge. */
+  y: number;
+  width: number;
+  /** Height plus depth. */
+  height: number;
+  /** The baseline, as a y. */
+  baseline: number;
+  /** How many marked groups hold this one (0: none). */
+  level: number;
 }
 
 /** Loads the WebAssembly module: await it once before converting in browsers and bundlers. In Node it does nothing. */

@@ -194,11 +194,14 @@ pub struct Output {
     /// (`\label{eq:a} \tag{3}` gives `{"eq:a": "3"}`): add them to [`Options::labels`] to convert the
     /// equations that come after it, as the CLI's `--batch` does.
     pub labels: Labels,
+    /// The boxes of the groups the equation marks (`\htmlData`, `\htmlId`, `\class`…), in the SVG's
+    /// coordinates: where an editor reads where each marked piece sits. Empty when nothing is marked.
+    pub boxes: Vec<output::boxes::GroupBox>,
 }
 
 impl Output {
-    /// Every output as one JSON object: `svg`, `speech`, `text`, `braille`, `braille_code`, `mathml`, `tree`, `applied` and `warnings`, the
-    /// last two as lists of `{"rule", "description"}`. What the JavaScript and Python packages return.
+    /// Every output as one JSON object: `svg`, `speech`, `text`, `braille`, `braille_code`, `mathml`, `tree`, `applied`, `warnings` and `boxes`,
+    /// `applied` and `warnings` as lists of `{"rule", "description"}`. What the JavaScript and Python packages return.
     pub fn to_json(&self) -> String {
         let rules = |list: &[Applied]| -> Vec<serde_json::Value> { list.iter().map(|a| serde_json::json!({ "rule": a.rule, "description": a.description })).collect() };
         let tree: serde_json::Value = serde_json::from_str(&self.tree.to_json()).expect("the tree serializes to valid JSON");
@@ -212,6 +215,7 @@ impl Output {
             "tree": tree,
             "applied": rules(&self.applied),
             "warnings": rules(&self.warnings),
+            "boxes": self.boxes.iter().map(output::boxes::GroupBox::to_json).collect::<Vec<_>>(),
         })
         .to_string()
     }
@@ -316,7 +320,8 @@ fn finish(
         steps: options.steps,
         animate: options.animate,
     });
-    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, mathml, applied: registry.applied, warnings: registry.warnings, labels })
+    let boxes = output::boxes::group_boxes(&formula.math_box, &formula.lines);
+    Ok(Output { svg, tree, speech, text, braille: braille.text, braille_code, mathml, applied: registry.applied, warnings: registry.warnings, labels, boxes })
 }
 
 /// The MathML of [`Output::mathml`], and the note S-MML-1 when it is a fallback. A function of its

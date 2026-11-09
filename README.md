@@ -207,7 +207,7 @@ render(String.raw`\sqrt{x}`).mathml;                             // "<math …><
 import mathra
 
 svg = mathra.tex_to_svg(r"\sin x = 0.5")                 # <title>…sine of x equals 0.5</title>
-r = mathra.render(r"\frac{3}{4}", locale="fr")            # dict: svg, speech, text, braille, braille_code, mathml, tree, applied, warnings
+r = mathra.render(r"\frac{3}{4}", locale="fr")            # dict: svg, speech, text, braille, braille_code, mathml, tree, applied, warnings, boxes
 r["speech"]                                               # 'trois quarts'
 mathra.tex_to_svg(r"\vertA\vert", strict=True)            # ValueError, like TeX
 mathra.render("sqrt(x)/2", input="asciimath")             # also input="mathml"

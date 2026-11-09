@@ -269,7 +269,7 @@ fn item_svg(items: &[Item], id: &str, steps: &mut Steps, out: &mut String) {
                 out.push_str("</g>");
             }
             // S-SVG-11: the attributes of \class, \htmlId… on a group around the content
-            Item::Group { attributes, items } => {
+            Item::Group { attributes, items, .. } => {
                 out.push_str("<g");
                 for (name, value) in attributes {
                     let _ = write!(out, r#" {}="{}""#, escape(name), escape(value));
