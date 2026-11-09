@@ -16,7 +16,7 @@ Presentation MathML, as Word, Google Docs, LibreOffice, MathType and MathJax exp
 | `mfrac`, `msqrt`, `mroot` | fraction (`linethickness="0"` without the rule), roots |
 | `msub`, `msup`, `msubsup`, `mmultiscripts` | scripts; prescripts (`<mprescripts/>`) on an empty base, as in isotopes |
 | `munder`, `mover`, `munderover` | limits over a large operator or a function; an accent, a bar, an arrow, a brace or a bracket when the script is that single mark (`→` over a letter is the vector accent); a brace's label in the outer element, as MathJax writes it; anything else stacked |
-| `mtable`, `mtr`, `mlabeledtr`, `mtd` | a table; `columnalign`, `columnlines` and `rowlines` are kept; the label of `mlabeledtr` goes at the end of its row |
+| `mtable`, `mtr`, `mlabeledtr`, `mtd` | a table; `columnalign`, `columnlines` and `rowlines` are kept; the label of `mlabeledtr` goes at the end of its row, alone in it when the row has no other cell |
 | `mfenced`, fences in `mrow` | an `mrow` that starts with an opening fence and ends with a closing one stretches them (`\left…\right`) when the inside is balanced; around a table they make a matrix (`(` `[` `|` `‖` `{…}`), `{` alone makes `cases` and `}` alone `rcases` |
 | `menclose` | `box`/`roundedbox`, `circle`, the strikes, `top`, `bottom`, `radical`; LaTeX's `\enclose{notation}[mathcolor=…]{…}` (MathJax) reads the same notations into the same tree |
 | `semantics`, `maction`, `merror`, `mphantom` | the presentation: the first child, or an `annotation-xml` in presentation MathML; without one, the content (the first child, or an `annotation-xml` in content MathML); other annotations are ignored. The selected child; content in red; space without drawing |
@@ -67,4 +67,4 @@ The notation of asciimath.org: `sum_(i=1)^n i^2 = (n(n+1)(2n+1))/6`.
 - **Commands.** `sqrt`, `root(n)(x)`, `frac(a)(b)`, `abs`, `norm`, `floor`, `ceil`, accents (`hat`, `bar`, `vec`, `dot`, `ddot`, `tilde`, `ul`, `overarc`), braces with a label (`ubrace(…)_(…)`), `cancel`, alphabets (`bb`, `bbb`, `cc`, `tt`, `fr`, `sf`), `stackrel`, `overset`, `underset`, `color(red)(x)`, `text(…)` and `"quoted text"`.
 - **Numbers.** A dot between digits is decimal; in the languages with a decimal comma, a comma between digits is too, and a comma followed by a space separates (L-NUM-1).
 
-An unpaired bracket is an error in strict mode and is drawn as written, with a warning (E-REC-5), in tolerant mode.
+An unpaired bracket is an error in strict mode and is drawn as written, with a warning (E-REC-5), in tolerant mode. A closing bracket where an argument or a script is expected (`sqrt)`, `x^)`, `frac(a))`) leaves it empty and closes what it would have closed: an error in strict mode, a warning (E-REC-7, missing argument) in tolerant mode.
