@@ -44,13 +44,13 @@ export const CHAR_LATEX: Record<string, string> = { "*": "\\cdot", "−": "-", "
 export const SPACES = new Set([",", ":", ";", "!", " ", "quad", "qquad", "enspace", "thinspace", "medspace", "thickspace"]);
 
 /** Accents and lines over or under one argument. */
-export const ACCENTS = new Set(["vec", "hat", "bar", "dot", "ddot", "dddot", "tilde", "acute", "grave", "breve", "check", "mathring", "widehat", "widetilde", "overline", "underline", "overrightarrow", "overleftarrow", "overleftrightarrow", "underrightarrow", "underleftarrow", "overbrace", "underbrace", "vv", "boxed", "cancel", "bcancel", "xcancel"]);
+export const ACCENTS = new Set(["vec", "hat", "bar", "dot", "ddot", "dddot", "tilde", "acute", "grave", "breve", "check", "mathring", "widehat", "widetilde", "overline", "underline", "overrightarrow", "overleftarrow", "overleftrightarrow", "underrightarrow", "underleftarrow", "overbrace", "underbrace", "vv", "boxed", "cancel", "bcancel", "xcancel", "underleftrightarrow", "overgroup", "undergroup", "xrightarrow", "xleftarrow", "xRightarrow", "xLeftarrow", "xleftrightarrow", "xLeftrightarrow", "xmapsto", "xrightleftharpoons", "sout"]);
 
 /** Alphabets and styles over one argument. */
 export const STYLES = new Set(["mathbf", "mathbb", "mathcal", "mathscr", "mathfrak", "mathrm", "mathit", "mathsf", "mathtt", "boldsymbol", "bm"]);
 
 /** Fractions and their relatives: two arguments, one over the other. */
-export const FRACTIONS = new Set(["frac", "dfrac", "tfrac", "cfrac", "binom", "dbinom", "tbinom"]);
+export const FRACTIONS = new Set(["frac", "dfrac", "tfrac", "cfrac", "binom", "dbinom", "tbinom", "overset", "underset", "stackrel", "cancelto"]);
 
 /** Large operators: limits below and above (or as scripts). Those after `|` take only a lower limit when inserted. */
 export const LARGE_OPERATORS = new Set(["sum", "prod", "coprod", "int", "iint", "iiint", "oint", "oiint", "bigcup", "bigcap", "bigsqcup", "bigvee", "bigwedge", "bigoplus", "bigotimes", "bigodot", "biguplus", "lim", "limsup", "liminf", "max", "min", "sup", "inf", "argmax", "argmin"]);

@@ -242,10 +242,23 @@ class Reader {
       return;
     }
     // an operator name is one symbol: mathra reads its argument as letters
-    if (name === "operatorname" || name === "operatorname*") {
+    if (name === "operatorname") {
+      const star = this.peek() === "*" ? (this.pos++, "*") : "";
       this.skipSpaces();
       const arg = this.peek() === "{" ? (this.pos++, this.rawGroup()) : "";
+      // with a star, its scripts are limits, as a large operator's
+      if (star) return void out.push({ kind: "bigop", op: `\\operatorname*{${arg}}`, sub: null, sup: null });
       return void out.push({ kind: "symbol", latex: `\\operatorname{${arg}}`, cls: "op" });
+    }
+    // \not before a relation is one symbol with it
+    if (name === "not") {
+      this.skipSpaces();
+      let next = "";
+      if (this.peek() === "\\") {
+        this.pos++;
+        next = `\\${this.commandName()}`;
+      } else if (!this.atEnd()) next = this.src[this.pos++];
+      return void out.push({ kind: "symbol", latex: `\\not${/^\\[A-Za-z]/.test(next) ? "" : " "}${next}`, cls: "rel" });
     }
     // \color{c} colors the rest of its group; \textcolor{c}{x}, its argument
     if (name === "color" || name === "textcolor") {

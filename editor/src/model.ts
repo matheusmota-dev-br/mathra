@@ -1019,9 +1019,9 @@ export class Editor {
     for (let i = 0; i < atoms.length; i++) {
       // where the locale rewrites a number's point (3.14 is 3,14 in pt-BR), the number is one group:
       // marks between its digits would keep mathra from reading it as a number
-      if (marked && this.decimalComma) {
-        const run = numberRun(atoms, i);
-        if (run && run.some((a) => a.kind === "symbol" && a.latex === ".")) {
+      if (marked) {
+        const run = markedRun(atoms, i, this.decimalComma);
+        if (run) {
           out = join(out, `\\htmlData{m=${atoms[i].id}n}{${run.map((a) => (a as SymbolAtom).latex).join("")}}`);
           i += run.length - 1;
           continue;
@@ -1058,8 +1058,13 @@ export class Editor {
         return marked ? mark(atom.latex) : atom.latex;
       case "command":
         return marked ? mark(`\\mathtt{\\backslash ${atom.name}}`) : "";
-      case "frac":
-        return mark(`${atom.cmd}{${r(atom.num)}}{${r(atom.den)}}`);
+      case "frac": {
+        const m = mark(`${atom.cmd}{${r(atom.num)}}{${r(atom.den)}}`);
+        // \overset{?}{=} is a relation, as its base is: the mark keeps that class
+        const base = /^\\(overset|underset|stackrel)$/.test(atom.cmd) && atom.den.children.length === 1 ? atom.den.children[0] : null;
+        const wrapper = marked && base?.kind === "symbol" ? CLASS_WRAPPER[base.cls] : null;
+        return wrapper ? `${wrapper}{${m}}` : m;
+      }
       case "sqrt":
         return mark(atom.index ? `\\sqrt[${r(atom.index)}]{${r(atom.body)}}` : `\\sqrt{${r(atom.body)}}`);
       case "accent":
@@ -1211,6 +1216,23 @@ function verticalRows(atom: Atom): Row[] {
 /** Something in the row is taller than a line: delimiters around it grow. */
 function isTall(row: Row): boolean {
   return row.children.some((a) => a.kind === "frac" || a.kind === "bigop" || a.kind === "matrix" || (a.kind === "delim" && isTall(a.body)) || (a.kind === "raw" && /\\(begin|frac|dfrac|sum|int|prod)\b/.test(a.latex)) || ((a.kind === "sqrt" || a.kind === "style" || a.kind === "accent") && childRows(a).some(isTall)));
+}
+
+/** Atoms that must be marked as one group, from `atoms[i]`: primes (`''` is one double prime), and a
+ * number with a script after it (`10^x`: the exponent is on the whole number) or, where the locale
+ * rewrites its point (`decimalComma`), with a point. None if `atoms[i]` starts none. */
+export function markedRun(atoms: Atom[], i: number, decimalComma: boolean): Atom[] | null {
+  const prime = (a: Atom | undefined) => !!a && a.kind === "symbol" && a.latex === "'";
+  if (prime(atoms[i]) && !prime(atoms[i - 1])) {
+    let j = i;
+    while (prime(atoms[j + 1])) j++;
+    return j > i ? atoms.slice(i, j + 1) : null;
+  }
+  const run = numberRun(atoms, i);
+  if (!run || run.length < 2) return null;
+  const scripted = atoms[i + run.length]?.kind === "scripts";
+  const point = decimalComma && run.some((a) => a.kind === "symbol" && a.latex === ".");
+  return scripted || point ? run : null;
 }
 
 /** The number starting at `atoms[i]` (digits, and points or commas between digits); none if `atoms[i]` does not start one. */

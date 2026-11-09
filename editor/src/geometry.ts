@@ -1,7 +1,7 @@
 // From the boxes mathra returns for the marked LaTeX to where the cursor is drawn and where a click
 // lands. Everything in the SVG's own coordinates (its viewBox, y down).
 
-import { childRows, numberRun, type Atom, type Cursor, type Editor, type Row, type Selection } from "./model.ts";
+import { childRows, markedRun, type Atom, type Cursor, type Editor, type Row, type Selection } from "./model.ts";
 
 /** A box as `render(…).boxes` gives it (only the fields used here). */
 export interface Box {
@@ -68,7 +68,7 @@ function numberPart(atom: Atom, boxes: Map<string, Box>): Rect | null {
   for (let i = k; i >= 0; i--) {
     const group = boxes.get(`${atoms[i].id}n`);
     if (!group) continue;
-    const run = numberRun(atoms, i);
+    const run = markedRun(atoms, i, true) ?? markedRun(atoms, i, false);
     if (!run || !run.includes(atom)) return null;
     const weight = (a: Atom) => (a.kind === "symbol" && /^[0-9]$/.test(a.latex) ? 1 : 0.5);
     const total = run.reduce((s, a) => s + weight(a), 0);

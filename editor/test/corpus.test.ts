@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { Editor, type Row } from "../src/model.ts";
 import { atomRect, boxesById, caretRect, cursorAt, rowRect, type Box } from "../src/geometry.ts";
 import { render } from "../../npm/pkg/node/index.mjs";
+import { drawing } from "./drawing.ts";
+export { drawing };
 
 export const CORPUS = [
   String.raw`x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}`,
@@ -56,12 +58,15 @@ export const CORPUS = [
   String.raw`\ce{H2O}`,
   String.raw`f'(x) = 2x`,
   String.raw`\left\langle \frac{a}{2} \right\rangle`,
+  String.raw`c = 3 \times 10^{8}`,
+  String.raw`f''(x) + f'(x) = 0`,
+  String.raw`a \not\equiv b`,
+  String.raw`\operatorname*{arg\,max}_{x} f(x)`,
+  String.raw`\cancelto{0}{x} + y`,
+  String.raw`a \overset{?}{=} b`,
+  String.raw`A \xrightarrow{\Delta} B`,
+  String.raw`\ce{2H2 + O2 -> 2H2O}`,
 ];
-
-/** What the SVG draws, ids, metadata and marks left out: two equal lists draw the same picture. */
-export function drawing(svg: string): string[] {
-  return (svg.match(/<(use|rect|line|ellipse)\b[^>]*>/g) ?? []).map((t) => t.replace(/#mathra-[0-9a-f]+-/, "#").replace(/\s+data-[a-z-]+="[^"]*"/g, ""));
-}
 
 const pictures = new Map<string, string[]>();
 function picture(latex: string, locale: string): string[] {
