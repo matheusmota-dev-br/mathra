@@ -651,6 +651,9 @@ impl Writer {
             '\u{0304}' | '\u{20E9}' => "156",
             '\u{0302}' => "456 126",
             '\u{20D7}' | '→' => "1246 135",
+            // only the right arrow has a contracted form (⠫⠪ is the angle): the others keep their full sign (§22)
+            '←' => "1246 246 25 25",
+            '↔' => "1246 246 25 25 135",
             '\u{0307}' => "16",
             // two dots over: the dot twice, as in the compound ⩷ (Rule 21 table)
             '\u{0308}' => "16 16",
