@@ -67,4 +67,4 @@ The notation of asciimath.org: `sum_(i=1)^n i^2 = (n(n+1)(2n+1))/6`.
 - **Commands.** `sqrt`, `root(n)(x)`, `frac(a)(b)`, `abs`, `norm`, `floor`, `ceil`, accents (`hat`, `bar`, `vec`, `dot`, `ddot`, `tilde`, `ul`, `overarc`), braces with a label (`ubrace(…)_(…)`), `cancel`, alphabets (`bb`, `bbb`, `cc`, `tt`, `fr`, `sf`), `stackrel`, `overset`, `underset`, `color(red)(x)`, `text(…)` and `"quoted text"`.
 - **Numbers.** A dot between digits is decimal; in the languages with a decimal comma, a comma between digits is too, and a comma followed by a space separates (L-NUM-1).
 
-An unpaired bracket is an error in strict mode and is drawn as written, with a warning (E-REC-5), in tolerant mode.
+An unpaired bracket is an error in strict mode and is drawn as written, with a warning (E-REC-5), in tolerant mode. A closing bracket where an argument or a script is expected (`sqrt)`, `x^)`, `frac(a))`) leaves it empty and closes what it would have closed: an error in strict mode, a warning (E-REC-7, missing argument) in tolerant mode.
