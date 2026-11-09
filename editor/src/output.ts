@@ -11,11 +11,15 @@ const STYLE = `
 ${TOKENS}
 :host { display: block; color: var(--_ink); background: var(--_background); border: 1px solid var(--_border); border-radius: var(--_radius); overflow: hidden; }
 :host([hidden]) { display: none; }
-.bar { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0; background: var(--_surface); border-bottom: 1px solid var(--_border); overflow-x: auto; }
+/* the tabs scroll; copy and download stay in view at the right */
+.bar { display: flex; align-items: center; gap: 8px; padding: 6px 6px 0; background: var(--_surface); border-bottom: 1px solid var(--_border); }
+.tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs.end { -webkit-mask-image: none; mask-image: none; }
+.acts { flex: none; display: flex; gap: 4px; margin-bottom: 5px; }
 .bar .tab { flex: none; font: 600 13px var(--_font); color: var(--_muted); background: none; border: 0; padding: 7px 10px 8px; border-radius: var(--_radius) var(--_radius) 0 0; cursor: pointer; }
 .bar .tab[aria-selected="true"] { color: var(--_ink); background: var(--_background); box-shadow: inset 0 -2px 0 var(--_accent); }
-.bar .spacer { flex: 1; }
-.bar .act { flex: none; display: inline-flex; align-items: center; gap: 6px; font: 13px var(--_font); color: var(--_ink); background: var(--_key); border: 1px solid var(--_border); border-radius: var(--_radius); padding: 4px 9px; margin-bottom: 5px; cursor: pointer; }
+.bar .act { flex: none; display: inline-flex; align-items: center; gap: 6px; font: 13px var(--_font); color: var(--_ink); background: var(--_key); border: 1px solid var(--_border); border-radius: var(--_radius); padding: 4px 9px; cursor: pointer; }
 .bar .act:hover { border-color: var(--_accent); }
 .bar button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
 .body { padding: 10px 12px; min-height: 3em; }
@@ -33,12 +37,23 @@ export class MathraOutput extends FieldClient {
   private bar: HTMLDivElement;
   private body: HTMLDivElement;
   private pngUrl = "";
+  private tabList: HTMLDivElement;
+  private acts: HTMLDivElement;
+
+  private markEnd(): void {
+    const t = this.tabList;
+    t.classList.toggle("end", t.scrollLeft + t.clientWidth >= t.scrollWidth - 2);
+  }
 
   constructor() {
     super();
     const root = this.attachShadow({ mode: "open" });
-    root.innerHTML = `<style>${STYLE}</style><div class="bar" part="bar" role="tablist"></div><div class="body" part="body" role="tabpanel" aria-live="polite"></div>`;
+    root.innerHTML = `<style>${STYLE}</style><div class="bar" part="bar"><div class="tabs" role="tablist"></div><div class="acts"></div></div><div class="body" part="body" role="tabpanel" aria-live="polite"></div>`;
     this.bar = root.querySelector(".bar")!;
+    this.tabList = root.querySelector(".tabs")!;
+    this.acts = root.querySelector(".acts")!;
+    // no fade at the end once the last tab is in view
+    this.tabList.addEventListener("scroll", () => this.markEnd());
     this.body = root.querySelector(".body")!;
     this.bar.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button");
@@ -46,6 +61,7 @@ export class MathraOutput extends FieldClient {
       if (b.dataset.format) {
         this.current = b.dataset.format as Format;
         this.paint();
+        this.tabList.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
       } else if (b.dataset.act === "copy") this.copy(b);
       else if (b.dataset.act === "download") this.download();
     });
@@ -100,10 +116,14 @@ export class MathraOutput extends FieldClient {
     const locale = this.locale;
     const format = this.format;
     const image = format === "svg" || format === "png";
-    this.bar.setAttribute("aria-label", say(UI.outputs, locale));
-    this.bar.innerHTML =
-      this.formats.map((f) => `<button type="button" class="tab" role="tab" part="tab" data-format="${f}" aria-selected="${f === format}">${html(say(UI[f], locale))}</button>`).join("") +
-      `<span class="spacer"></span><button type="button" class="act" part="action" data-act="copy" title="${html(say(UI.copy, locale))}" aria-label="${html(say(UI.copy, locale))}">${icon("copy")}<span>${html(say(UI.copy, locale))}</span></button>` +
+    this.tabList.setAttribute("aria-label", say(UI.outputs, locale));
+    // redrawn at every change of the formula: the tabs keep where they were scrolled to
+    const scrolled = this.tabList.scrollLeft;
+    this.tabList.innerHTML = this.formats.map((f) => `<button type="button" class="tab" role="tab" part="tab" data-format="${f}" aria-selected="${f === format}">${html(say(UI[f], locale))}</button>`).join("");
+    this.tabList.scrollLeft = scrolled;
+    this.markEnd();
+    this.acts.innerHTML =
+      `<button type="button" class="act" part="action" data-act="copy" title="${html(say(UI.copy, locale))}" aria-label="${html(say(UI.copy, locale))}">${icon("copy")}<span>${html(say(UI.copy, locale))}</span></button>` +
       (image ? `<button type="button" class="act" part="action" data-act="download" title="${html(say(UI.download, locale))}" aria-label="${html(say(UI.download, locale))}">${icon("download")}</button>` : "");
     const out = this.field?.output;
     if (!out) {

@@ -153,6 +153,29 @@ await check("The outputs follow the field: MathML, speech, braille, PNG", async 
   assert.equal(await out.locator("pre").textContent(), "\\frac{1}{2}");
 });
 
+await check("Copy stays in view beside the tabs, which scroll, and copies", async () => {
+  const out = ed.locator("mathra-output");
+  const panel = await out.boundingBox();
+  const copy = out.locator('[data-act="copy"]');
+  const inView = async () => {
+    const b = await copy.boundingBox();
+    return b.x >= panel.x && b.x + b.width <= panel.x + panel.width + 0.5;
+  };
+  assert.equal(await inView(), true, "copy in view");
+  // the last tab, scrolled to: copy is still in view, and the tabs keep their scroll as the formula changes
+  await out.locator("[role=tab]").last().click();
+  assert.equal(await inView(), true, "copy in view with the tabs scrolled");
+  const scrolled = await out.locator(".tabs").evaluate((t) => t.scrollLeft);
+  await focus();
+  await k.type("+3");
+  assert.equal(await out.locator(".tabs").evaluate((t) => t.scrollLeft), scrolled);
+  await out.locator("[role=tab]").first().click();
+  await copy.click();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), await value());
+  await settle(page);
+  if (shots) await out.screenshot({ path: `${shots}/outputs.png` });
+});
+
 await check("The language menu: native names, keyboard, and everything follows", async () => {
   const lang = ed.locator(".language > button");
   await lang.click();
