@@ -56,6 +56,13 @@ pub fn text_to_tex(t: &str) -> String {
                 }
                 i += 1;
             }
+            // a mark around text (\htmlData{m=a}{heat}): the text inside stays text, the mark around it
+            '\\' if text_mark(&c[i..]).is_some() => {
+                flush(&mut words, &mut out);
+                let (command, value, inner, len) = text_mark(&c[i..]).unwrap_or_default();
+                out.push_str(&format!("\\{command}{{{value}}}{{{}}}", text_to_tex(&inner)));
+                i += len;
+            }
             '\\' if c.get(i + 1).is_some_and(|n| n.is_ascii_alphabetic()) => {
                 flush(&mut words, &mut out);
                 out.push('\\');
@@ -93,6 +100,41 @@ pub fn text_to_tex(t: &str) -> String {
     }
     flush(&mut words, &mut out);
     out.trim_end().to_string()
+}
+
+/// A mark command at the start of `c` (`\htmlData{value}{inner}`, `\class`, `\htmlId`…): its name,
+/// value, inner text and length in characters.
+fn text_mark(c: &[char]) -> Option<(String, String, String, usize)> {
+    let name: String = c.get(1..)?.iter().take_while(|x| x.is_ascii_alphabetic()).collect();
+    if !matches!(name.as_str(), "htmlData" | "class" | "htmlClass" | "htmlId" | "cssId") {
+        return None;
+    }
+    let mut i = 1 + name.len();
+    let arg = |i: &mut usize| -> Option<String> {
+        if c.get(*i) != Some(&'{') {
+            return None;
+        }
+        let mut level = 0;
+        let start = *i + 1;
+        while *i < c.len() {
+            match c[*i] {
+                '{' => level += 1,
+                '}' => {
+                    level -= 1;
+                    if level == 0 {
+                        *i += 1;
+                        return Some(c[start..*i - 1].iter().collect());
+                    }
+                }
+                _ => {}
+            }
+            *i += 1;
+        }
+        None
+    };
+    let value = arg(&mut i)?;
+    let inner = arg(&mut i)?;
+    Some((name, value, inner, i))
 }
 
 /// Splits at `sep` outside braces and brackets.

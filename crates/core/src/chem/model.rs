@@ -113,6 +113,10 @@ pub struct Atom {
     /// that carries them, so an editor knows where the atom is; the label itself is read through it.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attributes: Vec<(String, String)>,
+    /// Where the label is written in the structure's code (characters, end excluded; empty for a
+    /// vertex without one): what lets an editor change one atom in place. None after a submolecule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub span: Option<(usize, usize)>,
 }
 
 /// What chemfig's `\charge` puts around an atom (chemfig manual, section 5.8): at `angle` degrees on
@@ -193,6 +197,9 @@ pub struct Bond {
     /// along it (0.5 by default), that a mechanism arrow can point at.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hook: Option<(String, f32)>,
+    /// Where the bond is written in the structure's code (its sign and its `[…]`, end excluded).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub span: Option<(usize, usize)>,
 }
 
 fn is_one(v: &f32) -> bool {

@@ -175,7 +175,10 @@ fn marks_inside_ce_move_nothing() {
             r"\ce{\htmlData{m=a}{6 CO2} + \htmlData{m=b}{6 H2O} \htmlData{m=r}{->[\text{light}][\text{chlorophyll}]} \htmlData{m=c}{C6H12O6} + \htmlData{m=d}{6 O2}}",
         ),
         (r"\ce{2 NO2(g) <=> N2O4(g)}", r"\ce{\htmlData{m=a}{2 NO2(g)} \htmlData{m=r}{<=>} \htmlData{m=b}{N2O4(g)}}"),
-        (r"\ce{Zn(s) | Zn^2+(aq) || Cu^2+(aq)}", r"\ce{\htmlData{m=a}{\htmlData{m=b}{Zn}\htmlData{m=c}{(s)}} \htmlData{m=d}{\htmlData{m=e}{|}} \htmlData{m=f}{Zn^2+(aq)} \htmlData{m=g}{\htmlData{m=h}{||}} Cu^2+(aq)}"),
+        (
+            r"\ce{Zn(s) | Zn^2+(aq) || Cu^2+(aq)}",
+            r"\ce{\htmlData{m=a}{\htmlData{m=b}{Zn}\htmlData{m=c}{(s)}} \htmlData{m=d}{\htmlData{m=e}{|}} \htmlData{m=f}{Zn^2+(aq)} \htmlData{m=g}{\htmlData{m=h}{||}} Cu^2+(aq)}",
+        ),
         (r"\ce{Fe^3+ + e- -> Fe^2+}", r"\ce{\htmlData{m=a}{Fe^3+} + \htmlData{m=b}{e-} -> \htmlData{m=c}{Fe^2+}}"),
         (r"\ce{CaCO3(s) ->[\Delta] CaO(s) + CO2 ^}", r"\ce{\htmlData{m=a}{CaCO3(s)} \htmlData{m=r}{->[\Delta]} \htmlData{m=b}{CaO(s)} + \htmlData{m=c}{CO2} \htmlData{m=g}{^}}"),
     ];
@@ -201,6 +204,10 @@ fn marks_on_chemfig_atoms_move_nothing() {
         (r"\chemfig{H_3C-NH_2^+}", r"\chemfig{\htmlData{m=a}{H_3C}-\htmlData{m=b}{NH_2^+}}"),
         (r"\chemfig{*6(-=-=-=)}", r"\chemfig{\htmlData{m=v0}{}*6(-\htmlData{m=v1}{}=\htmlData{m=v2}{}-=-=)}"),
         (r"\chemfig{-[:30]-[:-30]OH}", r"\chemfig{\htmlData{m=v}{}-[:30]\htmlData{m=w}{}-[:-30]OH}"),
+        (
+            r"\schemestart \chemfig{A-B} \arrow{->[heat][$\Delta$, cat]} \chemfig{C=D} \schemestop",
+            r"\schemestart \chemfig{\htmlData{m=a}{A}-B} \arrow{->[\htmlData{m=u}{heat}][\htmlData{m=w}{$\Delta$, cat}]} \chemfig{C=D} \schemestop",
+        ),
         (r"\schemestart \chemfig{A-B} \arrow \chemfig{C=D} \schemestop", r"\schemestart \chemfig{\htmlData{m=a}{A}-B} \arrow \chemfig{C=\htmlData{m=d}{D}} \schemestop"),
     ];
     for (bare, marked) in pairs {
@@ -209,4 +216,22 @@ fn marks_on_chemfig_atoms_move_nothing() {
         assert!(!boxes(marked).is_empty(), "marks give boxes in {marked}");
         assert!(mathra::convert(marked, &options()).unwrap().warnings.is_empty(), "warnings in {marked}");
     }
+}
+
+/// chemfig: each atom and bond says where it is written (characters of the structure's code), so an
+/// editor can change one in place.
+#[test]
+fn chemfig_atoms_and_bonds_know_where_they_are_written() {
+    let body = "H_3C-C(=[1]O)-[7] OH";
+    let tree = serde_json::to_value(mathra::convert(&format!("\\chemfig{{{body}}}"), &options()).unwrap().tree).unwrap();
+    let structure = &tree["children"][0]["scheme"]["items"][0]["body"];
+    let chars: Vec<char> = body.chars().collect();
+    let text = |v: &serde_json::Value| -> String {
+        let (a, b) = (v[0].as_u64().unwrap() as usize, v[1].as_u64().unwrap() as usize);
+        chars[a..b].iter().collect()
+    };
+    let atoms: Vec<String> = structure["atoms"].as_array().unwrap().iter().map(|a| text(&a["span"])).collect();
+    assert_eq!(atoms, ["H_3C", "C", "O", "OH"]);
+    let bonds: Vec<String> = structure["bonds"].as_array().unwrap().iter().map(|b| text(&b["span"])).collect();
+    assert_eq!(bonds, ["-", "=[1]", "-[7]"]);
 }
