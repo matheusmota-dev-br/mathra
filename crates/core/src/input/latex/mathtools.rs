@@ -51,8 +51,8 @@ pub(super) fn is_mathtools(name: &str, c: &[char], pos: usize) -> bool {
 }
 
 impl Reader<'_> {
-    /// The mathtools command `name`, written through other commands; None when it is not one.
-    /// Out of line: `package_expansion` is asked for every command.
+    /// The mathtools command `name`, one `is_mathtools` accepts, written through other commands; None
+    /// when the environment is one the input has redefined. Out of line: `package_expansion` is asked for every command.
     #[inline(never)]
     pub(super) fn mathtools_expansion(&mut self, name: &str, col: usize) -> R<Option<String>> {
         Ok(Some(match name {
@@ -162,8 +162,8 @@ impl Reader<'_> {
                 self.raw_text()?;
                 String::new()
             }
-            "begin" => return self.mathtools_environment(col),
-            _ => return Ok(None),
+            // `\begin`, the one name left that `is_mathtools` accepts: one of the ENVIRONMENTS
+            _ => return self.mathtools_environment(col),
         }))
     }
 

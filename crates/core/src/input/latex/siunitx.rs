@@ -38,6 +38,12 @@ pub(super) enum PerMode {
     Fraction,
 }
 
+/// A unit's symbol: text, which its prefix joins (km), or the math of a unit based on a constant (c₀).
+pub(super) enum UnitSymbol {
+    Text(String),
+    Math(Node),
+}
+
 /// The `\sisetup` options mathra honors.
 pub(super) const HONORED: [&str; 6] = ["per-mode", "inter-unit-product", "quantity-product", "output-complex-root", "complex-root-position", "retain-explicit-plus"];
 
@@ -157,12 +163,12 @@ impl Reader<'_> {
 
     /// The symbol of a unit named `name`, which is not one of siunitx's own: a declared one, a unit
     /// based on a constant, or None.
-    pub(super) fn other_unit_symbol(&mut self, name: &str) -> R<Option<Node>> {
+    pub(super) fn other_unit_symbol(&mut self, name: &str) -> R<Option<UnitSymbol>> {
         if let Some(symbol) = self.macros.siunitx.units.get(name).and_then(|d| plain_symbol(d)) {
-            return Ok(Some(Node::Text { parts: vec![TextPart::Text(symbol)] }));
+            return Ok(Some(UnitSymbol::Text(symbol)));
         }
         match constant(name) {
-            Some(tex) => Ok(Some(self.sub_reader(tex, Variant::Italic)?)),
+            Some(tex) => Ok(Some(UnitSymbol::Math(self.sub_reader(tex, Variant::Italic)?))),
             None => Ok(None),
         }
     }
