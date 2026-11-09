@@ -166,5 +166,6 @@ pnpm test                          # the editor, the corpus, every palette butto
 node scripts/gallery.mjs           # src/gallery.ts again, after corpus/gallery.json changed
 pnpm build                         # dist/
 pnpm test:browser                  # the components in Chromium (playwright-core's browser)
+pnpm coverage                      # both together, over src/: every line and function must run (CI asks for 100%)
 pnpm demo                          # http://127.0.0.1:4520/editor/demo/ (the editor filling the page)
 ```

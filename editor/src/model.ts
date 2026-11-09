@@ -300,7 +300,11 @@ export class Editor {
   selectedLatex(): string {
     const s = this.selection();
     if (!s) return "";
-    return this.listLatex(s.row.children.slice(s.start, s.end), false);
+    const atoms = s.row.children.slice(s.start, s.end);
+    // pieces of a reaction: a reaction of their own (a piece alone has no LaTeX)
+    const owner = s.row.parent;
+    if (owner?.kind === "reaction") return this.atomLatex({ ...owner, body: { ...s.row, children: atoms } }, false);
+    return this.listLatex(atoms, false);
   }
 
   /** The command being typed after `\`, if any. */
@@ -1216,6 +1220,8 @@ export class Editor {
   /** Pastes LaTeX (or plain text inside `\text{…}`) at the cursor, replacing the selection. */
   paste(text: string): void {
     const latex = text.trim().replace(/^\$\$?([\s\S]*?)\$?\$$/, "$1").replace(/^\\\[([\s\S]*)\\\]$/, "$1").replace(/^\\\(([\s\S]*)\\\)$/, "$1");
+    // in a reaction, as from a palette: its pieces join it, other math goes into a piece as text
+    if (this.reactionAtCursor()) return this.insertLatex(latex);
     this.change(() => {
       if (this.inText()) return this.replaceSelectionWith([...text].map((ch) => ({ kind: "char" as const, ch })));
       this.insertSpecs(readLatex(latex), { cursorAfter: true });
@@ -1376,7 +1382,8 @@ export class Editor {
     return made;
   }
 
-  private adopt(spec: AtomSpec, parent: Row, selected: Atom[]): Atom {
+  /** One spec made an atom; `#0` (the selection) is placed by `adoptInto`. */
+  private adopt(spec: Exclude<AtomSpec, { kind: "selection" }>, parent: Row, selected: Atom[]): Atom {
     const base = { id: this.id(), parent };
     const rowOf = (owner: Atom, specs: AtomSpec[] | null): Row | null => {
       if (!specs) return null;
@@ -1468,9 +1475,6 @@ export class Editor {
         }
         return a;
       }
-      case "species" as never:
-      case "selection":
-        throw new Error("mathra-editor: #0 is placed by adoptInto");
     }
   }
 
@@ -2057,10 +2061,11 @@ export class Editor {
   // ---------- internals: undo ----------
 
   private listSpec(atoms: Atom[]): AtomSpec[] {
-    return atoms.map((a) => this.spec(a));
+    // a reaction's pieces sit only in its body, which pieceData saves: no row saved here holds one
+    return (atoms as Exclude<Atom, Species | ReactionArrow | ReactionToken>[]).map((a) => this.spec(a));
   }
 
-  private spec(a: Atom): AtomSpec {
+  private spec(a: Exclude<Atom, Species | ReactionArrow | ReactionToken>): AtomSpec {
     const l = (r: Row | null) => (r ? this.listSpec(r.children) : null);
     switch (a.kind) {
       case "symbol":
@@ -2090,10 +2095,6 @@ export class Editor {
         return { kind: "matrix", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)) };
       case "reaction":
         return { kind: "reaction", ...(a.scheme ? { scheme: true } : {}), pieces: a.body.children.map((p) => this.pieceData(p)) };
-      case "species":
-      case "rxarrow":
-      case "rxtoken":
-        return { kind: "reaction", pieces: [this.pieceData(a)] };
       case "diagram":
         return { kind: "diagram", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)), arrows: a.arrows.map((x) => ({ ...x, from: [...x.from] as [number, number], to: [...x.to] as [number, number], extra: [...x.extra], label: l(x.label), swapLabel: l(x.swapLabel) })) };
     }

@@ -295,3 +295,209 @@ test("blocks: the block beside the cursor; a diagram the editor cannot edit stay
   const c = new Editor("\\ce{A &-> B}");
   assert.equal(c.blockAtCursor()?.latex, "\\ce{A &-> B}");
 });
+
+test("a listener removed hears nothing more", () => {
+  const e = typed("ab");
+  const kinds: string[] = [];
+  const off = e.onChange((k) => kinds.push(k));
+  e.moveLeft();
+  off();
+  e.typeText("c");
+  assert.deepEqual(kinds, ["cursor"]);
+});
+
+test("any other character typed is a symbol of its own; a blank one is nothing", () => {
+  const e = typed("2π");
+  assert.equal(e.toLatex(), "2π");
+  e.typeText(" ");
+  assert.equal(e.toLatex(), "2π");
+});
+
+test("palette LaTeX inside text: plain characters go in as they are", () => {
+  const e = typed("\\text a");
+  e.insertLatex("b+c");
+  assert.equal(e.toLatex(), "\\text{ab+c}");
+});
+
+test("a lone exponent inserted after an index joins it", () => {
+  const e = new Editor("x_1");
+  e.insertLatex("^{2}");
+  assert.equal(e.toLatex(), "x^{2}_{1}");
+  // the cursor in the exponent
+  e.typeText("3");
+  assert.equal(e.toLatex(), "x^{23}_{1}");
+});
+
+test("`/` after a plain opening parenthesis takes only what follows it; a closed pair is part of the operand", () => {
+  const open = new Editor("(a");
+  open.typeText("/");
+  assert.equal(open.toLatex(), "(\\frac{a}{}");
+  const pair = new Editor("f(b)");
+  pair.typeText("/");
+  assert.equal(pair.toLatex(), "\\frac{f(b)}{}");
+});
+
+test("select a range; an arrow without Shift collapses it to that side", () => {
+  const e = new Editor("abc");
+  e.select(e.root, 0, 2);
+  assert.equal(e.selectedLatex(), "ab");
+  e.moveRight();
+  assert.equal(e.selection(), null);
+  assert.equal(e.cursor.offset, 2);
+  e.select(e.root, 1, 3);
+  e.moveLeft();
+  assert.equal(e.cursor.offset, 1);
+  // an empty range selects nothing
+  e.select(e.root, 2, 2);
+  assert.equal(e.selection(), null);
+});
+
+test("Delete at the end of a place leaves it; Backspace in an empty root index takes the index off", () => {
+  const e = new Editor("\\sqrt{x}y");
+  const root = e.root.children[0];
+  if (root.kind !== "sqrt") throw new Error("a root");
+  e.setCursor({ row: root.body, offset: 1 });
+  e.deleteForward();
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [e.root, 1]);
+  assert.equal(e.toLatex(), "\\sqrt{x}y");
+  const n = new Editor("\\sqrt[3]{x}");
+  const r = n.root.children[0];
+  if (r.kind !== "sqrt") throw new Error("a root");
+  n.setCursor({ row: r.index!, offset: 1 });
+  n.backspace();
+  assert.equal(n.toLatex(), "\\sqrt[]{x}");
+  n.backspace();
+  assert.equal(n.toLatex(), "\\sqrt{x}");
+  assert.deepEqual([n.cursor.row, n.cursor.offset], [r.body, 0]);
+});
+
+test("up and down: exponent to index and back; nowhere to go in a delimiter or a root without index", () => {
+  const e = new Editor("x^{2}_{1}");
+  const s = e.root.children[1];
+  if (s.kind !== "scripts") throw new Error("scripts");
+  e.setCursor({ row: s.sup!, offset: 1 });
+  e.moveDown();
+  assert.equal(e.cursor.row, s.sub);
+  e.moveUp();
+  assert.equal(e.cursor.row, s.sup);
+  for (const latex of ["\\left(x\\right)", "\\sqrt{x}"]) {
+    const f = new Editor(latex);
+    const a = f.root.children[0];
+    const body = a.kind === "delim" || a.kind === "sqrt" ? a.body : null;
+    f.setCursor({ row: body!, offset: 1 });
+    f.moveUp();
+    f.moveDown();
+    assert.deepEqual([f.cursor.row, f.cursor.offset], [body, 1], latex);
+  }
+});
+
+test("up and down from a matrix's edge line go on to the structure around it", () => {
+  const e = new Editor("\\frac{\\begin{pmatrix} a \\\\ b \\end{pmatrix}}{c}");
+  const f = e.root.children[0];
+  if (f.kind !== "frac") throw new Error("a fraction");
+  const m = f.num.children[0];
+  if (m.kind !== "matrix") throw new Error("a matrix");
+  e.setCursor({ row: m.cells[1][0], offset: 1 });
+  e.moveDown();
+  assert.equal(e.cursor.row, f.den);
+  e.setCursor({ row: m.cells[0][0], offset: 1 });
+  e.moveUp();
+  assert.equal(e.cursor.row, m.cells[0][0]);
+});
+
+test("Tab in a full matrix: the next cell, Shift+Tab the one before; out after the last", () => {
+  const e = new Editor("\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}");
+  const m = e.root.children[0];
+  if (m.kind !== "matrix") throw new Error("a matrix");
+  e.setCursor({ row: m.cells[0][1], offset: 1 });
+  e.tab();
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [m.cells[1][0], 0]);
+  e.tab(true);
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [m.cells[0][1], 1]);
+  e.setCursor({ row: m.cells[1][1], offset: 1 });
+  e.tab();
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [e.root, 1]);
+});
+
+test("blocks: one inserted from a palette, the block after the cursor, emptied on commit it goes", () => {
+  const e = new Editor("x");
+  e.insertBlock("\\ce{‸}");
+  assert.equal(e.toLatex(), "x\\ce{}");
+  assert.equal(e.takePendingBlock()?.caret, 4);
+  e.setCursor({ row: e.root, offset: 1 });
+  const b = e.blockAtCursor()!;
+  assert.equal(b.latex, "\\ce{}");
+  const s = e.editBlock(b);
+  s.update("  ");
+  s.commit();
+  assert.equal(e.toLatex(), "x");
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [e.root, 1]);
+  e.undo();
+  assert.equal(e.toLatex(), "x\\ce{}");
+});
+
+test("a block whose class mathra cannot tell is ordinary", () => {
+  const e = new Editor("\\pdv{u}{t}");
+  e.classifyRaw = () => {
+    throw new Error("unreadable");
+  };
+  assert.match(e.toLatex({ marked: true }), /\\htmlData\{m=\w+,raw=1\}\{\\pdv\{u\}\{t\}\}/);
+});
+
+test("the class of LaTeX kept as written: functions and large operators are operators", async () => {
+  const { classOfTree } = await import("../src/model.ts");
+  const { render } = await import("../../npm/pkg/node/index.mjs");
+  assert.equal(classOfTree(render("\\sin").tree), "op");
+  assert.equal(classOfTree(render("\\sum").tree), "op");
+});
+
+test("the core entry: the editor without a screen", async () => {
+  const core = await import("../src/core.ts");
+  const e = new core.Editor("\\frac{1}{2}");
+  assert.equal(e.toLatex(), "\\frac{1}{2}");
+  assert.equal(core.readLatex("x")[0].kind, "symbol");
+  assert.equal(typeof core.caretRect, "function");
+});
+
+test("Enter finishes a command being typed", () => {
+  const e = typed("\\alpha");
+  e.enter();
+  e.typeText("x");
+  assert.equal(e.toLatex(), "\\alpha x");
+});
+
+test("text: pasted characters stay characters; a selection put in text becomes its LaTeX", () => {
+  const e = typed("\\text a");
+  e.paste("b}c");
+  assert.equal(e.toLatex(), "\\text{ab\\}c}");
+  const s = new Editor("x^2");
+  s.selectAll();
+  s.insertLatex("\\text{#0}");
+  assert.equal(s.toLatex(), "\\text{x\\^{}\\{2\\}}");
+});
+
+test("Delete before a structure goes into it", () => {
+  const e = new Editor("\\frac{1}{2}");
+  const f = e.root.children[0];
+  if (f.kind !== "frac") throw new Error("a fraction");
+  e.setCursor({ row: e.root, offset: 0 });
+  e.deleteForward();
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [f.num, 0]);
+  assert.equal(e.toLatex(), "\\frac{1}{2}");
+});
+
+test("the last line or column of a matrix removed: the matrix goes", () => {
+  const e = new Editor("x\\begin{pmatrix} a & b \\end{pmatrix}");
+  const m = e.root.children[1];
+  if (m.kind !== "matrix") throw new Error("a matrix");
+  e.setCursor({ row: m.cells[0][0], offset: 1 });
+  e.removeRow();
+  assert.equal(e.toLatex(), "x");
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [e.root, 1]);
+  const c = new Editor("\\begin{pmatrix} a \\\\ b \\end{pmatrix}");
+  const n = c.root.children[0];
+  if (n.kind !== "matrix") throw new Error("a matrix");
+  c.setCursor({ row: n.cells[1][0], offset: 0 });
+  c.removeColumn();
+  assert.equal(c.toLatex(), "");
+});

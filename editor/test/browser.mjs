@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { stripTypeScriptTypes } from "node:module";
 import { writeFile } from "node:fs/promises";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const shots = process.argv[2] ?? null;
@@ -20,6 +21,12 @@ const coverage = process.env.COVERAGE ?? null;
 const covered = [];
 const watch = async (p) => coverage && p.coverage.startJSCoverage({ resetOnNavigation: false });
 const collect = async (p) => coverage && covered.push(...(await p.coverage.stopJSCoverage()).filter((e) => e.url.includes("/editor/dist/")));
+// a reload drops the old document's scripts and their coverage: taken before it, then watched again
+const reload = async (p) => {
+  await collect(p);
+  await p.reload();
+  await watch(p);
+};
 if (shots) await mkdir(shots, { recursive: true });
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm", ".svg": "image/svg+xml", ".png": "image/png" };
 const server = createServer(async (req, res) => {
@@ -62,10 +69,24 @@ const ready = (page) => page.waitForFunction(() => document.getElementById("edit
 
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+// the mathfonts catalog, served here: Latin Modern from the repository, and a font that does not download
+const catalogUrl = "https://matheusmota-dev-br.github.io/mathfonts/catalog.json";
+const latinModern = await readFile(join(root, "crates/core/fonts/latinmodern-math-subset.otf"));
+const catalog = {
+  version: 1,
+  fonts: [
+    { slug: "latin-modern", name: "Latin Modern Math", file: "fonts/lm.otf", license_file: "fonts/lm.txt", sha256: createHash("sha256").update(latinModern).digest("hex"), coverage: 90, style: "serif", base: "Computer Modern", license: "GUST" },
+    { slug: "broken", name: "Broken Math", file: "fonts/broken.otf", license_file: "fonts/broken.txt", sha256: "0", coverage: 50, style: "sans", base: "none", license: "OFL" },
+  ],
+};
+await context.route(catalogUrl, (r) => r.fulfill({ json: catalog }));
+await context.route("**/mathfonts/fonts/lm.otf", (r) => r.fulfill({ body: latinModern, contentType: "font/otf" }));
+await context.route("**/mathfonts/fonts/broken.otf", (r) => r.abort());
 const page = await context.newPage();
 await watch(page);
 const errors = [];
-page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+// the font that does not download, on purpose, is the one error expected
+page.on("console", (m) => m.type() === "error" && !m.location().url.endsWith("/broken.otf") && errors.push(m.text()));
 page.on("pageerror", (e) => errors.push(String(e)));
 await page.goto(`${base}/editor/demo/`);
 await page.evaluate(() => localStorage.clear());
@@ -235,7 +256,7 @@ await check("The theme: system, light, dark, remembered", async () => {
   await settle(page);
   assert.equal(await bg(), "rgb(255, 255, 255)");
   assert.equal(await page.evaluate(() => localStorage.getItem("mathra-theme")), "light");
-  await page.reload();
+  await reload(page);
   await ready(page);
   assert.equal(await page.evaluate(() => document.getElementById("editor").getAttribute("theme")), "light");
   await ed.locator('[data-theme="auto"]').click();
@@ -363,6 +384,25 @@ await check("The gallery: every LaTeX example, search, and one opens in the edit
   await ed.locator('[data-act="redo"]').click();
 });
 
+await check("The gallery follows its language, and leaves out a picture mathra refuses", async () => {
+  const gallery = ed.locator("mathra-gallery");
+  // the examples it can open: those in LaTeX, each with where it is
+  const examples = await gallery.evaluate((g) => g.examples.map((e) => [e.group, e.i, e.example.input]));
+  assert.equal(examples.length, 110);
+  assert.ok(examples.every(([group, i, input]) => group && Number.isInteger(i) && input === "latex"));
+  const before = await gallery.locator("input").getAttribute("placeholder");
+  await gallery.evaluate((g) => g.setAttribute("locale", "en"));
+  await page.waitForFunction((b) => document.getElementById("editor").shadowRoot.querySelector("mathra-gallery").shadowRoot.querySelector("input").placeholder !== b, before);
+  await gallery.evaluate((g) => g.setAttribute("locale", "pt-BR"));
+  await page.waitForFunction((b) => document.getElementById("editor").shadowRoot.querySelector("mathra-gallery").shadowRoot.querySelector("input").placeholder === b, before);
+  // an example mathra refuses (here in strict mode) has no picture, and is tried again next time
+  const drawn = await gallery.evaluate((g) => {
+    const ex = { tex: "\\frac{1}{2} + \\foo", locale: "en", options: { strict: true } };
+    return [g.picture(ex), g.drawn.has(`en\u0000${ex.tex}`)];
+  });
+  assert.deepEqual(drawn, ["", false]);
+});
+
 await check("mathra's options: style, braille, strict, animation, PNG size, rules", async () => {
   await ed.locator('[data-act="settings"]').click();
   const s = ed.locator("mathra-settings");
@@ -381,6 +421,10 @@ await check("mathra's options: style, braille, strict, animation, PNG size, rule
   // line breaking
   await s.locator("#breaking").check();
   assert.equal((await opts()).maxWidth, 30);
+  // the width shows while the slider moves; mathra redraws once it stops
+  await s.locator("#width").fill("40");
+  assert.equal(await s.locator(".range output").textContent(), "40 em");
+  await page.waitForFunction(() => document.getElementById("editor").field.mathraOptions.maxWidth === 40);
   await s.locator("#breaking").uncheck();
   // PNG size
   await s.locator('[data-set="png"][data-value="2"]').click();
@@ -406,20 +450,22 @@ await check("mathra's options: style, braille, strict, animation, PNG size, rule
   if (shots) await page.screenshot({ path: `${shots}/settings.png` });
 });
 
-await check("A font from the mathfonts catalog (needs the network)", async () => {
+await check("A font from the mathfonts catalog; one that does not download leaves the font as it was", async () => {
   const s = ed.locator("mathra-settings");
-  await page.waitForFunction(() => {
-    const r = document.getElementById("editor").settings.shadowRoot;
-    return r.querySelectorAll(".fonts [data-font]").length > 1 || r.querySelector(".note");
-  }, null, { timeout: 15000 });
-  const count = await s.locator(".fonts [data-font]").count();
-  if (count <= 1) {
-    results.push("     (font catalog not reachable: skipped)");
-    return;
-  }
-  await s.locator('[data-font="euler-math"]').click();
-  await page.waitForFunction(() => /Euler/.test(document.getElementById("editor").field.output?.svg ?? ""), null, { timeout: 20000 });
+  await s.locator('[data-font="latin-modern"]').waitFor();
+  const svg = () => page.evaluate(() => document.getElementById("editor").field.output?.svg ?? "");
+  const before = await svg();
+  await s.locator('[data-font="latin-modern"]').click();
+  await page.waitForFunction((b) => document.getElementById("editor").field.output?.svg !== b, before);
+  const latin = await svg();
+  assert.equal(await s.locator('[data-font="latin-modern"]').getAttribute("aria-checked"), "true");
+  await s.locator('[data-font="broken"]').click();
+  await page.waitForFunction(() => document.getElementById("editor").settings.loading === "");
+  assert.equal(await s.locator('[data-font="latin-modern"]').getAttribute("aria-checked"), "true");
+  assert.equal(await s.locator('[data-font="broken"]').getAttribute("aria-checked"), "false");
+  assert.equal(await svg(), latin);
   await s.locator('[data-font=""]').click();
+  await page.waitForFunction((b) => document.getElementById("editor").field.output?.svg === b, before);
   await ed.locator('.settings-panel [data-close]').click();
   assert.equal(await page.evaluate(() => document.getElementById("editor").shadowRoot.querySelector(".settings-panel").hidden), true);
 });
@@ -707,11 +753,311 @@ await check("Diagrams: every gallery diagram and reaction keeps its cursor in th
   assert.deepEqual(bad, []);
 });
 
+await check("Keys: Shift+arrows, Home and End select; Delete; Up back into the numerator", async () => {
+  await setValue("abcd");
+  await focus();
+  await k.press("End");
+  await k.press("Shift+ArrowLeft");
+  await k.press("Shift+ArrowLeft");
+  await k.type("x");
+  assert.equal(await value(), "abx");
+  await k.press("Home");
+  await k.press("Shift+ArrowRight");
+  await k.type("y");
+  assert.equal(await value(), "ybx");
+  await k.press("Home");
+  await k.press("Delete");
+  assert.equal(await value(), "bx");
+  await k.press("Shift+End");
+  await k.type("z");
+  assert.equal(await value(), "z");
+  await k.press("Shift+Home");
+  await k.type("w");
+  assert.equal(await value(), "w");
+  await setValue("");
+  await k.type("/1");
+  await k.press("ArrowDown");
+  await k.type("2");
+  await k.press("ArrowUp");
+  await k.type("3");
+  assert.equal(await value(), "\\frac{13}{2}");
+});
+
+await check("Escape leaves a command being typed, then a selection; Mod+X cuts", async () => {
+  await setValue("ab");
+  await focus();
+  await k.press("End");
+  await k.type("\\fr");
+  await page.waitForFunction(() => !document.getElementById("editor").commandMenu.hidden);
+  // one Escape: the command and its menu go
+  await k.press("Escape");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").commandMenu.hidden), true);
+  await k.type("c");
+  assert.equal(await value(), "abc");
+  await k.press("Shift+Home");
+  await k.press("Escape");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.selection()), null);
+  await k.press(`${mod}+a`);
+  await k.press(`${mod}+x`);
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "abc");
+  assert.equal(await value(), "");
+});
+
+await check("The command menu: arrows choose, a click takes, nothing found says so", async () => {
+  const menu = ed.locator("mathra-command-menu");
+  await setValue("");
+  await focus();
+  await k.type("\\fr");
+  await page.waitForFunction(() => !document.getElementById("editor").commandMenu.hidden);
+  const chosen = () => menu.locator('.item[aria-selected="true"] .name').textContent();
+  const names = await menu.locator(".item .name").allTextContents();
+  await k.press("ArrowDown");
+  assert.equal(await chosen(), names[1]);
+  await k.press("ArrowUp");
+  await k.press("ArrowUp");
+  assert.equal(await chosen(), names.at(-1), "up from the first is the last");
+  await k.press("ArrowDown");
+  await k.press("Backspace");
+  await k.press("Backspace");
+  await k.type("zzq");
+  assert.equal(await menu.locator(".none").textContent(), "Nenhum comando com esse nome");
+  await k.press("ArrowDown");
+  await k.press("Escape");
+  assert.equal(await menu.isHidden(), true);
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.commandBeingTyped()), null);
+  await setValue("");
+  await focus();
+  await k.type("\\sqrt");
+  await page.waitForFunction(() => !document.getElementById("editor").commandMenu.hidden);
+  await menu.locator(".item").filter({ hasText: "\\sqrt" }).first().click();
+  await k.type("2");
+  assert.equal(await value(), "\\sqrt{2}");
+  assert.equal(await menu.isHidden(), true);
+});
+
+await check("The field's calls: insert, insertLatex, insertSymbol, run, and blur sends change", async () => {
+  await setValue("");
+  await focus();
+  const got = await page.evaluate(() => {
+    const f = document.getElementById("editor").field;
+    let changed = null;
+    f.addEventListener("change", (e) => (changed = e.detail.latex), { once: true });
+    f.insert("sqrt");
+    f.run("type:2");
+    f.run("moveRight");
+    f.insert("sup");
+    f.insertLatex("\\pi");
+    f.run("moveRight");
+    f.insertSymbol("\\alpha");
+    f.run("symbol:\\beta");
+    f.blur();
+    return [f.value, changed, f.shadowRoot.activeElement === null];
+  });
+  assert.deepEqual(got, ["\\sqrt{2}^{\\pi}\\alpha\\beta", "\\sqrt{2}^{\\pi}\\alpha\\beta", true]);
+});
+
+await check("Exponent, index and a matrix's lines and columns from the palettes", async () => {
+  await setValue("x");
+  await focus();
+  await k.press("End");
+  await tab("Estruturas").click();
+  await button("Expoente").click();
+  await k.type("2");
+  await k.press("ArrowRight");
+  await button("Índice").click();
+  await k.type("i");
+  assert.equal(await value(), "x^{2}_{i}");
+  await setValue("");
+  await focus();
+  await tab("Matrizes").click();
+  await button("Matriz 2×2").click();
+  const size = () => page.evaluate(() => { const m = document.getElementById("editor").editor.matrixAtCursor().matrix; return [m.cells.length, m.cells[0].length]; });
+  await button("Adicionar linha acima").click();
+  assert.deepEqual(await size(), [3, 2]);
+  await button("Adicionar coluna à direita").click();
+  assert.deepEqual(await size(), [3, 3]);
+  await button("Adicionar coluna à esquerda").click();
+  assert.deepEqual(await size(), [3, 4]);
+  await button("Remover esta linha").click();
+  assert.deepEqual(await size(), [2, 4]);
+  await button("Remover esta coluna").click();
+  assert.deepEqual(await size(), [2, 3]);
+});
+
+await check("Diagrams: Alt+Left and Alt+Up draw arrows; a label moved to the other side", async () => {
+  await setValue("");
+  await focus();
+  await tab("Diagramas").click();
+  await button("Diagrama novo: digite na célula, Alt+seta cria uma seta").click();
+  await k.type("A");
+  await k.press("Alt+ArrowRight");
+  await k.press("ArrowRight");
+  await k.type("B");
+  await k.press("Alt+ArrowLeft");
+  await k.type("g");
+  await dbar.locator('[data-run="arrowSwap"]').click();
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[0].cells[0][1], offset: 1 }); });
+  await k.press("Alt+ArrowUp");
+  assert.equal(await value(), '\\begin{tikzcd}& {} \\\\ A \\arrow[r] & B \\arrow[l, "g"\'] \\arrow[u]\\end{tikzcd}');
+});
+
+await check("Structures from the bar: an element, a ring, removed; edited as LaTeX, cancelled", async () => {
+  await setValue("\\chemfig{A-B}");
+  await focus();
+  const b = await atomCenter(1);
+  await page.mouse.click(b[0], b[1]);
+  await dbar.locator('[data-run="chemLabel:O"]').click();
+  assert.equal(await value(), "\\chemfig{A-O}");
+  await dbar.locator('[data-run="chemRing:6"]').click();
+  assert.equal(await value(), "\\chemfig{A-O*6(------)}");
+  await ed.locator('[data-act="undo"]').click();
+  await page.mouse.click(b[0], b[1]);
+  await dbar.locator('[data-run="chemRemove"]').click();
+  assert.equal(await value(), "\\chemfig{A}");
+  const a = await atomCenter(0);
+  await page.mouse.click(a[0], a[1]);
+  await dbar.locator('[data-run="editAsLatex"]').click();
+  assert.equal(await blockPanel.isVisible(), true);
+  await blockSource.click();
+  await blockSource.fill("\\chemfig{A=C}");
+  await blockPanel.locator('[data-block="cancel"]').click();
+  assert.equal(await blockPanel.isVisible(), false);
+  assert.equal(await value(), "\\chemfig{A}");
+});
+
+await check("Reactions from the bar: a sign added, a piece removed", async () => {
+  await setValue("\\ce{H2O -> H2 + O2}");
+  await focus();
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; const b = e.root.children[0].body; e.setCursor({ row: b, offset: b.children.length }); });
+  await dbar.locator('[data-run="rxSign:^"]').click();
+  assert.equal(await value(), "\\ce{H2O -> H2 + O2 ^}");
+  await dbar.locator('[data-run="rxRemove"]').click();
+  assert.equal(await value(), "\\ce{H2O -> H2 + O2}");
+});
+
+await check("A block's LaTeX: Done, its warnings and errors as typed; a double click opens it, or selects the line", async () => {
+  await setValue("");
+  await focus();
+  await tab("Química").click();
+  await button("Unidade física (mhchem \\\\pu)").click();
+  assert.equal(await blockPanel.isVisible(), true);
+  await blockSource.fill("\\pu{5 kJ}");
+  await blockPanel.locator('[data-block="done"]').click();
+  assert.equal(await value(), "\\pu{5 kJ}");
+  const svg = ed.locator("mathra-field").locator(".drawing svg");
+  await svg.dblclick();
+  assert.equal(await blockPanel.isVisible(), true);
+  const status = blockPanel.locator(".status");
+  await blockSource.fill("\\pu{5 kJ} \\foo");
+  assert.equal(await status.getAttribute("class"), "status warn");
+  assert.match(await status.textContent(), /foo/);
+  await blockSource.fill(`${"{".repeat(70)}x${"}".repeat(70)}`);
+  assert.match(await status.textContent(), /nesting/);
+  await k.press("Escape");
+  assert.equal(await value(), "\\pu{5 kJ}");
+  await setValue("a+b");
+  await svg.dblclick();
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.selectedLatex()), "a+b");
+  // in a structure, a double click picks an atom and opens nothing
+  await setValue("\\chemfig{A-B}");
+  const at = await atomCenter(0);
+  await page.mouse.dblclick(at[0], at[1]);
+  assert.equal(await blockPanel.isVisible(), false);
+  await k.press("Escape");
+});
+
+await check("Deep formulas: drawn around an empty diagram; too deep to draw with the cursor, the last drawing stays", async () => {
+  const drawn = () => page.evaluate(() => document.getElementById("editor").field.shadowRoot.querySelector(".drawing").innerHTML);
+  const deep = `${"x^{".repeat(14)}\\begin{tikzcd} \\arrow[r] & \\end{tikzcd}${"}".repeat(14)}+y`;
+  await setValue(deep);
+  // the empty cells an arrow reaches are written {}
+  assert.equal(await value(), deep.replace("{tikzcd} \\arrow[r] & \\end", "{tikzcd}{} \\arrow[r] & {}\\end"));
+  assert.match(await drawn(), /^<svg/);
+  // ten roots: mathra reads the formula, but not with the cursor's marks around each piece
+  await setValue("1");
+  const before = await drawn();
+  const roots = `${"\\sqrt{".repeat(10)}x${"}".repeat(10)}`;
+  await setValue(roots);
+  assert.equal(await value(), roots);
+  assert.equal(await drawn(), before);
+  assert.ok(await page.evaluate(() => document.getElementById("editor").field.output.mathml.includes("<msqrt>")));
+});
+
+await check("Outputs: the SVG written again, copied, downloaded; the PNG copied and downloaded; the rules copied", async () => {
+  const out = ed.locator("mathra-output");
+  const s = ed.locator("mathra-settings");
+  await setValue("\\frac{1}{2}");
+  await ed.locator('[data-act="settings"]').click();
+  await s.locator("#animate").check();
+  await out.locator("[role=tab]").filter({ hasText: "SVG" }).click();
+  await out.locator('[data-act="replay"]').click();
+  assert.equal(await out.locator(".image svg").count(), 1);
+  await s.locator("#animate").uncheck();
+  // Escape in the options closes them
+  await s.locator("#animate").focus();
+  await k.press("Escape");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").shadowRoot.querySelector(".settings-panel").hidden), true);
+  const copy = out.locator('[data-act="copy"]');
+  await copy.click();
+  await page.waitForFunction(() => document.getElementById("editor").outputPanel.shadowRoot.querySelector('[data-act="copy"] span')?.textContent === "Copiado");
+  assert.match(await page.evaluate(() => navigator.clipboard.readText()), /^<svg/);
+  const [svgFile] = await Promise.all([page.waitForEvent("download"), out.locator('[data-act="download"]').click()]);
+  assert.equal(svgFile.suggestedFilename(), "formula.svg");
+  assert.match(await readFile(await svgFile.path(), "utf8"), /^<svg/);
+  await out.locator("[role=tab]").filter({ hasText: "PNG" }).click();
+  await copy.click();
+  await page.waitForFunction(() => document.getElementById("editor").outputPanel.shadowRoot.querySelector('[data-act="copy"] span')?.textContent === "Copiado");
+  assert.deepEqual(await page.evaluate(async () => (await navigator.clipboard.read())[0].types), ["image/png"]);
+  const [pngFile] = await Promise.all([page.waitForEvent("download"), out.locator('[data-act="download"]').click()]);
+  assert.equal(pngFile.suggestedFilename(), "formula.png");
+  assert.deepEqual([...(await readFile(await pngFile.path())).subarray(1, 4)], [0x50, 0x4e, 0x47]);
+  assert.match(await page.evaluate(() => document.getElementById("editor").outputPanel.text("png")), /^data:image\/png;base64,/);
+  await setValue("3,14+\\foo");
+  await out.locator("[role=tab]").filter({ hasText: "Regras" }).click();
+  await copy.click();
+  await page.waitForFunction(() => document.getElementById("editor").outputPanel.shadowRoot.querySelector('[data-act="copy"] span')?.textContent === "Copiado");
+  const rules = (await page.evaluate(() => navigator.clipboard.readText())).split("\n");
+  const { applied, warnings } = await page.evaluate(() => document.getElementById("editor").field.output);
+  assert.ok(applied.length && warnings.length, "rules applied and warnings");
+  assert.deepEqual(rules, [...applied, ...warnings].map((r) => `${r.rule}: ${r.description}`));
+});
+
+await check("Outputs without the clipboard: the text is selected to copy by hand", async () => {
+  const out = ed.locator("mathra-output");
+  await setValue("a+b");
+  await out.locator("[role=tab]").filter({ hasText: "LaTeX" }).click();
+  await page.evaluate(() => (navigator.clipboard.writeText = () => Promise.reject(new Error("denied"))));
+  await out.locator('[data-act="copy"]').click();
+  await page.waitForFunction(() => getSelection().toString() === "a+b");
+  await page.evaluate(() => delete navigator.clipboard.writeText);
+});
+
 await check("No error in the console", async () => {
   assert.deepEqual(errors, []);
 });
 await collect(page);
 await context.close();
+
+// ---------- without the font catalog ----------
+
+const offline = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+await offline.route(catalogUrl, (r) => r.abort());
+const p4 = await offline.newPage();
+await watch(p4);
+await p4.goto(`${base}/editor/demo/`);
+await ready(p4);
+await check("Without the font catalog, the options say so and keep working", async () => {
+  const ed4 = p4.locator("#editor");
+  await ed4.locator('[data-act="settings"]').click();
+  const note = ed4.locator("mathra-settings").locator(".note").last();
+  await p4.waitForFunction(() => document.getElementById("editor").settings.fontsFailed === true);
+  assert.ok((await note.textContent()).length > 0);
+  assert.equal(await ed4.locator("mathra-settings").locator(".fonts").count(), 0);
+  await ed4.locator("mathra-settings").locator('[data-set="display"][data-value="inline"]').click();
+  assert.equal(await p4.evaluate(() => document.getElementById("editor").field.mathraOptions.display), false);
+});
+await collect(p4);
+await offline.close();
 
 // ---------- the pieces alone ----------
 
@@ -743,6 +1089,122 @@ await check("Inline field and keyboard alone", async () => {
   await key("3").click();
   assert.equal(await v3("c"), "\\frac{8}{3}");
   assert.equal(await p3.locator("#c-result").textContent(), "certo");
+});
+await check("Keyboard alone: letters, capitals for one key, layers by attribute and of your own", async () => {
+  const kb = p3.locator('mathra-keyboard[for="c"]');
+  const key = (title) => kb.locator(`button[title="${title}"]`);
+  await p3.evaluate(() => (document.getElementById("c").value = ""));
+  await p3.evaluate(() => document.getElementById("c").focus());
+  await key("Letras").click();
+  await key("Maiúsculas").click();
+  assert.equal(await key("Maiúsculas").getAttribute("aria-pressed"), "true");
+  await key("a").click();
+  await key("b").click();
+  assert.equal(await v3("c"), "Ab");
+  assert.equal(await key("Maiúsculas").getAttribute("aria-pressed"), "false");
+  // layers="…" picks and orders them: the first one shows
+  await p3.evaluate(() => document.querySelector('mathra-keyboard[for="c"]').setAttribute("layers", "functions numbers nothing"));
+  await key("Números").waitFor();
+  assert.equal(await key("Letras").count(), 1);
+  assert.equal(await key("Seno").count(), 1);
+  // a layer of one's own
+  await p3.evaluate(() => (document.querySelector('mathra-keyboard[for="c"]').layers = [{ id: "mine", title: { en: "Mine" }, rows: [[{ type: "z", title: { en: "Zed" } }, { insert: "\\heartsuit", title: { en: "Heart" } }]] }]));
+  assert.equal(await kb.locator("button").count(), 2);
+  await key("Zed").click();
+  await key("Heart").click();
+  assert.equal(await v3("c"), "Abz\\heartsuit");
+});
+
+await check("Command menu alone: the commands of given palettes, and none once it leaves the field", async () => {
+  const menu = p3.locator('mathra-command-menu[for="b"]');
+  await p3.evaluate(() => {
+    document.getElementById("b").value = "";
+    document.querySelector('mathra-command-menu[for="b"]').palettes = [{ id: "mine", title: { en: "Mine" }, items: [{ insert: "\\heartsuit", title: { en: "Heart" }, command: "heart" }, { insert: "\\hbar", title: { en: "h-bar" } }] }];
+  });
+  await p3.evaluate(() => document.getElementById("b").focus());
+  await p3.keyboard.type("\\h");
+  await p3.waitForFunction(() => !document.querySelector('mathra-command-menu[for="b"]').hidden);
+  assert.deepEqual(await menu.locator(".item .name").allTextContents(), ["\\heart"]);
+  await p3.keyboard.press("Enter");
+  assert.equal(await v3("b"), "\\heartsuit");
+  // every palette's commands, for a menu of one's own
+  const all = await p3.evaluate(async () => (await import("/editor/dist/command-menu.js")).ALL_COMMANDS().map((c) => c.name));
+  assert.ok(all.includes("frac") && all.includes("alpha"), `${all.length} commands`);
+  // away from the field, the menu no longer follows it
+  await p3.evaluate(() => (document.querySelector('mathra-command-menu[for="b"]').field = null));
+  await p3.keyboard.type("\\fr");
+  assert.equal(await menu.isHidden(), true);
+  await p3.keyboard.press("Escape");
+  await p3.evaluate(() => (document.querySelector('mathra-command-menu[for="b"]').field = document.getElementById("b")));
+});
+
+await check("Palette alone: a set by name, another set, buttons of your own, another field", async () => {
+  const pal = p3.locator("#p");
+  await p3.evaluate(() => (document.getElementById("b").value = ""));
+  await pal.locator('button[title="alfa"]').click();
+  assert.equal(await v3("b"), "\\alpha");
+  await p3.evaluate(() => document.getElementById("p").setAttribute("set", "arrows"));
+  await pal.locator('button[title="alfa"]').waitFor({ state: "detached" });
+  assert.equal(await pal.locator(".grid").getAttribute("aria-label"), "Setas");
+  // one's own buttons; one whose drawing mathra refuses shows its LaTeX
+  await p3.evaluate(() => (document.getElementById("p").items = [{ insert: "\\heartsuit", title: { en: "Heart" } }, { insert: "x", preview: "\\begin{CD}@@@\\end{CD}", title: { en: "Odd" } }]));
+  assert.equal(await pal.locator("button").count(), 2);
+  assert.equal(await pal.locator('button[title="Odd"]').textContent(), "\\begin{CD}@@@\\end{CD}");
+  // for another field
+  await p3.evaluate(() => {
+    document.getElementById("c").value = "";
+    document.getElementById("p").field = document.getElementById("c");
+  });
+  await pal.locator('button[title="Heart"]').click();
+  assert.equal(await v3("c"), "\\heartsuit");
+  assert.equal(await v3("b"), "\\alpha");
+});
+
+await check("Toolbar alone: palettes by name, arrows between tabs, palettes of your own", async () => {
+  const bar = p3.locator("#t");
+  const tabs = bar.locator("[role=tab]");
+  assert.deepEqual(await tabs.allTextContents(), ["Gregas", "Cálculo"]);
+  await tabs.first().focus();
+  await p3.keyboard.press("ArrowRight");
+  assert.equal(await bar.locator('[role=tab][aria-selected="true"]').textContent(), "Cálculo");
+  assert.equal(await p3.evaluate(() => document.getElementById("t").shadowRoot.activeElement?.textContent), "Cálculo");
+  await p3.keyboard.press("ArrowRight");
+  await p3.keyboard.press("ArrowLeft");
+  assert.equal(await bar.locator('[role=tab][aria-selected="true"]').textContent(), "Cálculo");
+  const ids = await p3.evaluate(() => {
+    const t = document.getElementById("t");
+    t.palettes = [{ id: "mine", title: { en: "Mine", "pt-BR": "Minha" }, items: [{ insert: "\\heartsuit", title: { en: "Heart" } }] }];
+    return t.palettes.map((p) => p.id);
+  });
+  assert.deepEqual(ids, ["mine"]);
+  assert.deepEqual(await tabs.allTextContents(), ["Minha"]);
+  await p3.evaluate(() => (document.getElementById("b").value = ""));
+  await bar.locator('button[title="Heart"]').click();
+  assert.equal(await v3("b"), "\\heartsuit");
+});
+
+await check("Outputs alone: only the formats asked for; another field followed", async () => {
+  const out = p3.locator("#o");
+  assert.deepEqual(await out.locator("[role=tab]").allTextContents(), ["Fala", "LaTeX"]);
+  await out.locator("[role=tab]").filter({ hasText: "LaTeX" }).click();
+  assert.equal(await out.locator("pre").textContent(), "\\heartsuit");
+  await p3.evaluate(() => (document.getElementById("o").field = document.getElementById("c")));
+  await p3.waitForFunction(() => document.getElementById("o").shadowRoot.querySelector("pre")?.textContent === document.getElementById("c").value);
+  // the first field's changes no longer reach it
+  await p3.evaluate(() => (document.getElementById("b").value = "y"));
+  assert.equal(await out.locator("pre").textContent(), await v3("c"));
+});
+
+await check("Editor with some controls and languages", async () => {
+  const e = p3.locator("#e");
+  await e.locator('[data-act="undo"]').waitFor();
+  assert.equal(await e.locator('[data-act="zoomIn"]').count(), 0);
+  assert.equal(await e.locator("[data-theme]").count(), 0);
+  await e.locator(".language > button").click();
+  const options = e.locator(".language .menu [role=option]");
+  assert.deepEqual(await options.locator("span:first-child").allTextContents(), ["English", "Português (Brasil)", "xx"]);
+  await options.filter({ hasText: "Português" }).click();
+  assert.equal(await p3.evaluate(() => document.getElementById("e").getAttribute("locale")), "pt-BR");
 });
 await collect(p3);
 await alone.close();

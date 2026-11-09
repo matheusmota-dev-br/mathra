@@ -367,7 +367,11 @@ class Reader {
         this.pos++;
         this.commandName();
         out += this.src.slice(start, this.pos);
-      } else out += this.src[this.pos++];
+      } else {
+        const c = this.src[this.pos++];
+        // a letter right after a command name would join it: \alpha t is not \alphat
+        out += /\\[A-Za-z]+$/.test(out) && /[A-Za-z]/.test(c) ? ` ${c}` : c;
+      }
     }
     return out;
   }

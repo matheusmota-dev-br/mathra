@@ -129,7 +129,7 @@ export const UI = {
   noRules: { en: "No rule changed this formula, and nothing to warn about.", "pt-BR": "Nenhuma regra mudou esta fórmula, e não há avisos." },
   applied: { en: "Rules mathra applied", "pt-BR": "Regras que o mathra aplicou" },
   warnings: { en: "Warnings", "pt-BR": "Avisos" },
-  refused: { en: "mathra refused the formula (strict mode)", "pt-BR": "O mathra recusou a fórmula (modo estrito)" },
+  refused: { en: "mathra refused the formula", "pt-BR": "O mathra recusou a fórmula" },
   replay: { en: "Write it again", "pt-BR": "Escrever de novo" },
   galleryTitle: { en: "Gallery", "pt-BR": "Galeria" },
   galleryHint: { en: "mathra's gallery: choose an example to open it in the editor.", "pt-BR": "A galeria do mathra: escolha um exemplo para abri-lo no editor." },

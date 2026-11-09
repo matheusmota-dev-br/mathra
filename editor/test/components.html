@@ -12,13 +12,19 @@
 </style>
 </head>
 <body>
-<!-- the pieces used alone, for test/browser.mjs: a field with the command menu, and an inline field with a keyboard -->
+<!-- the pieces used alone, for test/browser.mjs: a field with the command menu, and an inline field with a keyboard;
+     then a palette, a toolbar of some palettes and outputs of some formats for the first field, and an editor with
+     some controls and languages -->
 <mathra-field id="b" locale="pt-BR" placeholder="Digite \ para os comandos"></mathra-field>
 <mathra-command-menu for="b"></mathra-command-menu>
 <div class="quiz">
   <div>Resposta: <mathra-field id="c" inline locale="pt-BR" aria-label="Resposta"></mathra-field> <span id="c-result"></span></div>
   <mathra-keyboard for="c"></mathra-keyboard>
 </div>
+<mathra-palette id="p" for="b" set="greek"></mathra-palette>
+<mathra-toolbar id="t" for="b" palettes="greek calculus nothing" nosearch></mathra-toolbar>
+<mathra-output id="o" for="b" formats="speech latex nothing"></mathra-output>
+<mathra-editor id="e" controls="history language" languages="en pt-BR xx" locale="en" outputs="none" style="height: 260px"></mathra-editor>
 <script type="module">
   import "/editor/dist/index.js";
   document.getElementById("c").addEventListener("input", (e) => {

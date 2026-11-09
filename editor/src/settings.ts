@@ -195,10 +195,6 @@ export class MathraSettings extends FieldClient {
       this.paint();
     }
   }
-
-  protected override attach(_field: MathraField): () => void {
-    return () => {};
-  }
 }
 
 if (typeof customElements !== "undefined" && !customElements.get("mathra-settings")) customElements.define("mathra-settings", MathraSettings);

@@ -81,7 +81,7 @@ ${BUTTON_STYLE}
 
 /** `layers="numbers letters"` picks layers that come with the editor; the `layers` property takes your own. */
 export class MathraKeyboard extends FieldClient {
-  static observedAttributes = ["locale", "layer"];
+  static observedAttributes = ["locale", "layer", "layers"];
   private _layers: KeyboardLayer[] | null = null;
   private current = "";
   private shift = false;

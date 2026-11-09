@@ -95,3 +95,41 @@ test("every gallery structure, its atoms marked, draws as it did", async () => {
   assert.deepEqual(problems, []);
   assert.ok(n >= 5, `only ${n} structures editable`);
 });
+
+test("a label set from a palette; Backspace takes its letters one by one, then the atom", () => {
+  const e = editor("\\chemfig{A-B}");
+  const s = structure(e);
+  e.selectChem(s, "atom", 1);
+  e.setChemLabel("OH");
+  assert.equal(e.toLatex(), "\\chemfig{A-OH}");
+  // a bond selected has no label to set
+  e.selectChem(s, "bond", 0);
+  e.setChemLabel("X");
+  assert.equal(e.toLatex(), "\\chemfig{A-OH}");
+  // typed on (no longer fresh): Backspace a letter at a time, then the atom with its bond
+  e.selectChem(s, "atom", 1);
+  e.typeText("CH");
+  e.backspace();
+  assert.equal(e.toLatex(), "\\chemfig{A-C}");
+  e.backspace();
+  assert.equal(e.toLatex(), "\\chemfig{A-}");
+  e.backspace();
+  assert.equal(e.toLatex(), "\\chemfig{A}");
+});
+
+test("an atom alone in a branch goes with its parentheses", () => {
+  const e = editor("\\chemfig{A(-B)-C}");
+  e.selectChem(structure(e), "atom", 1);
+  e.backspace();
+  assert.equal(e.toLatex(), "\\chemfig{A-C}");
+});
+
+test("a structure mathra cannot read stays a block, not edited in place", () => {
+  const e = new Editor();
+  e.parseChem = () => {
+    throw new Error("unreadable");
+  };
+  e.setLatex("\\chemfig{A-B}");
+  assert.equal(e.graphOf(structure(e)), null);
+  assert.equal(e.toLatex(), "\\chemfig{A-B}");
+});

@@ -55,3 +55,20 @@ test("the palette's ring-to-ring scheme: the first R picked, conditions typed in
   e.typeText("H2SO4");
   assert.equal(e.toLatex(), "\\schemestart \\chemfig{*6(-=-=(-H)-=)} \\arrow{->[HNO3][H2SO4]} \\chemfig{*6(-=-=(-R)-=)} \\schemestop");
 });
+
+test("+ from the palette in a scheme: a new structure after it, its atom picked; what a scheme cannot draw is left out", () => {
+  const e = editor("\\schemestart \\chemfig{A} \\schemestop");
+  const s = schemeOf(e);
+  e.cursor = { row: s.body, offset: 1 };
+  e.addReactionSign("+");
+  assert.equal(e.toLatex(), "\\schemestart \\chemfig{A} \\+ \\chemfig{} \\schemestop");
+  assert.equal(e.chemSelection()?.index, 0);
+  e.typeText("B");
+  assert.equal(e.toLatex(), "\\schemestart \\chemfig{A} \\+ \\chemfig{B} \\schemestop");
+  // mhchem's pieces and signs other than + have no place in chemfig's scheme
+  e.cursor = { row: s.body, offset: 3 };
+  e.insertLatex("\\ce{C}");
+  e.addReactionSign("^");
+  assert.deepEqual(s.body.children.map((p) => p.kind), ["raw", "rxtoken", "raw", "species", "rxtoken"]);
+  assert.equal(e.toLatex(), "\\schemestart \\chemfig{A} \\+ \\chemfig{B} \\schemestop");
+});

@@ -91,3 +91,61 @@ test("moving: right from a cell to the next cell, down to the cell below, out at
   e.moveRight();
   assert.equal(e.cursor.row, e.root);
 });
+
+test("Alt+left from the first column adds a column before it", () => {
+  const e = new Editor("\\begin{tikzcd} A \\end{tikzcd}");
+  const d = diagramOf(e);
+  e.setCursor({ row: d.cells[0][0], offset: 1 });
+  e.arrowFromCursor("left");
+  assert.equal(e.toLatex(), "\\begin{tikzcd}{} & A \\arrow[l]\\end{tikzcd}");
+});
+
+test("Delete at the end of a label leaves it; Backspace in a new empty diagram takes it away", () => {
+  const e = new Editor('\\begin{tikzcd} A \\arrow[r, "f"] & B \\end{tikzcd}');
+  const d = diagramOf(e);
+  e.selectArrow(d, 0);
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [d.arrows[0].label, 1]);
+  e.deleteForward();
+  assert.equal(e.cursor.row, d.cells[0][1]);
+  assert.equal(e.toLatex(), '\\begin{tikzcd}A \\arrow[r, "f"] & B\\end{tikzcd}');
+  const f = new Editor();
+  f.typeText("\\tikzcd ");
+  f.backspace();
+  assert.equal(f.toLatex(), "");
+  assert.deepEqual([f.cursor.row, f.cursor.offset], [f.root, 0]);
+});
+
+test("read back the same: amscd's arrows in every direction, braces and commands in its cells", () => {
+  const same = (latex: string) => writeDiagram(readDiagram(latex)!, (c) => c, (l) => l);
+  const back = "\\begin{CD} A @<f<g< B \\\\ @AaAbA @| \\\\ C @= D \\end{CD}";
+  assert.equal(same(back), back);
+  // leftward and upward: the first label on its own side of the way the arrow goes
+  assert.deepEqual(readDiagram(back)!.arrows.slice(0, 2).map((a) => [a.from, a.to, a.label, a.swapLabel]), [[[0, 1], [0, 0], "g", "f"], [[1, 0], [0, 0], "b", "a"]]);
+  const groups = "\\begin{CD} \\alpha @>{f_{1}}>> {B} \\\\ @. @VVV \\\\ C @. D \\end{CD}";
+  assert.equal(same(groups), groups);
+  // a group never closed: beyond what the editor reads
+  assert.equal(readDiagram("\\begin{CD} {A @>>> B \\end{CD}"), null);
+});
+
+test("read back the same: xymatrix's bends and labels of one token", () => {
+  const d = readDiagram("\\xymatrix{A \\ar@/^/[r]^\\alpha_f & B \\ar@/_/[l]}")!;
+  assert.deepEqual(d.arrows.map((a) => [a.bend, a.label, a.swapLabel]), [["left", "\\alpha", "f"], ["right", null, null]]);
+  assert.equal(writeDiagram(d, (c) => c, (l) => l), "\\xymatrix{A \\ar@/^/[r]^{\\alpha}_{f} & B \\ar@/_/[l]}");
+});
+
+test("tikz-cd: a second label on one side kept as written; options on the diagram or a bracket never closed, a block", () => {
+  const d = readDiagram('\\begin{tikzcd} A \\arrow[r, "f", "g"] & B \\end{tikzcd}')!;
+  assert.deepEqual([d.arrows[0].label, d.arrows[0].extra], ["f", ['"g"']]);
+  assert.equal(writeDiagram(d, (c) => c, (l) => l), '\\begin{tikzcd}A \\arrow[r, "f", "g"] & B\\end{tikzcd}');
+  assert.equal(readDiagram("\\begin{tikzcd}[sep=large] A \\end{tikzcd}"), null);
+  assert.equal(readDiagram("\\begin{tikzcd} A \\arrow[r & B \\end{tikzcd}"), null);
+});
+
+test("Backspace at the start of a cell goes to the cell before", () => {
+  const e = new Editor("\\begin{tikzcd} A & B \\end{tikzcd}");
+  const d = diagramOf(e);
+  e.setCursor({ row: d.cells[0][1], offset: 0 });
+  e.backspace();
+  assert.deepEqual([e.cursor.row, e.cursor.offset], [d.cells[0][0], 1]);
+  assert.equal(e.toLatex(), "\\begin{tikzcd}A & B\\end{tikzcd}");
+});

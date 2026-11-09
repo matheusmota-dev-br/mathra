@@ -355,7 +355,7 @@ export class MathraField extends HTMLElement {
     return this.plain;
   }
 
-  /** Why mathra refused the formula, in strict mode; null otherwise. */
+  /** Why mathra refused the formula (in strict mode, or nested too deep); null otherwise. */
   get error(): string | null {
     return this.refusal;
   }
@@ -528,23 +528,30 @@ export class MathraField extends HTMLElement {
     const t0 = performance.now();
     const locale = this.locale;
     this.editor.decimalComma = decimalComma(locale);
-    const r = render(this.editor.toLatex({ marked: true }), this.drawingOptions);
-    const t1 = performance.now();
-    this.drawing.innerHTML = r.svg;
-    // the field's description carries the speech: the drawing itself is hidden from screen readers
-    this.drawing.querySelector("svg")?.setAttribute("aria-hidden", "true");
-    this.boxes = boxesById(r.boxes as Box[]);
-    // a diagram's empty cells have no mark (any changes tikz-cd's layout): a second drawing, with
-    // them marked, says where they are, near enough to place them
-    if (this.editor.hasEmptyDiagramCells()) {
-      try {
-        const probe = boxesById(render(this.editor.toLatex({ marked: true, probeEmptyCells: true }), this.drawingOptions).boxes as Box[]);
-        for (const [id, b] of probe) if (b.attributes["data-empty"] && !this.boxes.has(id)) this.boxes.set(id, { ...b, x: b.x - 250, y: b.y - 500, width: 500, height: 700 });
-      } catch {
-        // without it, the cells are placed by their neighbours
-      }
+    let r: Result | null = null;
+    try {
+      r = render(this.editor.toLatex({ marked: true }), this.drawingOptions);
+    } catch {
+      // mathra refuses the formula with its marks (nested too deep for them): the last drawing stays
     }
-    for (const g of this.drawing.querySelectorAll("g[data-empty]")) g.setAttribute("part", "slot");
+    const t1 = performance.now();
+    if (r) {
+      this.drawing.innerHTML = r.svg;
+      // the field's description carries the speech: the drawing itself is hidden from screen readers
+      this.drawing.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      this.boxes = boxesById(r.boxes as Box[]);
+      // a diagram's empty cells have no mark (any changes tikz-cd's layout): a second drawing, with
+      // them marked, says where they are, near enough to place them
+      if (this.editor.hasEmptyDiagramCells()) {
+        try {
+          const probe = boxesById(render(this.editor.toLatex({ marked: true, probeEmptyCells: true }), this.drawingOptions).boxes as Box[]);
+          for (const [id, b] of probe) if (b.attributes["data-empty"] && !this.boxes.has(id)) this.boxes.set(id, { ...b, x: b.x - 250, y: b.y - 500, width: 500, height: 700 });
+        } catch {
+          // without it, the cells are placed by their neighbours
+        }
+      }
+      for (const g of this.drawing.querySelectorAll("g[data-empty]")) g.setAttribute("part", "slot");
+    }
     // the plain formula: its speech (marks would make mathra read b² as "b to the power of 2") and the outputs
     const plain = this.editor.toLatex();
     this.refusal = null;
@@ -1118,7 +1125,7 @@ export class MathraField extends HTMLElement {
     if (e.key === "Escape") {
       // leave a command being typed, a structure, else the selection
       if (this.editor.chemSelection()) this.editor.clearChem();
-      else if (this.editor.commandBeingTyped()) this.editor.backspace();
+      else if (this.editor.commandBeingTyped()) this.editor.completeCommand("");
       else if (this.editor.anchor) this.editor.setCursor(this.editor.cursor);
     }
     // printable characters arrive through `input`, which also covers phones and dead keys
