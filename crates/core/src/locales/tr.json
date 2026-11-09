@@ -79,6 +79,7 @@
   "chem.charge": "yük {0}",
   "chem.over": "okun üstünde {0}",
   "chem.under": "okun altında {0}",
+  "chem.bond_between": "{0} ile {1} arasındaki bağ",
   "chem.bond_dashed": "kesikli çizgi bağı",
   "chem.bond_dashed_over_single": "bir çizginin üstünde kesikli çizgi bağı",
   "chem.bond_dashed_over_double": "iki çizginin üstünde kesikli çizgi bağı",

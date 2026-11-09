@@ -76,6 +76,7 @@
   "chem.charge": "电荷 {0}",
   "chem.over": "箭头上方 {0}",
   "chem.under": "箭头下方 {0}",
+  "chem.bond_between": "{0} 与 {1} 之间的键",
   "chem.bond_dashed": "键：虚线",
   "chem.bond_dashed_over_single": "键：一条实线上方的虚线",
   "chem.bond_dashed_over_double": "键：两条实线上方的虚线",

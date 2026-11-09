@@ -347,3 +347,87 @@ fn an_aromatic_circle_can_be_an_arc() {
     assert_ne!(strict(r"\chemfig{**[30,330]5(-----)}").svg, strict(r"\chemfig{**5(-----)}").svg);
     assert_eq!(strict(r"\chemfig{**[30,330]5(-----)}").text, strict(r"\chemfig{**5(-----)}").text);
 }
+
+#[test]
+fn a_mechanism_arrow_can_point_at_a_bond() {
+    // chemfig manual, section 5.8.1: @{name,coeff} at the start of a bond's first field puts a node on
+    // the bond, coeff of the way along it (0.5 by default); the rest of the field is the angle
+    let m = molecule("@{a1}=_[@{db}::30]-[@{sb,0.25}::-60]@{dnl}X");
+    let hooks: Vec<_> = m.bonds.iter().map(|b| b.hook.clone()).collect();
+    assert_eq!(hooks, [Some(("db".to_string(), 0.5)), Some(("sb".to_string(), 0.25))]);
+    assert_eq!((m.bonds[0].angle, m.bonds[1].angle), (30.0, -30.0));
+    // the manual's "Effet mésomère" draws both arrows, with no warning, and says what they join
+    let tex = r"\chemfig{@{a1}=_[@{db}::30]-[@{sb}::-60]@{dnl}\charge{90=\|}{X}} \chemmove[->]{\draw(db)..controls +(100:5mm) and +(145:5mm)..(a1); \draw(dnl)..controls +(90:4mm) and +(45:4mm)..(sb);}";
+    let out = strict(tex);
+    assert!(out.speech.contains("from the bond between C and C to a1"), "{}", out.speech);
+    assert!(out.speech.contains("from X to the bond between C and X"), "{}", out.speech);
+    let pt = convert(tex, &Options { locale: "pt-BR".parse().unwrap(), strict: true, ..Default::default() }).unwrap();
+    assert!(pt.speech.contains("vai de ligação entre C e C para a1"), "{}", pt.speech);
+    // a bond's node in an angle field written without a comma, as the manual does: [@{b1}6]
+    let m = molecule("A-[@{b1}6]B");
+    assert_eq!((m.bonds[0].hook.as_ref().map(|h| h.0.as_str()), m.bonds[0].angle), (Some("b1"), -90.0));
+}
+
+#[test]
+fn definesubmol_stands_for_its_code() {
+    // chemfig manual, section 9, its examples one by one
+    assert_eq!(strict(r"\definesubmol{xy}{CH_2} \chemfig{H_3C-!{xy}-!{xy}-!{xy}-CH_3}").text, "C₅H₁₂");
+    assert_eq!(strict(r"\definesubmol\xx{C(-[::+90]H)(-[::-90]H)} \chemfig{[:15]H-!\xx-!\xx-!\xx-!\xx-H}").text, "C₄H₁₀");
+    // a dual alias: [code1] when the bond comes from the right, so the carbon is next to the ring
+    let tex = r"\definesubmol\Me[H_3C]{CH_3} \chemfig{*6((-!\Me)=(-!\Me)-(-!\Me)=(-!\Me)-(-!\Me)=(-!\Me)-)}";
+    let labels: Vec<String> = scheme_of(strict(tex).tree.single())
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            Item::Compound(c) => match &c.body {
+                Body::Structure(m) => Some(m.atoms.iter().filter(|a| !a.label.is_empty()).map(|a| a.label.clone()).collect::<Vec<_>>()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(labels.iter().filter(|l| *l == "H_3C").count(), 3, "{labels:?}");
+    assert_eq!(labels.iter().filter(|l| *l == "CH_3").count(), 3, "{labels:?}");
+    // arguments, #1…#n; an argument after a control word stays a token of its own
+    let m = molecule_after(r"\definesubmol\X1{-[,-0.2,,,draw=none]{\scriptstyle#1}}", r"*6((!\X A)-(!\X B)-(!\X C)-(!\X D)-(!\X E)-(!\X F)-)");
+    assert!(m.atoms.iter().any(|a| a.label == r"{\scriptstyle A}"), "{:?}", m.atoms.iter().map(|a| &a.label).collect::<Vec<_>>());
+    // any other # is drawn as it is, and #( is a bond's spacing
+    let m = molecule_after(r"\definesubmol\X2{#1-#2-#3-#(3pt,3pt)#4}", "A-!\\X{M}{N}-B");
+    assert_eq!(m.atoms.iter().map(|a| a.label.as_str()).collect::<Vec<_>>(), ["A", "M", "N", r"\#3", r"\#4", "B"]);
+    assert_eq!(m.bonds[3].start_gap, Some(0.3));
+    // an alias from a single character, as the manual's adrenaline uses for invisible bonds
+    assert!(strict(r"\definesubmol{&}{-[,,,,draw=none]} \chemfig{*6((-HO)-=*6(!&!&HN---)-=-(-HO)=)}").warnings.is_empty());
+    // an unknown name warns and is left out; a submolecule that calls itself stops, with a warning
+    let out = warns(r"\chemfig{A-!{nope}B}", "E-REC-1");
+    assert!(out.tree.to_json().contains("!{nope}"), "the label keeps what was written");
+    warns(r"\definesubmol{a}{-!a} \chemfig{A!a}", "E-REC-1");
+}
+
+/// The structure of `\chemfig{body}` after `defs` in the same input.
+fn molecule_after(defs: &str, body: &str) -> Molecule {
+    let out = strict(&format!("{defs} \\chemfig{{{body}}}"));
+    match &scheme_of(out.tree.single()).items[0] {
+        Item::Compound(c) => match &c.body {
+            Body::Structure(m) => m.clone(),
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn an_arrow_can_move_the_compound_it_brings() {
+    // chemfig manual, section 6.6: \arrow(--name[yshift=5mm]) moves the compound after the arrow
+    let arrow = |tex: &str| scheme_of(strict(tex).tree.single()).items.iter().find_map(|i| if let Item::Arrow(a) = i { Some(a.clone()) } else { None }).unwrap();
+    assert_eq!(arrow(r"\schemestart A\arrow(--foo[yshift=5mm])B\schemestop").shift, Some((0.0, 5.0 * 0.2845)));
+    assert_eq!(arrow(r"\schemestart A\arrow(--[xshift=1em,yshift=-10pt])B\schemestop").shift, Some((1.0, -1.0)));
+    assert_eq!(arrow(r"\schemestart A\arrow B\schemestop").shift, None);
+    // B is higher, and the arrow goes up to it
+    let height = |tex: &str| mathra::typeset(tex, &Options::default()).unwrap().0.height;
+    assert!(height(r"\schemestart A\arrow(--foo[yshift=5mm])B\schemestop") > height(r"\schemestart A\arrow B\schemestop"));
+    // what mathra does not draw (colors, fill) still warns, alone
+    let out = warns(r"\schemestart A\arrow([red]--[fill=blue,yshift=2pt])B\schemestop", "E-REC-9");
+    assert!(out.warnings.iter().any(|w| w.description.contains("compound style [fill=blue]")), "{:?}", out.warnings);
+    assert!(!out.warnings.iter().any(|w| w.description.contains("yshift")), "{:?}", out.warnings);
+}

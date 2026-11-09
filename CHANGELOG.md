@@ -10,6 +10,7 @@ What the measured formulas still asked for: commands inside real formulas, and c
 
 - **Inside real formulas.** `\setlength{\arraycolsep}{…}` spaces the columns of the arrays and matrices after it; `\lefteqn` overlaps to the right in display style, as in `eqnarray`; `\linebreak[n]` is a break hint, as `\allowbreak`, and amsthm's `\qedhere` draws nothing, since an equation converted alone is not a proof. Measured on the 174,525 formulas: 39 more convert with no warning (the Stacks Project's `\linebreak[0]`, arXiv's `\qedhere` and `\arraycolsep`), and none is drawn worse.
 - **chemfig as its manual writes it.** A branch may start with defaults of its own, `B([:60]-D-E)`, `([::-30,1.5]-X-Y)`, valid in all of it; `-#(d1,d2)` (or `\#`, `\CFhash`) sets the space a bond leaves before the letters; `**[30,330]5(…)` draws the aromatic circle as an arc, dashed when its TikZ options say so. 17 more examples of the chemfig manual convert with no warning, and none is drawn worse.
+- **Mechanisms and submolecules.** A curved arrow of `\chemmove` can point at a bond, `-[@{db,0.5}::30]`, and is read as the bond between its atoms; `\definesubmol` (with arguments and the dual `[code1]{code2}`) and `!{name}`; `\arrow(--name[yshift=5mm])` moves the compound it brings. An unknown `!{name}` is drawn as written, as before, now with a warning that its definition is missing.
 
 Equations: `\setlength{\arraycolsep}{2pt} \left[ \begin{array}{c|ccc} 0 & 1 & 1 & 2 \\ \hline 1 & 0 & 2 & 1 \end{array} \right]` `\chemfig{A-B([1]-X([4]-Z)-Y)(-[7]D)-C} \quad \chemfig{**[30,330]5(-----)}`
 

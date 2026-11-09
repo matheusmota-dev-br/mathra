@@ -123,6 +123,7 @@
   "chem.charge": "carga {0}",
   "chem.over": "{0} sobre la flecha",
   "chem.under": "{0} bajo la flecha",
+  "chem.bond_between": "enlace entre {0} y {1}",
   "chem.bond_dashed": "enlace de una línea discontinua",
   "chem.bond_dashed_over_single": "enlace de una línea discontinua sobre una línea",
   "chem.bond_dashed_over_double": "enlace de una línea discontinua sobre dos líneas",

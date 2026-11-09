@@ -102,7 +102,7 @@ fn arrow_key(kind: ArrowKind) -> &'static str {
 }
 
 /// The name a mechanism arrow's end is read by: the hooked atom's label, or the hook's name.
-fn hook_name(s: &Scheme, hook: &str) -> String {
+fn hook_name(s: &Scheme, hook: &str, loc: Locale) -> String {
     for item in &s.items {
         if let Item::Compound(Compound { body: Body::Structure(m), .. }) = item {
             if let Some(a) = m.atoms.iter().find(|a| a.hook.as_deref() == Some(hook)) {
@@ -110,6 +110,18 @@ fn hook_name(s: &Scheme, hook: &str) -> String {
                 if !label.is_empty() {
                     return math_text(&format!("\\mathrm{{{label}}}"), Locale::En);
                 }
+            }
+            // a node on a bond: the bond, by the atoms it joins (a vertex with no label is a carbon)
+            if let Some(b) = m.bonds.iter().find(|b| b.hook.as_ref().is_some_and(|h| h.0 == hook)) {
+                let atom = |id: usize| {
+                    let label = m.atoms[id].label.trim();
+                    if label.is_empty() {
+                        "C".to_string()
+                    } else {
+                        math_text(&format!("\\mathrm{{{label}}}"), Locale::En)
+                    }
+                };
+                return fill(phrase(loc, "bond_between"), &[&atom(b.from), &atom(b.to)]);
             }
         }
     }
@@ -164,7 +176,7 @@ pub fn speak(s: &Scheme, loc: Locale) -> String {
     for m in &s.moves {
         let key = if m.single { "move_single" } else { "move" };
         speech.push_str("; ");
-        speech.push_str(&fill(phrase(loc, key), &[&hook_name(s, &m.from), &hook_name(s, &m.to)]));
+        speech.push_str(&fill(phrase(loc, key), &[&hook_name(s, &m.from, loc), &hook_name(s, &m.to, loc)]));
     }
     speech
 }

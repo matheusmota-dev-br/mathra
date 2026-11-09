@@ -113,6 +113,9 @@ struct Macros {
     json_text: Option<bool>,
     /// `\setlength{\arraycolsep}{…}`, in em, for the arrays and matrices after it.
     array_colsep: Option<f32>,
+    /// chemfig's `\definesubmol`s, for the structures after them.
+    #[cfg(feature = "chem")]
+    submols: crate::chem::model::Submols,
 }
 
 #[derive(Clone)]
@@ -4935,6 +4938,29 @@ impl Reader<'_> {
                 let open = self.raw_text()?;
                 let close = self.raw_text()?;
                 self.macros.environments.insert(target, (open, close));
+                Ok(true)
+            }
+            // chemfig, manual section 9: a submolecule `!{name}` stands for in the structures after it
+            #[cfg(feature = "chem")]
+            "definesubmol" | "redefinesubmol" => {
+                self.skip_spaces();
+                let target = if self.current() == Some('\\') {
+                    self.pos += 1;
+                    format!("\\{}", self.read_command_name())
+                } else {
+                    self.raw_text()?.trim().to_string()
+                };
+                self.skip_spaces();
+                let arguments = match self.current().and_then(|d| d.to_digit(10)) {
+                    Some(n) => {
+                        self.pos += 1;
+                        n as usize
+                    }
+                    None => 0,
+                };
+                let right = self.raw_optional();
+                let code = self.raw_text()?;
+                self.macros.submols.insert(target, crate::chem::model::Submol { arguments, right, code });
                 Ok(true)
             }
             // xcolor: a color for the rest of the input, as \newcommand defines a macro

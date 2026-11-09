@@ -76,6 +76,7 @@
   "chem.charge": "आवेश {0}",
   "chem.over": "तीर के ऊपर {0}",
   "chem.under": "तीर के नीचे {0}",
+  "chem.bond_between": "{0} और {1} के बीच का बंध",
   "chem.bond_dashed": "बंध: एक डैश रेखा",
   "chem.bond_dashed_over_single": "बंध: एक रेखा के ऊपर एक डैश रेखा",
   "chem.bond_dashed_over_double": "बंध: दो रेखाओं के ऊपर एक डैश रेखा",

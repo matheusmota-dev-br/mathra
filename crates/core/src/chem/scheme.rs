@@ -16,6 +16,8 @@ pub struct Reader<'w> {
     pub strict: bool,
     pub registry: &'w mut Registry,
     pub column: usize,
+    /// The `\definesubmol`s the input made before this construction.
+    pub submols: &'w Submols,
 }
 
 impl Reader<'_> {
@@ -112,6 +114,9 @@ pub fn split_top(s: &str, sep: char) -> Vec<String> {
     parts
 }
 
+/// A compound named in an arrow: its name, its anchor's angle, and its move in em.
+type NodeSpec = (String, Option<f32>, Option<(f32, f32)>);
+
 /// Reads a scheme, or a single `\chemfig{…}`, as the LaTeX reader found it.
 pub fn read(src: &str, reader: &mut Reader) -> R<Scheme> {
     let mut s = SchemeReader { c: src.trim().chars().collect(), pos: 0, reader, scheme: Scheme { items: vec![], moves: vec![] }, names: vec![], arrows: (0.0, 1.0), boxes: vec![] };
@@ -125,7 +130,7 @@ pub fn read(src: &str, reader: &mut Reader) -> R<Scheme> {
             Item::Compound(Compound { body: Body::Structure(m), .. }) => Some(m),
             _ => None,
         })
-        .flat_map(|m| m.atoms.iter().filter_map(|a| a.hook.clone()))
+        .flat_map(|m| m.atoms.iter().filter_map(|a| a.hook.clone()).chain(m.bonds.iter().filter_map(|b| b.hook.as_ref().map(|h| h.0.clone()))))
         .collect();
     let mut kept = Vec::new();
     for m in std::mem::take(&mut scheme.moves) {
@@ -453,20 +458,41 @@ impl SchemeReader<'_, '_> {
         None
     }
 
-    /// `name.anchor[style]` (chemfig manual, sections 6.4 to 6.6) as the name and the anchor's angle, when
-    /// it is one. A named anchor (`mid east`) is left to mathra, whose arrows meet the border facing them;
-    /// a style, which mathra does not draw, warns.
-    fn node_spec(&mut self, spec: &str) -> R<(String, Option<f32>)> {
+    /// `name.anchor[style]` (chemfig manual, sections 6.4 to 6.6) as the name, the anchor's angle when it
+    /// is one, and the compound's move (`xshift`, `yshift`, in em). A named anchor (`mid east`) is left to
+    /// mathra, whose arrows meet the border facing them; the rest of a style (colors, fill, delimiters),
+    /// which mathra does not draw, warns.
+    fn node_spec(&mut self, spec: &str) -> R<NodeSpec> {
         let (spec, style) = match spec.split_once('[') {
             Some((s, style)) => (s, style.trim_end_matches(']').trim()),
             None => (spec, ""),
         };
         let (name, anchor) = spec.split_once('.').map_or((spec.trim(), ""), |(n, a)| (n.trim(), a.trim()));
         let angle = anchor.parse::<f32>().ok().filter(|a| a.is_finite());
-        if !style.is_empty() {
-            self.reader.tolerate(rules::E_REC_9, format!("compound style [{style}]"), "ignored")?;
+        let mut shift: Option<(f32, f32)> = None;
+        let mut rest = Vec::new();
+        let keys = split_top(style, ',');
+        for key in keys.iter().map(|k| k.trim()).filter(|k| !k.is_empty()) {
+            let moved = key.split_once('=').and_then(|(k, v)| {
+                let em = chemfig::dimension_em(v)?;
+                match k.trim() {
+                    "xshift" => Some((em, 0.0)),
+                    "yshift" => Some((0.0, em)),
+                    _ => None,
+                }
+            });
+            match moved {
+                Some((x, y)) => {
+                    let s = shift.get_or_insert((0.0, 0.0));
+                    *s = (s.0 + x, s.1 + y);
+                }
+                None => rest.push(key),
+            }
         }
-        Ok((name.to_string(), angle))
+        if !rest.is_empty() {
+            self.reader.tolerate(rules::E_REC_9, format!("compound style [{}]", rest.join(",")), "ignored")?;
+        }
+        Ok((name.to_string(), angle, shift))
     }
 
     /// chemfig's `\merge` (manual, section 6.11): `\merge>[above][below](n1.a1)(n2)…--(n.a[style])[c1,c2,c,style]`,
@@ -501,7 +527,10 @@ impl SchemeReader<'_, '_> {
             match self.current() {
                 Some('(') => {
                     let spec = self.group('(', ')')?;
-                    let (name, anchor) = self.node_spec(&spec)?;
+                    let (name, anchor, shift) = self.node_spec(&spec)?;
+                    if shift.is_some() {
+                        self.reader.tolerate(rules::E_REC_9, format!("\\merge: a move of {name}"), "ignored")?;
+                    }
                     match self.named(&name) {
                         Some(k) => from.push((k, anchor)),
                         None => self.reader.tolerate(rules::E_REC_9, format!("\\merge: no compound is named {name}"), "its line left out")?,
@@ -512,7 +541,11 @@ impl SchemeReader<'_, '_> {
                     self.skip_spaces();
                     if self.current() == Some('(') {
                         let spec = self.group('(', ')')?;
-                        next = Some(self.node_spec(&spec)?);
+                        let (name, anchor, shift) = self.node_spec(&spec)?;
+                        if shift.is_some() {
+                            self.reader.tolerate(rules::E_REC_9, format!("\\merge: a move of {name}"), "ignored")?;
+                        }
+                        next = Some((name, anchor));
                     }
                     break;
                 }
@@ -568,11 +601,16 @@ impl SchemeReader<'_, '_> {
     fn arrow(&mut self) -> R<()> {
         self.skip_spaces();
         let (mut from, mut to) = (None, None);
+        let mut shift = None;
         if self.current() == Some('(') {
             let names = self.group('(', ')')?;
             let (before, after) = names.split_once("--").unwrap_or((&names, ""));
-            let (before, _) = self.node_spec(before)?;
-            let (after, _) = self.node_spec(after)?;
+            let (before, _, moved) = self.node_spec(before)?;
+            if moved.is_some() {
+                self.reader.tolerate(rules::E_REC_9, "a move of the compound before an arrow", "ignored")?;
+            }
+            let (after, _, moved) = self.node_spec(after)?;
+            shift = moved;
             let count = self.compounds();
             if let Some(start) = before.strip_prefix('@') {
                 // section 6.7: the arrow branches from that compound
@@ -661,7 +699,7 @@ impl SchemeReader<'_, '_> {
                 length = l;
             }
         }
-        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc, from, to }));
+        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc, from, to, shift }));
         Ok(())
     }
 

@@ -126,6 +126,7 @@
   "chem.charge": "carica {0}",
   "chem.over": "{0} sopra la freccia",
   "chem.under": "{0} sotto la freccia",
+  "chem.bond_between": "legame tra {0} e {1}",
   "chem.bond_dashed": "legame di una linea tratteggiata",
   "chem.bond_dashed_over_single": "legame di una linea tratteggiata sopra una linea",
   "chem.bond_dashed_over_double": "legame di una linea tratteggiata sopra due linee",

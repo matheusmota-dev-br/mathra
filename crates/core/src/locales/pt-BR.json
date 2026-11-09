@@ -127,6 +127,7 @@
   "chem.charge": "carga {0}",
   "chem.over": "{0} sobre a seta",
   "chem.under": "{0} sob a seta",
+  "chem.bond_between": "ligação entre {0} e {1}",
   "chem.bond_dashed": "ligação de uma linha tracejada",
   "chem.bond_dashed_over_single": "ligação de uma linha tracejada sobre uma linha",
   "chem.bond_dashed_over_double": "ligação de uma linha tracejada sobre duas linhas",

@@ -76,6 +76,7 @@
   "chem.charge": "الشحنة {0}",
   "chem.over": "{0} فوق السهم",
   "chem.under": "{0} تحت السهم",
+  "chem.bond_between": "الرابطة بين {0} و{1}",
   "chem.bond_dashed": "رابطة: خط متقطع",
   "chem.bond_dashed_over_single": "رابطة: خط متقطع فوق خط",
   "chem.bond_dashed_over_double": "رابطة: خط متقطع فوق خطين",

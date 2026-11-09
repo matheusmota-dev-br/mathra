@@ -37,6 +37,10 @@ struct Mol<'r, 'w> {
     defaults: Defaults,
     /// What the label being read asks of its atom, given to it once its bond is drawn.
     pending: Pending,
+    /// The direction of the bond reaching the atom being read: picks a dual submolecule's code.
+    arriving: Option<f32>,
+    /// Submolecules expanded so far: a submolecule that calls itself stops at a limit.
+    expansions: usize,
 }
 
 /// chemfig manual, section 2.6: the values a bond takes for the fields it leaves empty, which a
@@ -77,6 +81,8 @@ pub fn molecule(src: &str, reader: &mut Reader) -> R<Molecule> {
         hook: None,
         defaults: Defaults::default(),
         pending: Pending::default(),
+        arriving: None,
+        expansions: 0,
     };
     p.skip_spaces();
     if p.current() == Some('[') {
@@ -114,8 +120,25 @@ fn defaults_from(args: &[String], previous: f32, inherited: &Defaults) -> Defaul
     }
 }
 
+/// `@{name,coeff}` at the start of a bond's first field (chemfig manual, section 5.8.1): the node's
+/// name and where it sits along the bond (0.5 by default), and what is left of the field, the angle.
+fn bond_hook(field: &str) -> (Option<(String, f32)>, &str) {
+    let Some(rest) = field.strip_prefix("@{") else { return (None, field) };
+    let Some(close) = rest.find('}') else { return (None, field) };
+    let (spec, angle) = (&rest[..close], &rest[close + 1..]);
+    let (name, coeff) = spec.split_once(',').map_or((spec, None), |(n, c)| (n, c.trim().parse::<f32>().ok()));
+    let coeff = coeff.filter(|c| c.is_finite()).map_or(0.5, |c| c.clamp(0.0, 1.0));
+    (Some((name.trim().to_string(), coeff)), angle.trim())
+}
+
+/// Whether `text` ends with a control word, `\\name`: a letter after it would join its name.
+fn ends_with_control_word(text: &str) -> bool {
+    let letters = text.chars().rev().take_while(char::is_ascii_alphabetic).count();
+    letters > 0 && text.chars().rev().nth(letters) == Some('\\') && text.chars().rev().nth(letters + 1) != Some('\\')
+}
+
 /// A TeX dimension in em (`2pt`, `0.5em`, `1mm`), as chemfig's `#(…)` takes them; 10pt is an em.
-fn dimension_em(s: &str) -> Option<f32> {
+pub(super) fn dimension_em(s: &str) -> Option<f32> {
     let s = s.trim();
     let units = [("pt", 0.1), ("bp", 0.1004), ("em", 1.0), ("ex", 0.45), ("mm", 0.2845), ("cm", 2.845), ("in", 7.227)];
     units.iter().find_map(|(u, f)| s.strip_suffix(u).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite()).map(|v| v * f))
@@ -176,6 +199,11 @@ impl Mol<'_, '_> {
             let Some(ch) = self.current() else { break };
             match ch {
                 ')' => break,
+                '!' => {
+                    self.arriving = None;
+                    // an unknown one at the start of a branch has no label to stay in: it is left out
+                    self.submolecule()?;
+                }
                 '(' => {
                     let mut default = self.bisector.get(&cur).copied().unwrap_or(self.defaults.angle.unwrap_or(angle));
                     self.pos += 1;
@@ -234,7 +262,8 @@ impl Mol<'_, '_> {
                 }
                 c if is_bond_start(c) => {
                     let (kind, gaps, args) = self.bond_spec()?;
-                    let written = args.first().map(|a| a.trim()).unwrap_or("");
+                    // a node on the bond, before its angle: [@{name,coeff}angle,…]
+                    let (bond_hook, written) = bond_hook(args.first().map(|a| a.trim()).unwrap_or(""));
                     let mut bond_angle = match default_angle {
                         Some(d) if written.is_empty() => d,
                         _ => resolve_angle(written, angle),
@@ -285,7 +314,19 @@ impl Mol<'_, '_> {
                         },
                     };
                     let arrival = if target.is_some() { explicit(3).unwrap_or(self.m.atoms[to].anchor) } else { self.m.atoms[to].anchor };
-                    self.add_bond(Bond { from: cur, to, kind, angle: normalize(bond_angle), length, departure, arrival, ring: ring_id, start_gap: gaps.0, end_gap: gaps.1 });
+                    self.add_bond(Bond {
+                        from: cur,
+                        to,
+                        kind,
+                        angle: normalize(bond_angle),
+                        length,
+                        departure,
+                        arrival,
+                        ring: ring_id,
+                        start_gap: gaps.0,
+                        end_gap: gaps.1,
+                        hook: bond_hook,
+                    });
                     self.attach(to)?;
                     if let Some(r) = ring {
                         if target.is_none() && !self.m.rings[r.id].atoms.contains(&to) {
@@ -405,10 +446,106 @@ impl Mol<'_, '_> {
                 let link = parts.get(1).map(String::as_str).unwrap_or("");
                 let tikz = parts.get(2..).map(|t| t.join(",")).unwrap_or_default();
                 let kind = tikz_kind(&tikz, hook_kind(link));
-                self.add_bond(Bond { from: other, to: at, kind, angle: 0.0, length: 1.0, departure: other_piece, arrival: piece, ring: None, start_gap: None, end_gap: None });
+                self.add_bond(Bond {
+                    from: other,
+                    to: at,
+                    kind,
+                    angle: 0.0,
+                    length: 1.0,
+                    departure: other_piece,
+                    arrival: piece,
+                    ring: None,
+                    start_gap: None,
+                    end_gap: None,
+                    hook: None,
+                });
             }
         }
         Ok(())
+    }
+
+    /// `!{name}`, `!\name` or `!x` with its arguments (chemfig manual, section 9), the current character
+    /// being `!`: replaced in the input by the submolecule's code, as chemfig expands it. An unknown name
+    /// warns (E-REC-1) and returns what was written, for a label to keep as it is.
+    fn submolecule(&mut self) -> R<Option<String>> {
+        let start = self.pos;
+        self.pos += 1;
+        let name = match self.current() {
+            Some('{') => self.group('{', '}')?.trim().to_string(),
+            Some('\\') => {
+                let mut n = String::from('\\');
+                self.pos += 1;
+                while let Some(ch) = self.current().filter(char::is_ascii_alphabetic) {
+                    n.push(ch);
+                    self.pos += 1;
+                }
+                n
+            }
+            Some(ch) => {
+                self.pos += 1;
+                ch.to_string()
+            }
+            None => String::new(),
+        };
+        let Some(sub) = self.reader.submols.get(&name).cloned() else {
+            self.reader.tolerate(rules::E_REC_1, format!("unknown submolecule !{{{name}}} (\\definesubmol defines one)"), "written as it is")?;
+            return Ok(Some(self.c[start..self.pos].iter().collect()));
+        };
+        self.expansions += 1;
+        if self.expansions > 200 {
+            self.reader.tolerate(rules::E_REC_1, format!("submolecule !{{{name}}} expanded more than 200 times: does it call itself?"), "left out")?;
+            return Ok(None);
+        }
+        let mut args = Vec::new();
+        for _ in 0..sub.arguments {
+            self.skip_spaces();
+            args.push(match self.current() {
+                Some('{') => self.group('{', '}')?,
+                Some(ch) => {
+                    self.pos += 1;
+                    ch.to_string()
+                }
+                None => String::new(),
+            });
+        }
+        // the code for a bond that comes from the right, when there is one: seen from the submolecule,
+        // the bond goes back strictly between −90° and 90° (it is drawn leftward), as `\definesubmol\Me[H_3C]{CH_3}`
+        // puts the carbon next to whatever it hangs from
+        let from_right = self.arriving.is_some_and(|a| normalize(a).abs() > 90.0);
+        let code = match (&sub.right, from_right) {
+            (Some(right), true) => right.clone(),
+            _ => sub.code.clone(),
+        };
+        // #1…#n are the arguments; any other # stays (a #(…) bond spacing, or a # drawn as it is)
+        let mut text = String::new();
+        let chars: Vec<char> = code.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            match (chars[i], chars.get(i + 1).and_then(|d| d.to_digit(10))) {
+                ('#', Some(k)) if k >= 1 && (k as usize) <= sub.arguments => {
+                    // an argument is tokens of its own: after a control word it does not lengthen its name
+                    let arg = &args[k as usize - 1];
+                    if ends_with_control_word(&text) && arg.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                        text.push(' ');
+                    }
+                    text.push_str(arg);
+                    i += 2;
+                }
+                // any other #n is drawn as it is (the manual's "#3"); #( stays a bond's spacing
+                ('#', Some(_)) => {
+                    text.push_str("\\#");
+                    i += 1;
+                }
+                (ch, _) => {
+                    text.push(ch);
+                    i += 1;
+                }
+            }
+        }
+        let end = self.pos;
+        self.c.splice(start..end, text.chars());
+        self.pos = start;
+        Ok(None)
     }
 
     /// Gives an atom what its label asked for: its charges, `\chemskipalign`, and its `?` marks, once
@@ -506,6 +643,7 @@ impl Mol<'_, '_> {
     /// Reads an atom label (possibly empty) and creates the atom. `arriving`: the direction of the bond
     /// that reaches it, which picks the piece it attaches to.
     fn atom(&mut self, arriving: Option<f32>, explicit: Option<usize>) -> R<AtomId> {
+        self.arriving = arriving;
         let (label, lewis) = self.label()?;
         let pieces = pieces(&label);
         let anchor = match explicit {
@@ -524,6 +662,12 @@ impl Mol<'_, '_> {
         while let Some(ch) = self.current() {
             match ch {
                 c if c.is_whitespace() => self.pos += 1,
+                // a submolecule, at the start of a label or inside it: its code is read in its place
+                '!' => {
+                    if let Some(written) = self.submolecule()? {
+                        s.push_str(&written);
+                    }
+                }
                 '@' => {
                     self.pos += 1;
                     if self.current() == Some('{') {
