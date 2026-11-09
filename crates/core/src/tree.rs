@@ -120,6 +120,11 @@ pub enum Node {
         /// `\arraystretch`: how much taller each row's strut is (1 by default).
         #[serde(skip_serializing_if = "is_one")]
         stretch: f32,
+        /// `\arraycolsep`: half the space between two columns of an array or a matrix, in thousandths of
+        /// an em (500, 5pt, by default; `\setlength{\arraycolsep}{…}` changes it). A `u16` keeps the node
+        /// at 176 bytes; the JSON writes it in em.
+        #[serde(skip_serializing_if = "is_default_colsep", serialize_with = "milli_em")]
+        colsep: u16,
     },
     /// Accent over the base: hat, bar, vector, tilde, dot. `below`: under the base (`\underrightarrow`).
     Accent {
@@ -467,6 +472,14 @@ pub struct TableRule {
 
 fn is_one(v: &f32) -> bool {
     *v == 1.0
+}
+
+fn is_default_colsep(v: &u16) -> bool {
+    *v == 500
+}
+
+fn milli_em<S: serde::Serializer>(v: &u16, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_f32(f32::from(*v) / 1000.0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]

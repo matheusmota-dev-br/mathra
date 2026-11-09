@@ -951,7 +951,18 @@ fn multicolumn_outside_table_is_just_content() {
 }
 
 fn table(rows: Vec<Vec<Node>>, verticals: Vec<usize>, between: Vec<(usize, Node)>) -> Node {
-    Node::Table { shape: mathra::tree::TableKind::Array, rows, columns: vec!['c', 'c'], verticals, dashed: vec![], horizontals: vec![], between, intertexts: vec![], stretch: 1.0 }
+    Node::Table {
+        shape: mathra::tree::TableKind::Array,
+        rows,
+        columns: vec!['c', 'c'],
+        verticals,
+        dashed: vec![],
+        horizontals: vec![],
+        between,
+        intertexts: vec![],
+        stretch: 1.0,
+        colsep: 500,
+    }
 }
 
 #[test]

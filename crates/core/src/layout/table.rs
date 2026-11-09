@@ -15,6 +15,8 @@ pub struct Lines<'a> {
     pub horizontals: &'a [TableRule],
     /// `\arraystretch`.
     pub stretch: f32,
+    /// `\arraycolsep`, in thousandths of an em: half the space between columns of an array or a matrix.
+    pub colsep: u16,
 }
 
 /// A composed cell: starting column, how many columns it spans, its own alignment.
@@ -125,12 +127,14 @@ pub fn compose(kind: TableKind, rows: &[Vec<Node>], columns: &[char], lines: &Li
 
     // space between columns, per boundary (0 = before the first, ncol = after the last)
     let half_sep = match kind {
-        Array => em(e, 0.5),
+        Array => em(e, f32::from(lines.colsep) / 1000.0),
         Cases | RCases => em(e, 0.5),
         Aligned => 0.0,
         SmallMatrix => em(e, 0.2),
         Substack => 0.0,
         Diagram => em(e, 0.25),
+        // the matrices of amsmath are arrays: \arraycolsep is theirs too
+        Matrix | PMatrix | BMatrix | BraceMatrix | VMatrix | VVMatrix => em(e, f32::from(lines.colsep) / 1000.0),
         _ => em(e, 0.5),
     };
     let thickness = em(e, 0.04);

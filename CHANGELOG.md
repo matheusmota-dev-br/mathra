@@ -4,6 +4,14 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+What the measured formulas still asked for: commands inside real formulas, and chemfig as its manual writes it.
+
+- **Inside real formulas.** `\setlength{\arraycolsep}{…}` spaces the columns of the arrays and matrices after it; `\lefteqn` overlaps to the right in display style, as in `eqnarray`; `\linebreak[n]` is a break hint, as `\allowbreak`, and amsthm's `\qedhere` draws nothing, since an equation converted alone is not a proof. Measured on the 174,525 formulas: 39 more convert with no warning (the Stacks Project's `\linebreak[0]`, arXiv's `\qedhere` and `\arraycolsep`), and none is drawn worse.
+
+Equations: `\setlength{\arraycolsep}{2pt} \left[ \begin{array}{c|ccc} 0 & 1 & 1 & 2 \\ \hline 1 & 0 & 2 & 1 \end{array} \right]`
+
 ## 1.11.0 - 2026-11-08
 
 MathML and PNG out, lines that break, a fallback font, and the commands physics and chemistry papers use, measured against 174,525 formulas of real LaTeX.
