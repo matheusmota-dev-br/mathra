@@ -80,6 +80,25 @@ fn nemeth_modified_arrows_take_their_uncontracted_form() {
 }
 
 #[test]
+fn nemeth_arrows_as_modifiers() {
+    // ⠐ the expression ⠣ over / ⠩ under, the arrow, ⠻ (§15). Only the right arrow has a contracted
+    // form, ⠫⠕ (§22); the left arrow (⠫⠪ alone is the angle, Rule 17) and the two-headed one keep
+    // their full signs from the arrow table (§22.1)
+    check(
+        BrailleCode::Nemeth,
+        Input::Latex,
+        &[
+            (r"\overrightarrow{x}", format!("⠐⠭⠣{}⠻", dots("1246 135")), "§15, §22: contracted right arrow"),
+            (r"\overleftarrow{x}", format!("⠐⠭⠣{}⠻", dots("1246 246 25 25")), "§15, §22.1: left arrow"),
+            (r"\overleftrightarrow{AB}", format!("⠐⠠⠁⠠⠃⠣{}⠻", dots("1246 246 25 25 135")), "§15, §22.1: two-headed arrow"),
+            (r"\underrightarrow{x}", format!("⠐⠭⠩{}⠻", dots("1246 135")), "§15, §22: under"),
+            (r"\underleftarrow{x}", format!("⠐⠭⠩{}⠻", dots("1246 246 25 25")), "§15, §22.1: under"),
+            (r"\underleftrightarrow{x}", format!("⠐⠭⠩{}⠻", dots("1246 246 25 25 135")), "§15, §22.1: under"),
+        ],
+    );
+}
+
+#[test]
 fn nemeth_a_table_between_different_fences_has_them_enlarged_on_every_line() {
     // §19.6: enlarged grouping signs (dot 6 after the prefix) at both ends of every line; §25.8.1: a numeric
     // indicator on every number; no English-letter indicator in a matrix
@@ -150,6 +169,32 @@ fn nemeth_units_built_as_trees() {
     let unit = Node::Unit { prefix: None, name: "metre".into(), base: Box::new(identifier("m", Variant::Upright)) };
     let scripts = Node::Scripts { base: Box::new(unit), sup: None, sub: Some(Box::new(number("2"))) };
     assert_eq!(transcribe(&scripts, BrailleCode::Nemeth).text, "⠍⠆");
+    // so is a quantity whose unit is that one letter
+    let scripts = Node::Scripts { base: Box::new(quantity), sup: None, sub: Some(Box::new(number("2"))) };
+    assert_eq!(transcribe(&scripts, BrailleCode::Nemeth).text, "⠍⠆");
+}
+
+#[test]
+fn nemeth_a_numeric_subscript_of_a_unit_letter() {
+    // the base of the script is the quantity, not the unit: what decides is what it ends with in braille.
+    // \si{m}_1 is m with the subscript 1, as m_1: no subscript indicator (§14.6). \qty{3}{m}_1 also ends
+    // with the letter m, which the subscript follows directly in braille as in print (3 m₁), so it takes
+    // none either; the number before it is spaced from the unit (§10), not part of the letter. A unit of
+    // several letters (kg) or a unit with its own superscript is not a letter, and keeps the indicator.
+    check(
+        BrailleCode::Nemeth,
+        Input::Latex,
+        &[
+            (r"m_1", "⠍⠂".into(), "§14.6"),
+            (r"\si{m}_1", "⠍⠂".into(), "§14.6, as m_1"),
+            (r"\si{\metre}_1", "⠍⠂".into(), "§14.6, a named unit"),
+            (r"\qty{3}{m}_1", "⠼⠒⠀⠍⠂".into(), "§10, §14.6: the subscript of the unit's letter"),
+            (r"\qty{3}{\metre}_1", "⠼⠒⠀⠍⠂".into(), "§10, §14.6"),
+            (r"\si{kg}_1", "⠅⠛⠰⠂".into(), "§14.6 does not apply: two letters"),
+            (r"\si{m^2}_1", "⠍⠘⠆⠰⠂".into(), "§14.6 does not apply: the base ends with a superscript"),
+            (r"\si{m}_x", "⠍⠰⠭".into(), "§14.6 does not apply: not numeric"),
+        ],
+    );
 }
 
 #[test]

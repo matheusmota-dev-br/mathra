@@ -132,6 +132,15 @@ fn tables_with_alignment_lines_and_labels() {
     // the label of mlabeledtr goes to the end of the row, like \tag
     let r = mml("<mtable><mlabeledtr><mtd><mtext>(1)</mtext></mtd><mtd><mi>x</mi></mtd></mlabeledtr></mtable>");
     assert!(r.text.contains("x (1)"), "{}", r.text);
+    // a row with only its label keeps it, after the same space as in a row with cells (#283)
+    let r = mml("<mtable><mlabeledtr><mtd><mtext>(1)</mtext></mtd></mlabeledtr></mtable>");
+    let Node::Table { rows, .. } = &r.tree.children()[0] else { panic!("{:?}", r.tree) };
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].len(), 1, "{rows:?}");
+    let cell = rows[0][0].children();
+    assert!(matches!(cell, [Node::Space { em }, Node::Text { .. }] if *em == 2.0), "{cell:?}");
+    assert_eq!(r.speech, "matrix 1 by 1: row 1: (1)");
+    assert!(r.mathml.contains("<mtr><mtd><mspace width=\"2em\"/><mtext>(1)</mtext></mtd></mtr>"), "{}", r.mathml);
 }
 
 #[test]

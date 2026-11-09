@@ -15,6 +15,14 @@ fn double_arrows_that_point_back_are_written_as_their_characters() {
 }
 
 #[test]
+fn tikzcd_arrows_go_where_from_and_to_say() {
+    // from= draws from that cell to the current one, unless to= names the target
+    assert_eq!(text(r"\begin{tikzcd} A & B \arrow[from=1-1] \end{tikzcd}"), "A, B; A → B");
+    assert_eq!(text(r"\begin{tikzcd} A & B \arrow[from=1-1, to=1-2] \end{tikzcd}"), "A, B; A → B");
+    assert_eq!(text(r"\begin{tikzcd} A \arrow[to=1-2] & B \end{tikzcd}"), "A, B; A → B");
+}
+
+#[test]
 fn an_arrow_to_a_cell_past_the_diagram_points_at_nothing() {
     // the reader leaves such an arrow out (E-REC-7)
     let r = convert(r"\begin{tikzcd} A \arrow[rr] & B \end{tikzcd}", &Options::default()).unwrap();
