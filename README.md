@@ -95,6 +95,8 @@ Each SVG carries the equation as speech in its `<title>`:
 | `\chemfig{H_3C-*6(=-=-=-)}` | structure of C7 H8, with 1 aromatic ring |
 | `\schemestart \ce{N2 + 3H2} \arrow{<=>[Fe]} \ce{2NH3} \schemestop` | N sub 2 plus 3 H sub 2 in equilibrium with (Fe over the arrow) 2 N H sub 3 |
 
+What mathra promises for accessibility, what is still open and how to report a barrier are in [ACCESSIBILITY.md](https://github.com/matheusmota-dev-br/mathra/blob/main/.github/ACCESSIBILITY.md).
+
 ## Broken LaTeX
 
 By default mathra draws what it can and returns **warnings** for what it had to fix (`E-REC-1` to `E-REC-10`, in `spec/tolerance.md`): unknown commands, unbalanced braces, double scripts, leftover JSON escapes such as `\n` or `\u00b2`, unknown MathML elements. Warnings show up in `--explain`, on stderr, in `Output::warnings` and in the SVG's `<metadata>`. With `--strict`, mathra refuses invalid input instead, like TeX.
