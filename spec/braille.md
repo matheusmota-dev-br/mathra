@@ -24,7 +24,7 @@ Two codes, chosen by the language unless `braille` (`--braille-code`) says other
 | Letters | Capitals ⠠, Greek ⠨ (alternative forms ⠨⠈), bold ⠸⠰, double-struck ⠠⠸⠰, script ⠈⠰. The English-letter indicator ⠰ before a single letter that stands alone, except next to a comparison sign, after a function name, in a matrix or an enclosed list (§6) |
 | Operations and comparisons | Comparison signs with a space on each side; negation is ⠌ before the sign (§20–22) |
 | Fractions | Simple ⠹ ⠌ ⠼, complex and hypercomplex with ⠠ per order, mixed numbers ⠸⠹ ⠸⠼, binomial coefficient with ⠩ (§13, §15.6) |
-| Levels | Superscript ⠘, subscript ⠰, nested levels spelled from the baseline, return with ⠐ (not before a space or punctuation); a numeric subscript of a letter needs no indicator; primes ⠄ before the scripts; ⠪ as a comma at script level (§14) |
+| Levels | Superscript ⠘, subscript ⠰, nested levels spelled from the baseline, return with ⠐ (not before a space or punctuation); a numeric subscript of a letter needs no indicator, also of a unit's letter (`\si{m}_1`, `\qty{3}{m}_1`); primes ⠄ before the scripts; ⠪ as a comma at script level (§14) |
 | Radicals | ⠣ index ⠜ … ⠻, inner radicals with ⠨ per depth (§16) |
 | Functions | The name's letters followed by a space (§18) |
 | Modified expressions | ⠐ expression ⠩ under ⠣ over ⠻ for Σ, Π, lim, accents and stacked labels; contracted bar x̄ = ⠭⠱ (§15), and KaTeX's line segment with a tick at each end (`\overlinesegment`) written as the bar (inferred: no printed example); integrals with their bounds as scripts (§23) |
