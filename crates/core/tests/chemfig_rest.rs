@@ -288,3 +288,62 @@ fn labels_that_are_no_element_keep_their_order_and_letters() {
     assert_eq!(strict(r"\chemfig{Nu-C}").text, "CNu");
     assert_eq!(strict(r"\chemfig{Nu-C}").speech, "structure of C Nu");
 }
+
+/// The angle of the bond that reaches the atom labelled `label`.
+fn angle_to(m: &Molecule, label: &str) -> f32 {
+    let id = m.atoms.iter().position(|a| a.label == label).unwrap_or_else(|| panic!("no atom {label}"));
+    m.bonds.iter().find(|b| b.to == id).unwrap_or_else(|| panic!("no bond to {label}")).angle
+}
+
+#[test]
+fn a_branch_starts_with_defaults_of_its_own() {
+    // chemfig manual, section 2.6 ("Valeur par défaut dans les ramifications", "Ramifications imbriquées"):
+    // a branch's [angle,length,…] holds in all of it, its own branches included, and a relative angle
+    // is relative to the bond that reached the atom
+    let m = molecule("A-B([1]-X([4]-Z)-Y)(-[7]D)-C");
+    assert_eq!((angle_to(&m, "X"), angle_to(&m, "Y"), angle_to(&m, "Z"), angle_to(&m, "D"), angle_to(&m, "C")), (45.0, 45.0, 180.0, -45.0, 0.0));
+    let m = molecule("A-B([:60]-D-E)([::-30,1.5]-X-Y)-C");
+    assert_eq!((angle_to(&m, "D"), angle_to(&m, "E"), angle_to(&m, "X"), angle_to(&m, "Y"), angle_to(&m, "C")), (60.0, 60.0, -30.0, -30.0, 0.0));
+    let x = m.atoms.iter().position(|a| a.label == "X").unwrap();
+    assert_eq!(m.bonds.iter().find(|b| b.to == x).unwrap().length, 1.5);
+    // the defaults end with the branch; a bond with its own angle keeps it
+    let m = molecule("A-B([:60]-D-[:0]E)-C");
+    assert_eq!((angle_to(&m, "E"), angle_to(&m, "C")), (0.0, 0.0));
+    // from a ring vertex, the branch's own angle replaces the bisector
+    let m = molecule("*5(---([:90]-A-B)--)");
+    assert_eq!((angle_to(&m, "A"), angle_to(&m, "B")), (90.0, 90.0));
+}
+
+#[test]
+fn a_bond_sets_its_own_spacing() {
+    // chemfig manual, section 2.2: #(dim1,dim2) right after the bond sign, also \# or \CFhash; an empty
+    // field or a missing dim2 keeps the standard space
+    let gaps = |body: &str| molecule(body).bonds.iter().map(|b| (b.start_gap, b.end_gap)).collect::<Vec<_>>();
+    assert_eq!(gaps("A-#(,0pt)B-C"), [(None, Some(0.0)), (None, None)]);
+    assert_eq!(gaps("A-B-#(0pt)C"), [(None, None), (Some(0.0), None)]);
+    assert_eq!(gaps(r"A-\#(,0pt)B-\CFhash(0pt,1em)C"), [(None, Some(0.0)), (Some(0.0), Some(1.0))]);
+    assert_eq!(gaps("A=#(2pt,2pt)[1]B"), [(Some(0.2), Some(0.2))]);
+    // the atoms stay where they are; only the bond reaches further, up to the letters
+    let (plain, touching) = (strict(r"\chemfig{A-B}"), strict(r"\chemfig{A-#(,0pt)B}"));
+    assert_ne!(plain.svg, touching.svg);
+    assert_eq!(mathra::typeset(r"\chemfig{A-B}", &Options::default()).unwrap().0.width, mathra::typeset(r"\chemfig{A-#(,0pt)B}", &Options::default()).unwrap().0.width);
+    assert_eq!(strict(r"\chemfig{A-#(,0pt)B}").tree.to_json().matches("end_gap").count(), 1);
+    // a dimension it cannot read keeps the standard space, with a warning
+    warns(r"\chemfig{A-#(abc)B}", "E-REC-9");
+}
+
+#[test]
+fn an_aromatic_circle_can_be_an_arc() {
+    // chemfig manual, section 3.2: **[angle1,angle2,tikz]n(…), the circle from angle1 to angle2
+    let ring = |body: &str| molecule(body).rings[0].clone();
+    let r = ring("**[30,330]5(-----)");
+    assert_eq!((r.arc, r.dashed, r.aromatic), (Some((30.0, 330.0)), false, true));
+    let r = ring("**[0,270,dash pattern=on 2pt off 2pt]4(----)");
+    assert_eq!((r.arc, r.dashed), (Some((0.0, 270.0)), true));
+    // the defaults are the whole circle
+    assert_eq!(ring("**[,]6(------)").arc, None);
+    assert_eq!(ring("**6(------)"), ring("**[]6(------)"));
+    // an arc draws less ink than the circle, and both keep the formula
+    assert_ne!(strict(r"\chemfig{**[30,330]5(-----)}").svg, strict(r"\chemfig{**5(-----)}").svg);
+    assert_eq!(strict(r"\chemfig{**[30,330]5(-----)}").text, strict(r"\chemfig{**5(-----)}").text);
+}

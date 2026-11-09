@@ -134,14 +134,15 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
     let pos: Vec<P> = pos.into_iter().map(|p| p.unwrap_or((0.0, 0.0))).collect();
     let point = |atom: AtomId, k: usize| -> P { (pos[atom].0 + offset(atom, k), pos[atom].1) };
     // the box a bond stops at: the letters of one piece
-    let stop = |atom: AtomId, k: usize| -> Option<Rect> {
+    // (`margin`: the space between the bond and the letters, C-LAY-3, or the bond's own #(…))
+    let stop = |atom: AtomId, k: usize, margin: f32| -> Option<Rect> {
         let l = labels[atom].as_ref()?;
         let piece = l.pieces.get(k)?;
         let left = pos[atom].0 - l.center(m.atoms[atom].anchor) + piece.x;
         let y = pos[atom].1;
         // \chemskipalign: the baseline on the bond's line, the letters' own height above it
         let (below, above) = if m.atoms[atom].skip_align { (piece.math_box.depth, piece.math_box.height) } else { (LETTER_HALF, LETTER_HALF) };
-        Some(Rect { x0: left - LABEL_MARGIN, y0: y - below - LABEL_MARGIN, x1: left + piece.math_box.width + LABEL_MARGIN, y1: y + above + LABEL_MARGIN })
+        Some(Rect { x0: left - margin, y0: y - below - margin, x1: left + piece.math_box.width + margin, y1: y + above + margin })
     };
     let centers: Vec<P> = m
         .rings
@@ -157,10 +158,10 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
     for b in &m.bonds {
         let (mut a, mut z) = (point(b.from, b.departure), point(b.to, b.arrival));
         let dir = unit(sub(z, a));
-        if let Some(r) = stop(b.from, b.departure) {
+        if let Some(r) = stop(b.from, b.departure, b.start_gap.map_or(LABEL_MARGIN, |g| g * EM)) {
             a = r.exit(a, dir);
         }
-        if let Some(r) = stop(b.to, b.arrival) {
+        if let Some(r) = stop(b.to, b.arrival, b.end_gap.map_or(LABEL_MARGIN, |g| g * EM)) {
             z = r.exit(z, mul(dir, -1.0));
         }
         if length(sub(z, a)) < 1.0 || dir.0 * (z.0 - a.0) + dir.1 * (z.1 - a.1) <= 0.0 {
@@ -173,7 +174,13 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
         if r.aromatic && r.atoms.len() >= 3 {
             let mean = r.atoms.iter().map(|a| length(sub(pos[*a], *c))).sum::<f32>() / r.atoms.len() as f32;
             let inner = mean * (std::f32::consts::PI / r.size as f32).cos();
-            d.circle(*c, inner * 0.6, STROKE, false);
+            match (r.arc, r.dashed) {
+                (None, false) => d.circle(*c, inner * 0.6, STROKE, false),
+                (arc, dashed) => {
+                    let (from, to) = arc.unwrap_or((0.0, 360.0));
+                    d.arc(*c, inner * 0.6, from, to, STROKE, dashed.then_some((0.12 * EM, 0.09 * EM)));
+                }
+            }
         }
     }
     let half_letter = LETTER_HALF;

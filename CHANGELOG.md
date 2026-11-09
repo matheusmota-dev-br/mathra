@@ -9,8 +9,9 @@ Each release has a headline (the line under its title), what changed, and the eq
 What the measured formulas still asked for: commands inside real formulas, and chemfig as its manual writes it.
 
 - **Inside real formulas.** `\setlength{\arraycolsep}{…}` spaces the columns of the arrays and matrices after it; `\lefteqn` overlaps to the right in display style, as in `eqnarray`; `\linebreak[n]` is a break hint, as `\allowbreak`, and amsthm's `\qedhere` draws nothing, since an equation converted alone is not a proof. Measured on the 174,525 formulas: 39 more convert with no warning (the Stacks Project's `\linebreak[0]`, arXiv's `\qedhere` and `\arraycolsep`), and none is drawn worse.
+- **chemfig as its manual writes it.** A branch may start with defaults of its own, `B([:60]-D-E)`, `([::-30,1.5]-X-Y)`, valid in all of it; `-#(d1,d2)` (or `\#`, `\CFhash`) sets the space a bond leaves before the letters; `**[30,330]5(…)` draws the aromatic circle as an arc, dashed when its TikZ options say so. 17 more examples of the chemfig manual convert with no warning, and none is drawn worse.
 
-Equations: `\setlength{\arraycolsep}{2pt} \left[ \begin{array}{c|ccc} 0 & 1 & 1 & 2 \\ \hline 1 & 0 & 2 & 1 \end{array} \right]`
+Equations: `\setlength{\arraycolsep}{2pt} \left[ \begin{array}{c|ccc} 0 & 1 & 1 & 2 \\ \hline 1 & 0 & 2 & 1 \end{array} \right]` `\chemfig{A-B([1]-X([4]-Z)-Y)(-[7]D)-C} \quad \chemfig{**[30,330]5(-----)}`
 
 ## 1.11.0 - 2026-11-08
 
