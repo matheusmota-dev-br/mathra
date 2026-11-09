@@ -87,11 +87,33 @@ fn tikzcd_arrow_keys() {
 }
 
 #[test]
-fn tikzcd_from_a_cell_with_a_direction() {
-    // from= moves the arrow's start; the direction is counted from there
-    let a = arrow(r"\begin{tikzcd} A & B \\ C & D \arrow[from=1-1, r] \end{tikzcd}");
-    assert_eq!((a.from, a.to), ((0, 0), (0, 1)));
-    recovered(r"\begin{tikzcd} A & B \arrow[from=1-1, l] \end{tikzcd}", r"arrow pointing outside the diagram: \arrow[from=1-1, l]");
+fn tikzcd_from_and_to_name_the_ends() {
+    let ends = |tex: &str| {
+        let a = arrow(tex);
+        (a.from, a.to)
+    };
+    // from= alone: from that cell to the current one
+    assert_eq!(ends(r"\begin{tikzcd} A & B \arrow[from=1-1] \end{tikzcd}"), ((0, 0), (0, 1)));
+    // to= alone: from the current cell to that one
+    assert_eq!(ends(r"\begin{tikzcd} A \arrow[to=1-2] & B \end{tikzcd}"), ((0, 0), (0, 1)));
+    // both: the current cell is neither end, wherever the arrow is written
+    assert_eq!(ends(r"\begin{tikzcd} A & B \arrow[from=1-1, to=1-2] \end{tikzcd}"), ((0, 0), (0, 1)));
+    assert_eq!(ends(r"\begin{tikzcd} A & B \\ C & D \arrow[from=1-1, to=1-2] \end{tikzcd}"), ((0, 0), (0, 1)));
+    // from= with a direction: the direction counts from the current cell, not from from=
+    assert_eq!(ends(r"\begin{tikzcd} A & B \\ C \arrow[from=1-1, r] & D \end{tikzcd}"), ((0, 0), (1, 1)));
+    assert_eq!(ends(r"\begin{tikzcd} A & B \\ C & D \arrow[u, from=2-1] \end{tikzcd}"), ((1, 0), (0, 1)));
+    // a direction as the value of from= or to= counts from the current cell too
+    assert_eq!(ends(r"\begin{tikzcd} A & B \arrow[from=l] \end{tikzcd}"), ((0, 0), (0, 1)));
+    assert_eq!(ends(r"\begin{tikzcd} A & B \\ C \arrow[from=u, to=ur] & D \end{tikzcd}"), ((0, 0), (0, 1)));
+    // a direction from the current cell that leaves the diagram
+    recovered(r"\begin{tikzcd} A & B \arrow[from=1-1, uu] \end{tikzcd}", r"arrow pointing outside the diagram: \arrow[from=1-1, uu]");
+    recovered(r"\begin{tikzcd} A \arrow[from=l] & B \end{tikzcd}", r"arrow pointing outside the diagram: \arrow[from=l]");
+    // from= naming the current cell, with no target: an arrow to itself
+    recovered(r"\begin{tikzcd} A \arrow[from=1-1] & B \end{tikzcd}", "arrow from a cell to itself");
+    // a cell that is neither row-column nor a direction
+    recovered(r"\begin{tikzcd} A \arrow[r, from=x] & B \end{tikzcd}", "arrow cell not in row-column form: from=x");
+    // rows and columns count from 1
+    recovered(r"\begin{tikzcd} A \arrow[r, from=0-1] & B \end{tikzcd}", "arrow cell not in row-column form: from=0-1");
 }
 
 #[test]
