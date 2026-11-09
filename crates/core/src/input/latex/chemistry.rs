@@ -61,7 +61,7 @@ impl Reader<'_> {
             let body = self.raw_text()?;
             source.push_str(&format!(" \\chemmove{options}{{{body}}}"));
         }
-        let mut reader = chem::scheme::Reader { strict: self.strict, registry: self.registry, column: col };
+        let mut reader = chem::scheme::Reader { strict: self.strict, registry: self.registry, column: col, submols: &self.macros.submols };
         let scheme = chem::scheme::read(&source, &mut reader)?;
         let formulas: Vec<String> = scheme
             .items

@@ -124,6 +124,7 @@
   "chem.charge": "charge {0}",
   "chem.over": "{0} au-dessus de la flèche",
   "chem.under": "{0} sous la flèche",
+  "chem.bond_between": "la liaison entre {0} et {1}",
   "chem.bond_dashed": "liaison d'une ligne pointillée",
   "chem.bond_dashed_over_single": "liaison d'une ligne pointillée au-dessus d'une ligne",
   "chem.bond_dashed_over_double": "liaison d'une ligne pointillée au-dessus de deux lignes",

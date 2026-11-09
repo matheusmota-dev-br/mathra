@@ -76,6 +76,7 @@
   "chem.charge": "전하 {0}",
   "chem.over": "화살표 위 {0}",
   "chem.under": "화살표 아래 {0}",
+  "chem.bond_between": "{0}와 {1} 사이의 결합",
   "chem.bond_dashed": "결합: 점선",
   "chem.bond_dashed_over_single": "결합: 실선 위의 점선",
   "chem.bond_dashed_over_double": "결합: 실선 두 개 위의 점선",

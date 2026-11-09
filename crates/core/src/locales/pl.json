@@ -82,6 +82,7 @@
   "chem.charge": "ładunek {0}",
   "chem.over": "{0} nad strzałką",
   "chem.under": "{0} pod strzałką",
+  "chem.bond_between": "wiązania między {0} a {1}",
   "chem.bond_dashed": "wiązanie: linia przerywana",
   "chem.bond_dashed_over_single": "wiązanie: linia przerywana nad linią",
   "chem.bond_dashed_over_double": "wiązanie: linia przerywana nad dwiema liniami",

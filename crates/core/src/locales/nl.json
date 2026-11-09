@@ -79,6 +79,7 @@
   "chem.charge": "lading {0}",
   "chem.over": "{0} boven de pijl",
   "chem.under": "{0} onder de pijl",
+  "chem.bond_between": "de binding tussen {0} en {1}",
   "chem.bond_dashed": "binding van een stippellijn",
   "chem.bond_dashed_over_single": "binding van een stippellijn boven een lijn",
   "chem.bond_dashed_over_double": "binding van een stippellijn boven twee lijnen",

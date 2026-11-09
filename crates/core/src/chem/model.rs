@@ -46,7 +46,7 @@ pub struct Merge {
 impl Merge {
     /// The arrow a merge ends in, as speech, text and braille read it: "reacts to give", with its labels.
     pub fn as_arrow(&self) -> Arrow {
-        Arrow { kind: ArrowKind::Forward, above: self.above.clone(), below: self.below.clone(), angle: self.angle, length: 1.0, arc: None, from: None, to: None }
+        Arrow { kind: ArrowKind::Forward, above: self.above.clone(), below: self.below.clone(), angle: self.angle, length: 1.0, arc: None, from: None, to: None, shift: None }
     }
 }
 
@@ -174,6 +174,10 @@ pub struct Bond {
     pub start_gap: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_gap: Option<f32>,
+    /// `-[@{name,coeff}…]` (chemfig manual, section 5.8.1): a node on the bond, `coeff` of the way
+    /// along it (0.5 by default), that a mechanism arrow can point at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hook: Option<(String, f32)>,
 }
 
 fn is_one(v: &f32) -> bool {
@@ -258,6 +262,10 @@ pub struct Arrow {
     /// straight between the two, and no new compound follows it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to: Option<usize>,
+    /// `\arrow(--name[xshift=…,yshift=…])` (chemfig manual, section 6.6): the compound after the arrow
+    /// moved by that much, in em (x to the right, y up); the arrow reaches it where it moved to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shift: Option<(f32, f32)>,
 }
 
 /// The arc of a `-U>` arrow: its radius as a multiple of the arrow's length (negative: below the
@@ -322,3 +330,16 @@ pub struct ElectronMove {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub single: bool,
 }
+
+/// chemfig's `\definesubmol{name}n[code1]{code2}` (manual, section 9): the code `!{name}` (or `!\name`)
+/// stands for in a structure, with `#1`…`#n` its arguments; with `code1`, that one when the bond that
+/// reaches it comes from the right (seen from the submolecule, strictly between −90° and 90°).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Submol {
+    pub arguments: usize,
+    pub right: Option<String>,
+    pub code: String,
+}
+
+/// The submolecules defined so far in the input, by name (`xy`, or `\xx` for a control sequence).
+pub type Submols = std::collections::BTreeMap<String, Submol>;

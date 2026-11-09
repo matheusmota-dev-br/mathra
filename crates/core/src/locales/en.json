@@ -76,6 +76,7 @@
   "chem.charge": "charge {0}",
   "chem.over": "{0} over the arrow",
   "chem.under": "{0} under the arrow",
+  "chem.bond_between": "the bond between {0} and {1}",
   "chem.bond_dashed": "bond of a dashed line",
   "chem.bond_dashed_over_single": "bond of a dashed line over a line",
   "chem.bond_dashed_over_double": "bond of a dashed line over two lines",

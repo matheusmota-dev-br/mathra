@@ -120,6 +120,7 @@
   "chem.charge": "Ladung {0}",
   "chem.over": "{0} über dem Pfeil",
   "chem.under": "{0} unter dem Pfeil",
+  "chem.bond_between": "der Bindung zwischen {0} und {1}",
   "chem.bond_dashed": "Bindung aus einer gestrichelten Linie",
   "chem.bond_dashed_over_single": "Bindung aus einer gestrichelten Linie über einer Linie",
   "chem.bond_dashed_over_double": "Bindung aus einer gestrichelten Linie über zwei Linien",

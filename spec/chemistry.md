@@ -31,6 +31,8 @@ The reader takes, as written: `\chemfig[options]{…}`, `\schemestart … \schem
 | `\charge{[params]pos[tikz]=c,…}{X}`, `\Charge` | chemfig manual, section 5.8: X with each c around it (C-LAY-9); `pos` is degrees or a TikZ anchor (`north east`) with an optional `:offset`; c is a Lewis shortcut (`\.` radical, `\:` pair, `\|` line, `\"` vacancy) or LaTeX text (`$\oplus$`), and a ⊕, ⊖, `+` or `-` counts in the formula's charge; of the parameters only `extra sep` and the TikZ `anchor` are kept. Outside `\chemfig`, a structure of one atom |
 | `\chemskipalign` | chemfig manual, section 5.4.3: the group's baseline on the bonds' line (C-LAY-8); outside a structure, nothing |
 | `@{name}` | before an atom: the hook a mechanism arrow points at |
+| `-[@{name,coeff}…]` | chemfig manual, section 5.8.1, at the start of a bond's first field (the angle follows it, with or without a comma): a node on the bond, `coeff` of the way along it (0.5 by default), that a mechanism arrow can point at; the speech reads it as the bond between its two atoms |
+| `\definesubmol{name}n[code1]{code2}`, `!{name}`, `!\name`, `!x` | chemfig manual, section 9: the code a submolecule stands for, read in its place wherever it is called, with `#1`…`#n` its arguments (any other `#` is drawn, or is a bond's `#(…)`); with `code1`, that one when the bond reaching it comes from the right (drawn leftward). An unknown name warns (E-REC-1) and is written as it is; one that calls itself stops after 200 expansions |
 
 ### Schemes
 

@@ -168,6 +168,11 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
             continue;
         }
         bond(&mut d, b, a, z, b.ring.map(|r| centers[r]));
+        // a node on the bond, of no size, where a mechanism arrow can point
+        if let Some((name, coeff)) = &b.hook {
+            let at = add(a, mul(sub(z, a), *coeff));
+            hooks.points.insert(name.clone(), (at, Rect::around(at, 0.0)));
+        }
     }
     // C-LAY-5: an aromatic ring's circle, at 0.6 of its inner radius
     for (r, c) in m.rings.iter().zip(&centers) {
@@ -507,10 +512,12 @@ pub fn scheme(s: &Scheme, ctx: &mut Ctx) -> R<Drawing> {
                         let prev = arrow.from.and_then(|k| placed_boxes.get(k).copied()).unwrap_or(prev);
                         let len = base_length(arrow, above, below) * arrow.length;
                         let start = add(prev.center(), mul(u, prev.reach(u) + gap));
-                        let end = add(start, mul(u, len));
+                        // a compound moved by its style (xshift, yshift): the arrow reaches it there
+                        let moved = arrow.shift.map_or((0.0, 0.0), |(x, y)| (x * EM, y * EM));
+                        let end = add(add(start, mul(u, len)), moved);
                         draw_arrow(&mut out, arrow, start, end, above, below);
-                        let center = add(end, mul(u, gap + b.reach(u)));
-                        sub(center, b.center())
+                        let center = add(sub(end, moved), mul(u, gap + b.reach(u)));
+                        sub(add(center, moved), b.center())
                     }
                     (None, Some(prev), true) => {
                         let plus = ctx.typeset("+")?;

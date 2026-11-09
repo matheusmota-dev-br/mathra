@@ -84,6 +84,7 @@
   "chem.charge": "заряд {0}",
   "chem.over": "{0} над стрелкой",
   "chem.under": "{0} под стрелкой",
+  "chem.bond_between": "связи между {0} и {1}",
   "chem.bond_dashed": "связь: штриховая линия",
   "chem.bond_dashed_over_single": "связь: штриховая линия над линией",
   "chem.bond_dashed_over_double": "связь: штриховая линия над двумя линиями",
