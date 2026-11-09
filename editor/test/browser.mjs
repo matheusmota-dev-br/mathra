@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const shots = process.argv[2] ?? null;
 if (shots) await mkdir(shots, { recursive: true });
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm" };
+const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm", ".svg": "image/svg+xml", ".png": "image/png" };
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
   const file = join(root, path.endsWith("/") ? `${path}index.html` : path);
@@ -74,6 +74,17 @@ await check("The editor fills the page: bar, palettes, formula, outputs beside i
   assert.equal(await value(), "x=\\frac{-b\\pm\\sqrt{b^{2}-4ac}}{2a}");
   await settle(page);
   if (shots) await page.screenshot({ path: `${shots}/page.png` });
+});
+
+await check("The logo and the GitHub link", async () => {
+  // the logo loaded (it is an image from the site)
+  await page.waitForFunction(() => { const img = document.querySelector('#editor [slot="title"] img'); return img?.complete && img.naturalWidth > 0; }, null, { timeout: 5000 });
+  const gh = ed.locator("#github");
+  assert.equal(await gh.getAttribute("href"), "https://github.com/matheusmota-dev-br/mathra");
+  assert.equal(await gh.getAttribute("target"), "_blank");
+  assert.equal(await gh.getAttribute("title"), "Código no GitHub");
+  assert.equal(await gh.isVisible(), true);
+  if (shots) await page.screenshot({ path: `${shots}/bar.png`, clip: { x: 0, y: 0, width: 1440, height: 60 } });
 });
 
 await check("Fifteen palettes, all their tabs in view", async () => {
