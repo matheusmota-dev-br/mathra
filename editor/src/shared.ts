@@ -23,6 +23,7 @@ export const TOKENS = `
   --_radius: var(--mathra-radius, 6px);
   --_font: var(--mathra-font, system-ui, -apple-system, "Segoe UI", sans-serif);
   --_mono: var(--mathra-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  --_page: var(--mathra-page, light-dark(#f4f3ef, #18191b));
   font-family: var(--_font);
 }
 `;
@@ -49,6 +50,15 @@ const ICON_PATHS: Record<string, string> = {
   close: "M18 6L6 18 M6 6l12 12",
   keyboard: "M3 6h18v12H3z M7 10h0 M11 10h0 M15 10h0 M8 14h8",
   clear: "M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14",
+  search: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M21 21l-4.35-4.35",
+  globe: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18 M3 12h18 M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9 M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9",
+  sun: "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8 M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
+  moon: "M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z",
+  monitor: "M3 4h18v12H3z M8 20h8 M12 16v4",
+  panel: "M3 4h18v16H3z M15 4v16",
+  zoomIn: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M21 21l-4.35-4.35 M11 8v6 M8 11h6",
+  zoomOut: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14 M21 21l-4.35-4.35 M8 11h6",
+  chevron: "M6 9l6 6 6-6",
 };
 
 /** An icon as inline SVG; the button around it carries the name (`title` and `aria-label`). */
@@ -101,6 +111,17 @@ export const UI = {
   empty: { en: "Nothing to show yet", "pt-BR": "Nada para mostrar ainda" },
   outputs: { en: "Outputs", "pt-BR": "Saídas" },
   palettes: { en: "Palettes", "pt-BR": "Paletas" },
+  search: { en: "Search symbols and structures", "pt-BR": "Buscar símbolos e estruturas" },
+  results: { en: "Results", "pt-BR": "Resultados" },
+  noResults: { en: "Nothing found", "pt-BR": "Nada encontrado" },
+  language: { en: "Language", "pt-BR": "Idioma" },
+  theme: { en: "Theme", "pt-BR": "Tema" },
+  themeAuto: { en: "Follow the system", "pt-BR": "Seguir o sistema" },
+  themeLight: { en: "Light", "pt-BR": "Claro" },
+  themeDark: { en: "Dark", "pt-BR": "Escuro" },
+  zoomIn: { en: "Larger", "pt-BR": "Aumentar" },
+  zoomOut: { en: "Smaller", "pt-BR": "Diminuir" },
+  showOutputs: { en: "Show the outputs", "pt-BR": "Mostrar as saídas" },
 } satisfies Record<string, Words>;
 
 /** Escapes text for HTML. */

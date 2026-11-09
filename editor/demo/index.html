@@ -2,91 +2,36 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mathra-editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>mathra editor</title>
 <script type="importmap">{ "imports": { "@mathlabs/mathra": "/npm/pkg/web/index.js" } }</script>
 <style>
-  :root { color-scheme: light dark; --bg: light-dark(#f4f3ef, #1c1e20); --ink: light-dark(#24282a, #e6e3da); --muted: light-dark(#5c6062, #a8abaa); --line: light-dark(#d9d6cc, #3d4246); --surface: light-dark(#fcfbf8, #24272a); }
-  :root[data-theme="light"] { color-scheme: light; }
-  :root[data-theme="dark"] { color-scheme: dark; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }
-  main { max-width: 980px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 40px; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
-  h1 { font-size: 1.5rem; margin: 0; }
-  h2 { font-size: 1.15rem; margin: 0 0 4px; }
-  p { margin: 0 0 12px; color: var(--muted); max-width: 70ch; }
-  section { display: grid; gap: 12px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
-  .controls select, .controls button { font: inherit; padding: 4px 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
-  .quiz { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 12px; font-family: Georgia, serif; font-size: 18px; }
-  .quiz .answer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .quiz mathra-field { font-size: 22px; min-width: 8em; }
-  .result { font: 14px system-ui, sans-serif; color: var(--muted); }
-  .lousa { --mathra-background: #23392f; --mathra-ink: #eef0e6; --mathra-border: #85613f; --mathra-caret: #f7f4ea; --mathra-slot: #f2d37a; --mathra-selection: rgb(242 211 122 / 0.25); --mathra-radius: 2px; --mathra-focus: #f2d37a; --mathra-key: #2c463a; --mathra-key-active: #35533f; --mathra-surface: #6b4a2e; --mathra-muted: #d8cbb3; --mathra-accent: #f2d37a; }
-  code { font-size: 0.9em; }
-  #stats { font-size: 13px; color: var(--muted); }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  mathra-editor { height: 100%; }
+  .brand { display: inline-flex; align-items: baseline; gap: 6px; }
+  .brand b { font-family: Georgia, "Times New Roman", serif; font-size: 18px; font-weight: 600; letter-spacing: 0.01em; }
+  .brand span { font-size: 13px; opacity: 0.6; }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>mathra-editor</h1>
-    <div class="controls">
-      <label for="locale">Idioma</label>
-      <select id="locale"><option value="pt-BR">pt-BR</option><option value="en">en</option><option value="es">es</option><option value="fr">fr</option></select>
-      <label for="theme">Tema</label>
-      <select id="theme"><option value="">do sistema</option><option value="light">claro</option><option value="dark">escuro</option><option value="lousa">lousa</option></select>
-    </div>
-  </header>
-
-  <section>
-    <h2>A · Editor completo</h2>
-    <p>Um elemento só: <code>&lt;mathra-editor&gt;</code>. Paletas em abas, o campo, desfazer e refazer, teclado na tela e as saídas. Digite <code>\</code> para o menu de comandos.</p>
-    <mathra-editor id="a" class="themed" locale="pt-BR" value="x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"></mathra-editor>
-    <div id="stats"></div>
-  </section>
-
-  <section>
-    <h2>B · Só a caixa, com o menu de comandos</h2>
-    <p>Sem barra: o <code>&lt;mathra-field&gt;</code> e um <code>&lt;mathra-command-menu&gt;</code> ligado a ele. Digite <code>\fr</code>, <code>\sum</code>, <code>\alp</code>…</p>
-    <mathra-field id="b" class="themed" locale="pt-BR" placeholder="Digite \ para os comandos"></mathra-field>
-    <mathra-command-menu for="b"></mathra-command-menu>
-  </section>
-
-  <section>
-    <h2>C · Campo em linha e teclado</h2>
-    <p>Um campo do tamanho de uma resposta, no meio do texto, com o <code>&lt;mathra-keyboard&gt;</code> embaixo.</p>
-    <div class="quiz">
-      <div>Quanto vale a área sob <i>y</i> = <i>x</i>² de 0 a 2?</div>
-      <div class="answer">Resposta: <mathra-field id="c" class="themed" inline locale="pt-BR" aria-label="Resposta"></mathra-field> <span class="result" id="c-result"></span></div>
-      <mathra-keyboard for="c" class="themed"></mathra-keyboard>
-    </div>
-  </section>
-</main>
+<mathra-editor id="editor" layout="page" locale="pt-BR" value="x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}">
+  <span slot="title" class="brand"><b>mathra</b><span>editor</span></span>
+</mathra-editor>
 <script type="module">
   import "/editor/dist/index.js";
-  const editor = document.getElementById("a");
-  const times = [];
-  editor.addEventListener("input", () => {
-    times.push(editor.field.lastTiming.total);
-    const s = [...times].sort((a, b) => a - b);
-    const q = (p) => s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(2);
-    document.getElementById("stats").textContent = `por mudança (mathra + cursor): p50 ${q(0.5)} ms · p95 ${q(0.95)} ms · ${s.length} mudanças`;
-  });
-  window.mathraTimes = times;
-  const c = document.getElementById("c");
-  c.addEventListener("input", (e) => {
-    const ok = ["\\frac{8}{3}", "8/3"].includes(e.detail.latex.replace(/\s/g, ""));
-    document.getElementById("c-result").textContent = e.detail.latex ? (ok ? "certo" : "") : "";
-  });
-  document.getElementById("locale").addEventListener("change", (e) => {
-    for (const el of document.querySelectorAll("[locale]")) el.setAttribute("locale", e.target.value);
-  });
-  document.getElementById("theme").addEventListener("change", (e) => {
-    const v = e.target.value;
-    document.documentElement.dataset.theme = v === "lousa" ? "" : v;
-    for (const el of document.querySelectorAll(".themed")) el.classList.toggle("lousa", v === "lousa");
-  });
+  const editor = document.getElementById("editor");
+  // the language and the theme chosen stay for the next visit
+  const read = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const write = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  if (read("mathra-locale")) editor.setAttribute("locale", read("mathra-locale"));
+  if (read("mathra-theme")) editor.setAttribute("theme", read("mathra-theme"));
+  editor.addEventListener("mathra-locale", (e) => { write("mathra-locale", e.detail.locale); document.documentElement.lang = e.detail.locale; });
+  editor.addEventListener("mathra-theme", (e) => write("mathra-theme", e.detail.theme));
+  // the time of each change, for the browser test
+  window.mathraTimes = [];
+  editor.addEventListener("input", () => window.mathraTimes.push(editor.field.lastTiming.total));
+  editor.focus();
 </script>
 </body>
 </html>

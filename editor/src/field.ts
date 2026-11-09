@@ -18,9 +18,12 @@ ${TOKENS}
 :host([hidden]) { display: none; }
 .box {
   position: relative;
+  box-sizing: border-box;
+  height: 100%;
   display: flex;
   align-items: center;
-  justify-content: var(--mathra-align, center);
+  /* "safe": a formula wider than the box starts at its left edge, where it can scroll from */
+  justify-content: var(--mathra-align, safe center);
   min-height: 1.6em;
   padding: var(--mathra-padding, 0.6em 0.8em);
   background: var(--_background);
@@ -350,6 +353,7 @@ export class MathraField extends HTMLElement {
     this.placeOverlays();
     this.announce();
     this.lastTiming = { render: t1 - t0, total: performance.now() - t0 };
+    this.dispatchEvent(new CustomEvent("mathra-render", { bubbles: true, composed: true }));
   }
 
   /** From the SVG's coordinates to pixels inside the box. */

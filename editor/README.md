@@ -11,7 +11,9 @@ Web Components: they work in React, Vue, Svelte, Angular or plain HTML. Every pi
   import "@mathlabs/mathra-editor";
 </script>
 
-<mathra-editor locale="pt-BR" value="x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"></mathra-editor>
+<mathra-editor layout="page" locale="pt-BR" value="x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}">
+  <span slot="title">My editor</span>
+</mathra-editor>
 
 <script type="module">
   const editor = document.querySelector("mathra-editor");
@@ -25,9 +27,9 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 
 | Element | What it is |
 | --- | --- |
-| `<mathra-editor>` | Everything together: palettes in tabs, the field, undo, redo and clear, the keyboard (open on touch screens), the command menu and the outputs. |
+| `<mathra-editor>` | Everything together: a bar (undo, redo, clear, zoom, language, theme, keyboard, outputs), palettes in tabs with a search, the field, the keyboard (open on touch screens), the command menu and the outputs. `layout="page"` fills the page: the formula takes the room left, the outputs sit beside it (below it on narrow screens). |
 | `<mathra-field>` | The box. Typing, clicking, dragging, Shift+arrows, copy and paste of LaTeX, undo. `inline` makes it the size of an answer in a sentence. |
-| `<mathra-toolbar for="f">` | Palettes in tabs. `palettes="structures calculus greek"` picks and orders them. |
+| `<mathra-toolbar for="f">` | Palettes in tabs, and a search over every button (by its name in English or Portuguese, accents ignored, or its command; Enter inserts the first). `palettes="structures calculus greek"` picks and orders them; `nosearch` hides the search; `wrap` shows every tab. |
 | `<mathra-palette for="f" set="greek">` | One grid of buttons. |
 | `<mathra-command-menu for="f">` | While `\name` is typed, the commands that start with it, beside the cursor. |
 | `<mathra-keyboard for="f">` | A keyboard on the screen: numbers, letters, functions and symbols. |
@@ -46,6 +48,7 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 | `inline` | Text style, sized for a sentence (field only). |
 | `aria-label` | The field's name for screen readers; the formula itself is read through mathra's speech. |
 | `palettes`, `outputs`, `keyboard` | (`<mathra-editor>` only) which palettes, which outputs (`none` hides them), and `keyboard="on"`, `"off"` or automatic. |
+| `layout`, `controls`, `theme`, `languages` | (`<mathra-editor>` only) `layout="page"`; the bar's controls (`controls="history zoom language theme keyboard outputs"`, all of them in a page, history and keyboard otherwise); `theme="auto"`, `"light"` or `"dark"`; the languages the menu offers (`languages="en pt-BR es"`, all 16 that mathra speaks by default, each under its own name). |
 
 ### Events
 
@@ -54,6 +57,8 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 | `input` | The formula changed. | `{ latex }` |
 | `change` | The field lost the focus with a different formula. | `{ latex }` |
 | `mathra-command` | A command is typed after `\` (what the command menu follows). | `{ name, active, rect }` |
+| `mathra-render` | The field drew the formula (an edit, a language, a font). | |
+| `mathra-locale`, `mathra-theme` | The language or the theme was chosen in the editor's bar (to remember it, as the demo does). | `{ locale }`, `{ theme }` |
 
 ### Typing
 
@@ -80,9 +85,9 @@ The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/ma
 
 **Colors and sizes.** Set any of these on a component or an ancestor; they reach the components inside `<mathra-editor>` too. The defaults follow the page's `color-scheme` (light and dark).
 
-`--mathra-ink` `--mathra-muted` `--mathra-background` `--mathra-surface` `--mathra-border` `--mathra-focus` `--mathra-caret` `--mathra-selection` `--mathra-slot` (the empty places) `--mathra-key` `--mathra-key-active` `--mathra-accent` `--mathra-radius` `--mathra-font` `--mathra-mono`, and `--mathra-padding`, `--mathra-align`, `--mathra-button-size`, `--mathra-key-height`, `--mathra-gap`, `--mathra-output-height`, `--mathra-menu-z`. The formula's size follows `font-size`.
+`--mathra-ink` `--mathra-muted` `--mathra-background` `--mathra-surface` `--mathra-page` `--mathra-border` `--mathra-focus` `--mathra-caret` `--mathra-selection` `--mathra-slot` (the empty places) `--mathra-key` `--mathra-key-active` `--mathra-accent` `--mathra-radius` `--mathra-font` `--mathra-mono`, and `--mathra-padding`, `--mathra-align`, `--mathra-button-size`, `--mathra-key-height`, `--mathra-gap`, `--mathra-output-height`, `--mathra-palette-height`, `--mathra-menu-z`. The formula's size follows `font-size`.
 
-**Parts.** `::part(box)`, `caret`, `selection`, `slot`, `placeholder`, `input` of the field; `tab`, `button`, `grid` of palettes; `key` of the keyboard; `item` of the command menu; `tab`, `action`, `body` of the outputs. `<mathra-editor>` re-exports them, and has `slot="start"` and `slot="end"` for your own content.
+**Parts.** `::part(box)`, `caret`, `selection`, `slot`, `placeholder`, `input` of the field; `tab`, `button`, `grid`, `search` of palettes; `key` of the keyboard; `item` of the command menu; `tab`, `action`, `body` of the outputs; `bar`, `action`, `language`, `theme` of the editor's bar. `<mathra-editor>` re-exports them, and has `slot="title"` and `slot="actions"` in its bar and `slot="start"` and `slot="end"` around it for your own content.
 
 **Your own palettes.** A button inserts a snippet of LaTeX, where `#?` is an empty place (a whole argument) and `#0` where the selection goes, or runs an action. mathra draws the button from the same snippet.
 
@@ -103,7 +108,7 @@ toolbar.palettes = [
 ];
 ```
 
-Palettes that come with the editor: `structures`, `calculus`, `matrices`, `greek`, `operators`, `relations`, `arrows`, `sets`, `functions`, `accents`. A `command` makes the item reachable from the command menu too. The keyboard takes layers the same way (`keyboard.layers = [...]`, keys with `type`, `insert`, `action` or `layer`).
+Palettes that come with the editor (about 400 buttons): `structures`, `calculus`, `matrices`, `greek`, `operators`, `relations`, `arrows`, `sets`, `functions`, `accents`, `geometry`, `physics`, `chemistry`, `statistics` and `formulas` (ready formulas to start from). Each button is checked by `test/palettes.test.ts`: it draws and inserts without a warning, and draws the same marked as plain. A `command` makes the item reachable from the command menu too. The keyboard takes layers the same way (`keyboard.layers = [...]`, keys with `type`, `insert`, `action` or `layer`).
 
 **Actions.** `field.run(action)` does what a key or a button does: `moveLeft` `moveRight` `moveUp` `moveDown` `selectLeft` `selectRight` `home` `end` `selectAll` `backspace` `deleteForward` `enter` `tab` `tabBack` `undo` `redo` `clear` `addRow` `addRowAbove` `addColumn` `addColumnLeft` `removeRow` `removeColumn` `sup` `sub`, or `insert:<template>`, `latex:<snippet>`, `type:<text>`, `symbol:<latex>`.
 
@@ -143,5 +148,5 @@ cd editor && pnpm install
 pnpm test                          # the editor and the corpus, in Node (22.18+ runs the TypeScript)
 pnpm build                         # dist/
 pnpm test:browser                  # the components in Chromium (playwright-core's browser)
-pnpm demo                          # http://127.0.0.1:4520/editor/demo/
+pnpm demo                          # http://127.0.0.1:4520/editor/demo/ (the editor filling the page)
 ```

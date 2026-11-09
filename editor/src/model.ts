@@ -146,6 +146,9 @@ export class Editor {
   private undoStack: string[] = [];
   private redoStack: string[] = [];
   private batching = 0;
+  /** Typing in a row: letters typed one after another are one step of undo. */
+  private typingRun = false;
+  private typingAt = 0;
 
   constructor(latex = "") {
     this.root = this.row(null);
@@ -258,7 +261,7 @@ export class Editor {
   type(ch: string): void {
     if (this.inText() && !this.commandBeingTyped()) {
       if (ch === "\n") return;
-      return this.change(() => this.replaceSelectionWith([{ kind: "char", ch }]));
+      return this.change(() => this.replaceSelectionWith([{ kind: "char", ch }]), true);
     }
     const command = this.commandBeingTyped();
     if (command) {
@@ -286,9 +289,9 @@ export class Editor {
     const closer = ({ ")": ")", "]": "]", "}": "\\}", "|": "|" } as Record<string, string>)[ch];
     if (closer && this.leaveDelimiter(closer)) return;
     if (opener) return this.change(() => this.insertSpecs(readLatex(`\\left${opener}#0\\right${CLOSING[opener]}`, { autoDelimiters: true })));
-    if (/^[A-Za-z0-9.]$/.test(ch)) return this.insertSymbol(ch, "ord");
+    if (/^[A-Za-z0-9.]$/.test(ch)) return this.typeSymbol(ch, "ord");
     const cls = CHAR_CLASS[ch];
-    if (cls) return this.insertSymbol(CHAR_LATEX[ch] ?? ch, cls);
+    if (cls) return this.typeSymbol(CHAR_LATEX[ch] ?? ch, cls);
     if (ch === "∞") return this.insertSymbol("\\infty", "ord");
     if (ch === "'") return this.insertSymbol("'", "ord");
     // any other character (π, α, ∫ typed or pasted): a symbol of its own
@@ -297,9 +300,16 @@ export class Editor {
 
   /** Types a string, character by character. */
   typeText(text: string): void {
-    this.batch(() => {
-      for (const ch of text) this.type(ch);
-    });
+    // plain characters (no structure, no command) join the undo step of those typed before them
+    const plain = !this.commandBeingTyped() && /^[A-Za-z0-9.+\-*=<>,;!?' ]+$/.test(text);
+    this.change(() => {
+      this.batching++;
+      try {
+        for (const ch of text) this.type(ch);
+      } finally {
+        this.batching--;
+      }
+    }, plain || this.inText());
   }
 
   /** Enter: finishes a command being typed; in a matrix, goes to the cell below, adding a line at the last one. */
@@ -324,6 +334,11 @@ export class Editor {
       command.name = name.replace(/^\\/, "");
       this.finishCommand(command);
     });
+  }
+
+  /** A typed symbol: joins the undo step of the characters typed before it. */
+  private typeSymbol(latex: string, cls: AtomClass): void {
+    this.change(() => this.replaceSelectionWith([{ kind: "symbol", latex, cls }]), true);
   }
 
   /** Inserts one symbol at the cursor (replacing the selection): `x`, `\alpha`, `\pm` (class `bin`)… */
@@ -598,7 +613,7 @@ export class Editor {
     return { kind: "row", id: this.id(), children: [], parent };
   }
 
-  private change(f: () => void): void {
+  private change(f: () => void, typing = false): void {
     if (this.batching) return f();
     const before = this.snapshot();
     const content = this.contentKey();
@@ -607,10 +622,15 @@ export class Editor {
     if (after === before) return;
     const contentChanged = this.contentKey() !== content;
     if (contentChanged) {
-      if (this.undoStack[this.undoStack.length - 1] !== before) this.undoStack.push(before);
+      // characters typed in a row (less than two seconds apart) join the step of the first
+      const now = Date.now();
+      const joins = typing && this.typingRun && now - this.typingAt < 2000;
+      this.typingRun = typing;
+      this.typingAt = now;
+      if (!joins && this.undoStack[this.undoStack.length - 1] !== before) this.undoStack.push(before);
       if (this.undoStack.length > 500) this.undoStack.shift();
       this.redoStack = [];
-    }
+    } else this.typingRun = false;
     this.emit(contentChanged ? "content" : "cursor");
   }
 

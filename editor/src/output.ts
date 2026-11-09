@@ -62,10 +62,11 @@ export class MathraOutput extends FieldClient {
   }
 
   protected override attach(field: MathraField): () => void {
+    // every drawing: an edit, and also a change of language or font
     const update = () => this.paint();
-    field.addEventListener("input", update);
+    field.addEventListener("mathra-render", update);
     queueMicrotask(update);
-    return () => field.removeEventListener("input", update);
+    return () => field.removeEventListener("mathra-render", update);
   }
 
   protected override fieldChanged(): void {
