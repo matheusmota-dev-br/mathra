@@ -109,6 +109,10 @@ pub struct Atom {
     /// `\chemskipalign`: the label's baseline on the bonds' line instead of its letters' middle.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub skip_align: bool,
+    /// The attributes of a mark around the label (`\htmlData{m=a}{OH}`): the label is drawn in a group
+    /// that carries them, so an editor knows where the atom is; the label itself is read through it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<(String, String)>,
 }
 
 /// What chemfig's `\charge` puts around an atom (chemfig manual, section 5.8): at `angle` degrees on

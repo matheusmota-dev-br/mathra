@@ -3242,11 +3242,47 @@ impl Reader<'_> {
         // whether the last token was a formula or a word, for the word space before the next one
         let mut previous_entity = false;
         loop {
+            let before = i;
             while c.get(i).is_some_and(|x| x.is_whitespace()) {
                 i += 1;
             }
             if i >= c.len() {
                 break;
+            }
+            // a mark around a piece (\htmlData, \class, \htmlId…): the piece is read as chemistry and
+            // the mark goes around it, so an editor knows where each species, coefficient, state or
+            // arrow is, and the drawing is the one without the mark
+            if let Some((command, value, inner, len)) = chemical_mark(&c[i..]) {
+                let spaced = i > before;
+                i += len;
+                let inner_chars: Vec<char> = inner.chars().collect();
+                let mut k = 0;
+                while inner_chars.get(k).is_some_and(|x| x.is_whitespace()) {
+                    k += 1;
+                }
+                let entity = chemical_arrow(&inner_chars[k..]).is_none() && chemical_entity(&chemical_token(&inner_chars, &mut k));
+                if let Some(previous) = children.last() {
+                    // the spaces between pieces are those of the text: none where pieces touch
+                    let coefficient = matches!(previous.clone().simplify(), Node::Identifier { .. });
+                    let em = if !spaced {
+                        0.0
+                    } else if coefficient {
+                        2.0 / 18.0
+                    } else if previous_entity && entity {
+                        CHEMICAL_WORD_SPACE
+                    } else {
+                        0.0
+                    };
+                    children.push(Node::Space { em });
+                }
+                previous_entity = entity;
+                let node = self.chemistry(&inner, col)?.simplify();
+                let (node, dropped) = html_attributes(&command, &value, node);
+                if !dropped.is_empty() {
+                    self.registry.warn(rules::E_REC_9, format!("column {col}: \\{command} in \\ce: unsafe or unsupported {}; dropped", dropped.join(", ")));
+                }
+                children.push(node);
+                continue;
             }
             let arrow = chemical_arrow(&c[i..]);
             let entity = arrow.is_none() && chemical_entity(&chemical_token(&c, &mut i.clone()));
@@ -3683,6 +3719,28 @@ fn braced_whole(t: &str) -> Option<String> {
     let mut i = 0;
     let inner = braced(&c, &mut i);
     (i == c.len() && c.last() == Some(&'}')).then_some(inner)
+}
+
+/// A mark at the start of `c` inside `\ce`: `\htmlData{value}{inner}` (or `\class`, `\htmlClass`,
+/// `\htmlId`, `\cssId`): the command, the value, the inner text and how many characters it all takes.
+fn chemical_mark(c: &[char]) -> Option<(String, String, String, usize)> {
+    if c.first() != Some(&'\\') {
+        return None;
+    }
+    let name: String = c[1..].iter().take_while(|x| x.is_ascii_alphabetic()).collect();
+    if !matches!(name.as_str(), "htmlData" | "class" | "htmlClass" | "htmlId" | "cssId") {
+        return None;
+    }
+    let mut i = 1 + name.len();
+    if c.get(i) != Some(&'{') {
+        return None;
+    }
+    let value = braced(c, &mut i);
+    if c.get(i) != Some(&'{') {
+        return None;
+    }
+    let inner = braced(c, &mut i);
+    Some((name, value, inner, i))
 }
 
 /// Content of `{…}` starting at `c[*i] == '{'`, without the outer braces.
@@ -4583,6 +4641,15 @@ impl Reader<'_> {
 /// The CSS properties `\style` and `\htmlStyle` keep: they change how the content looks, and cannot
 /// load anything or move it out of its place.
 const STYLE_PROPERTIES: [&str; 4] = ["color", "background", "background-color", "opacity"];
+
+/// The safe attributes of a mark command (`\htmlData{m=a}` gives `data-m="a"`), for readers that put
+/// them somewhere else than around a node (chemfig's atoms).
+pub(crate) fn html_attribute_list(command: &str, value: &str) -> Vec<(String, String)> {
+    match html_attributes(command, value, Node::row(vec![])).0 {
+        Node::Attributed { attributes, .. } => attributes,
+        _ => Vec::new(),
+    }
+}
 
 /// `\class`, `\cssId`, `\style`, `\htmlClass`, `\htmlId`, `\htmlStyle` or `\htmlData` with its first
 /// argument `value`, around `base`; and what was dropped as unsafe or unsupported. Classes, ids and

@@ -159,3 +159,53 @@ fn the_json_has_the_boxes() {
         assert!(b[k].is_number(), "{k}");
     }
 }
+
+/// mhchem: marks around its pieces (a species, a coefficient, a formula, a state, an arrow) are read
+/// through, so an editor can edit a reaction piece by piece; the drawing is the one without them.
+#[test]
+fn marks_inside_ce_move_nothing() {
+    let pairs = [
+        (r"\ce{2H2 + O2 -> 2H2O}", r"\ce{\htmlData{m=a}{2H2} \htmlData{m=p}{+} \htmlData{m=b}{O2} \htmlData{m=r}{->} \htmlData{m=c}{2H2O}}"),
+        (
+            r"\ce{C3H8(g) + 5 O2(g) -> 3 CO2(g) + 4 H2O(l)}",
+            r"\ce{\htmlData{m=a}{\htmlData{m=f}{C3H8}\htmlData{m=s}{(g)}} + \htmlData{m=b}{\htmlData{m=k}{5} \htmlData{m=g}{O2}\htmlData{m=t}{(g)}} -> \htmlData{m=c}{\htmlData{m=l}{3} CO2(g)} + 4 H2O(l)}",
+        ),
+        (
+            r"\ce{6 CO2 + 6 H2O ->[\text{light}][\text{chlorophyll}] C6H12O6 + 6 O2}",
+            r"\ce{\htmlData{m=a}{6 CO2} + \htmlData{m=b}{6 H2O} \htmlData{m=r}{->[\text{light}][\text{chlorophyll}]} \htmlData{m=c}{C6H12O6} + \htmlData{m=d}{6 O2}}",
+        ),
+        (r"\ce{2 NO2(g) <=> N2O4(g)}", r"\ce{\htmlData{m=a}{2 NO2(g)} \htmlData{m=r}{<=>} \htmlData{m=b}{N2O4(g)}}"),
+        (r"\ce{Fe^3+ + e- -> Fe^2+}", r"\ce{\htmlData{m=a}{Fe^3+} + \htmlData{m=b}{e-} -> \htmlData{m=c}{Fe^2+}}"),
+        (r"\ce{CaCO3(s) ->[\Delta] CaO(s) + CO2 ^}", r"\ce{\htmlData{m=a}{CaCO3(s)} \htmlData{m=r}{->[\Delta]} \htmlData{m=b}{CaO(s)} + \htmlData{m=c}{CO2} \htmlData{m=g}{^}}"),
+    ];
+    for (bare, marked) in pairs {
+        let (a, b) = (typeset(bare), typeset(marked));
+        assert_eq!(drawing(&a), drawing(&b), "marks moved something in {bare}");
+        assert!(boxes(marked).len() >= 3, "marks give boxes in {marked}");
+        assert!(mathra::convert(marked, &options()).unwrap().warnings.is_empty(), "warnings in {marked}");
+    }
+}
+
+/// chemfig: a mark around an atom's label is kept on the atom, the label read through it (bonds still
+/// reach the same letter), and the drawing is the one without the mark.
+#[test]
+fn marks_on_chemfig_atoms_move_nothing() {
+    let pairs = [
+        (
+            r"\chemfig{H-C(-[2]H)(-[6]H)-C(-[2]H)(-[6]H)-O-H}",
+            r"\chemfig{\htmlData{m=a}{H}-\htmlData{m=b}{C}(-[2]\htmlData{m=c}{H})(-[6]\htmlData{m=d}{H})-\htmlData{m=e}{C}(-[2]H)(-[6]H)-\htmlData{m=f}{O}-\htmlData{m=g}{H}}",
+        ),
+        (r"\chemfig{*6(-=-=(-OH)-=)}", r"\chemfig{*6(-=-=(-\htmlData{m=x}{OH})-=)}"),
+        (r"\chemfig{H_3C-C(=[1]O)-[7]OH}", r"\chemfig{\htmlData{m=a}{H_3C}-\htmlData{m=b}{C}(=[1]\htmlData{m=c}{O})-[7]\htmlData{m=d}{OH}}"),
+        (r"\chemfig{H_3C-NH_2^+}", r"\chemfig{\htmlData{m=a}{H_3C}-\htmlData{m=b}{NH_2^+}}"),
+        (r"\chemfig{*6(-=-=-=)}", r"\chemfig{\htmlData{m=v0}{}*6(-\htmlData{m=v1}{}=\htmlData{m=v2}{}-=-=)}"),
+        (r"\chemfig{-[:30]-[:-30]OH}", r"\chemfig{\htmlData{m=v}{}-[:30]\htmlData{m=w}{}-[:-30]OH}"),
+        (r"\schemestart \chemfig{A-B} \arrow \chemfig{C=D} \schemestop", r"\schemestart \chemfig{\htmlData{m=a}{A}-B} \arrow \chemfig{C=\htmlData{m=d}{D}} \schemestop"),
+    ];
+    for (bare, marked) in pairs {
+        let (a, b) = (typeset(bare), typeset(marked));
+        assert_eq!(drawing(&a), drawing(&b), "marks moved something in {bare}");
+        assert!(!boxes(marked).is_empty(), "marks give boxes in {marked}");
+        assert!(mathra::convert(marked, &options()).unwrap().warnings.is_empty(), "warnings in {marked}");
+    }
+}

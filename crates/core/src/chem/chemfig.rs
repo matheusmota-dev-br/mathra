@@ -67,6 +67,7 @@ struct Pending {
     closures: Vec<(Option<String>, usize)>,
     charges: Vec<Charge>,
     skip_align: bool,
+    attributes: Vec<(String, String)>,
 }
 
 /// Reads a `\chemfig{…}` body.
@@ -555,6 +556,7 @@ impl Mol<'_, '_> {
         let atom = &mut self.m.atoms[id];
         atom.charges.extend(pending.charges);
         atom.skip_align |= pending.skip_align;
+        atom.attributes.extend(pending.attributes);
         for (spec, piece) in pending.closures {
             self.closure(id, piece, spec)?;
         }
@@ -741,6 +743,16 @@ impl Mol<'_, '_> {
                             let piece = if args[1].trim().is_empty() { before.saturating_sub(1) } else { before };
                             let charges = self.charges(&args[0], piece)?;
                             self.pending.charges.extend(charges);
+                            s.push_str(args[1].trim());
+                        }
+                        // a mark around the label (\htmlData, \class, \htmlId): read through, kept on the atom
+                        "htmlData" | "class" | "htmlClass" | "htmlId" | "cssId" => {
+                            let mut args = Vec::new();
+                            for _ in 0..2 {
+                                self.skip_spaces();
+                                args.push(if self.current() == Some('{') { self.group('{', '}')? } else { String::new() });
+                            }
+                            self.pending.attributes.extend(crate::input::latex::html_attribute_list(&name, &args[0]));
                             s.push_str(args[1].trim());
                         }
                         // chemfig manual, section 5.4.3

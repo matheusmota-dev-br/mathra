@@ -196,11 +196,27 @@ pub fn molecule(m: &Molecule, ctx: &mut Ctx, hooks: &mut Hooks) -> R<Drawing> {
             let left = here.0 - l.center(atom.anchor);
             // C-LAY-4: the letters' middle on the atom's position; C-LAY-8: with \chemskipalign, the baseline
             let baseline = if atom.skip_align { here.1 } else { here.1 - half_letter + 0.02 * EM };
-            for p in &l.pieces {
-                d.math(p.math_box.clone(), (left + p.x, baseline));
+            if atom.attributes.is_empty() {
+                for p in &l.pieces {
+                    d.math(p.math_box.clone(), (left + p.x, baseline));
+                }
+            } else {
+                // a marked atom: its pieces in one group that carries the mark
+                let mut whole = crate::layout::MathBox::empty();
+                for p in &l.pieces {
+                    whole.place(&p.math_box, p.x, 0.0);
+                    whole.width = whole.width.max(p.x + p.math_box.width);
+                }
+                whole.group(atom.attributes.clone());
+                d.math(whole, (left, baseline));
             }
             let a = l.pieces.get(atom.anchor).map(|p| (left + p.x, left + p.x + p.math_box.width)).unwrap_or((here.0, here.0));
             around = Rect { x0: a.0, y0: here.1 - half_letter, x1: a.1, y1: here.1 + half_letter };
+        } else if !atom.attributes.is_empty() {
+            // a marked vertex without a label (a carbon of the skeleton): an empty group on the vertex
+            let mut point = crate::layout::MathBox::empty();
+            point.group(atom.attributes.clone());
+            d.math(point, here);
         }
         for mark in &atom.lewis {
             lewis(&mut d, around, *mark);
