@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathra-field — rodada 1</title>
+<script type="importmap">{ "imports": { "@mathlabs/mathra": "/npm/pkg/web/index.js" } }</script>
+<style>
+  :root { --bg: #f4f3ef; --ink: #24282a; --muted: #5c6062; --line: #d9d6cc; --surface: #fcfbf8; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1e20; --ink: #e6e3da; --muted: #a8abaa; --line: #3d4246; --surface: #24272a; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px; display: grid; gap: 18px; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  .palette { display: flex; flex-wrap: wrap; gap: 6px; }
+  .palette button { font: 15px Georgia, serif; min-width: 44px; padding: 6px 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  mathra-field { display: block; font-size: 2rem; }
+  pre { margin: 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; word-break: break-all; font-size: 13px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .lousa { --mathra-background: #23392f; --mathra-ink: #eef0e6; --mathra-border: #85613f; --mathra-caret: #f7f4ea; --mathra-slot: #f2d37a; --mathra-radius: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>mathra-field · rodada 1</h1>
+  <p class="muted">Digite direto: letras, números, <code>+ - = ( )</code>, <code>/</code> faz fração, <code>^</code> e <code>_</code> expoente e índice, <code>\</code> abre um comando (<code>\pm</code>, <code>\sqrt</code>, <code>\alpha</code>…) que termina com espaço. Setas movem, Backspace apaga, Ctrl/Cmd+Z desfaz.</p>
+  <div class="palette" id="palette">
+    <button data-t="frac" title="Fração">a/b</button>
+    <button data-t="sqrt" title="Raiz quadrada">√</button>
+    <button data-t="nroot" title="Raiz de índice n">ⁿ√</button>
+    <button data-t="sup" title="Expoente">xⁿ</button>
+    <button data-t="sub" title="Índice">xₙ</button>
+    <button data-t="paren" title="Parênteses que crescem">( )</button>
+    <button data-t="abs" title="Módulo">| |</button>
+    <button data-t="sum" title="Somatório">∑</button>
+    <button data-t="int" title="Integral">∫</button>
+    <button data-t="lim" title="Limite">lim</button>
+    <button data-s="\pm" data-c="bin" title="Mais ou menos">±</button>
+    <button id="skin" title="Trocar o tema do campo (só variáveis CSS)">tema</button>
+  </div>
+  <mathra-field id="f" locale="pt-BR" aria-label="Fórmula"></mathra-field>
+  <div><div class="muted">LaTeX</div><pre id="latex"></pre></div>
+  <div><div class="muted">Fala (pt-BR)</div><pre id="speech"></pre></div>
+  <div class="muted" id="timing"></div>
+</main>
+<script type="module">
+  import "/editor/dist/index.js";
+  const f = document.getElementById("f");
+  const times = [];
+  f.addEventListener("change", (e) => {
+    document.getElementById("latex").textContent = e.detail.latex || "(vazio)";
+    document.getElementById("speech").textContent = e.detail.speech;
+    times.push(f.lastTiming.total);
+    const s = [...times].sort((a, b) => a - b);
+    const q = (p) => s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(2);
+    document.getElementById("timing").textContent = `por mudança (mathra + cursor): p50 ${q(0.5)} ms · p95 ${q(0.95)} ms · ${s.length} mudanças`;
+  });
+  document.getElementById("palette").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.id === "skin") return f.classList.toggle("lousa");
+    if (b.dataset.t) f.insert(b.dataset.t);
+    else if (b.dataset.s) f.insertSymbol(b.dataset.s, b.dataset.c);
+  });
+  window.mathraTimes = times;
+  f.focus();
+</script>
+</body>
+</html>
