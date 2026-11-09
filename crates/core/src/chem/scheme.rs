@@ -114,6 +114,17 @@ pub fn split_top(s: &str, sep: char) -> Vec<String> {
     parts
 }
 
+/// The hook a TikZ point of `\chemmove` names: `name`, `name.anchor`, or `[yshift=7pt]name.180` with
+/// the point's own move, which mathra leaves out (the arrow ends at the hook).
+fn hook_of(point: &str) -> String {
+    let p = point.trim();
+    let p = match p.strip_prefix('[') {
+        Some(rest) => rest.split_once(']').map_or(p, |(_, after)| after.trim()),
+        None => p,
+    };
+    p.split('.').next().unwrap_or("").trim().to_string()
+}
+
 /// A compound named in an arrow: its name, its anchor's angle, and its move in em.
 type NodeSpec = (String, Option<f32>, Option<(f32, f32)>);
 
@@ -155,9 +166,10 @@ struct SchemeReader<'r, 'w> {
     /// The angle and length coefficient of an arrow that gives none: `\schemestart[arrow angle=…,arrow
     /// coeff=…]` (chemfig manual, section 6.1); 0 and 1 by default.
     arrows: (f32, f32),
-    /// Where each `\subscheme` starts, as the index of its first compound: chemfig names its box too,
-    /// with the number before its first compound's (manual, section 6.8), so `ck` counts them.
-    boxes: Vec<usize>,
+    /// Each `\subscheme`'s compounds, as the index of its first and of the one after its last: chemfig
+    /// names its box too, with the number before its first compound's (manual, section 6.8), so `ck`
+    /// counts them, and an arrow can leave from a box.
+    boxes: Vec<(usize, usize)>,
 }
 
 impl SchemeReader<'_, '_> {
@@ -348,8 +360,9 @@ impl SchemeReader<'_, '_> {
                     sub.items()?;
                     // the names given inside are the scheme's (a \merge after it can join them)
                     self.names.extend(sub.names.into_iter().map(|(n, k)| (n, first + k)));
-                    self.boxes.push(first);
-                    self.boxes.extend(sub.boxes.into_iter().map(|k| first + k));
+                    let inside = sub.scheme.items.iter().filter(|i| matches!(i, Item::Compound(_))).count();
+                    self.boxes.push((first, first + inside));
+                    self.boxes.extend(sub.boxes.into_iter().map(|(a, b)| (first + a, first + b)));
                     let (items, moves) = (sub.scheme.items, sub.scheme.moves);
                     self.scheme.items.extend(items);
                     self.scheme.moves.extend(moves);
@@ -438,7 +451,7 @@ impl SchemeReader<'_, '_> {
         for item in &self.scheme.items {
             match item {
                 Item::Compound(_) => {
-                    number += self.boxes.iter().filter(|&&b| b == index).count();
+                    number += self.boxes.iter().filter(|b| b.0 == index).count();
                     if number >= wanted {
                         return None;
                     }
@@ -447,6 +460,33 @@ impl SchemeReader<'_, '_> {
                         if number == wanted {
                             return Some(index);
                         }
+                    }
+                    index += 1;
+                    joined = false;
+                }
+                Item::Plus => joined = true,
+                Item::Arrow(_) | Item::Merge(_) => joined = false,
+            }
+        }
+        None
+    }
+
+    /// The `\subscheme` box chemfig's name `ck` stands for (manual, section 6.8): its compounds, from the
+    /// first to the one after the last, when it holds any.
+    fn named_box(&self, name: &str) -> Option<(usize, usize)> {
+        let wanted = name.strip_prefix('c')?.parse::<usize>().ok()?;
+        let (mut number, mut index, mut joined) = (0, 0, false);
+        for item in &self.scheme.items {
+            match item {
+                Item::Compound(_) => {
+                    for b in self.boxes.iter().filter(|b| b.0 == index) {
+                        number += 1;
+                        if number == wanted {
+                            return Some(*b).filter(|b| b.1 > b.0);
+                        }
+                    }
+                    if !joined {
+                        number += 1;
                     }
                     index += 1;
                     joined = false;
@@ -602,6 +642,7 @@ impl SchemeReader<'_, '_> {
         self.skip_spaces();
         let (mut from, mut to) = (None, None);
         let mut shift = None;
+        let mut from_box = None;
         if self.current() == Some('(') {
             let names = self.group('(', ')')?;
             let (before, after) = names.split_once("--").unwrap_or((&names, ""));
@@ -615,7 +656,9 @@ impl SchemeReader<'_, '_> {
             if let Some(start) = before.strip_prefix('@') {
                 // section 6.7: the arrow branches from that compound
                 from = self.named(start);
-                if from.is_none() {
+                // a \subscheme's box: the arrow leaves from the box around its compounds
+                from_box = if from.is_none() { self.named_box(start) } else { None };
+                if from.is_none() && from_box.is_none() {
                     self.reader.tolerate(rules::E_REC_9, format!("an arrow from @{start}: no compound is named {start}"), "drawn from the last compound")?;
                 }
             } else if !before.is_empty() && count > 0 {
@@ -699,7 +742,7 @@ impl SchemeReader<'_, '_> {
                 length = l;
             }
         }
-        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc, from, to, shift }));
+        self.scheme.items.push(Item::Arrow(Arrow { kind, above, below, angle, length, arc, from, to, shift, from_box }));
         Ok(())
     }
 
@@ -732,15 +775,7 @@ impl SchemeReader<'_, '_> {
                 continue;
             }
             let controls: Vec<(f32, f32)> = parens(path).iter().filter_map(|n| polar(n)).collect();
-            let mut m = ElectronMove {
-                from: names[0].split('.').next().unwrap_or("").to_string(),
-                to: names[names.len() - 1].split('.').next().unwrap_or("").to_string(),
-                out_angle: None,
-                in_angle: None,
-                reach: None,
-                bend: 45.0,
-                single,
-            };
+            let mut m = ElectronMove { from: hook_of(&names[0]), to: hook_of(&names[names.len() - 1]), out_angle: None, in_angle: None, reach: None, bend: 45.0, single };
             if controls.len() >= 2 {
                 m.out_angle = Some(controls[0].0);
                 m.in_angle = Some(controls[1].0);

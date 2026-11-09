@@ -956,6 +956,23 @@ impl Reader<'_> {
             "right" => return Ok(Some(Some(Stop::Right(self.delimiter()?)))),
             "middle" => return Ok(Some(Some(Stop::Middle(self.delimiter()?)))),
             "hline" | "midrule" | "toprule" | "bottomrule" => return Ok(Some(Some(Stop::Hline(false)))),
+            // TeX's \noalign{…} between the rows of an alignment: vertical space there is read and left
+            // out as the [length] of \\ is, a \hrule is a rule; anything else mathra does not draw
+            "noalign" => {
+                let content = self.raw_text()?;
+                let spacing = |s: &str| {
+                    let s = s.trim();
+                    s.is_empty() || ["\\vspace", "\\vskip", "\\smallskip", "\\medskip", "\\bigskip", "\\addvspace"].iter().any(|c| s.starts_with(c))
+                };
+                let trimmed = content.trim();
+                if trimmed == "\\hrule" || trimmed == "\\hline" {
+                    return Ok(Some(Some(Stop::Hline(false))));
+                }
+                if !spacing(trimmed) {
+                    self.tolerate(rules::E_REC_1, col, format!("\\noalign{{{trimmed}}}: only vertical space and rules are read"), "left out")?;
+                }
+                return Ok(Some(None));
+            }
             // arydshln
             "hdashline" => {
                 self.raw_optional();
@@ -1182,6 +1199,14 @@ impl Reader<'_> {
                 return Ok(Some(None));
             }
             "qedhere" => return Ok(Some(None)),
+            // vertical space inside a formula (a row of cases, say) is left out, as the [length] of \\ is
+            "vspace" => {
+                if self.current() == Some('*') {
+                    self.pos += 1;
+                }
+                self.raw_text()?;
+                return Ok(Some(None));
+            }
             "setlength" => return self.set_length(col).map(|()| Some(None)),
             "strut" | "mathstrut" => Node::Phantom { base: Box::new(Node::Operator { symbol: '(', class: Class::Open }), width: false, height: true },
             "tag" => {

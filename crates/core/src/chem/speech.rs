@@ -147,7 +147,8 @@ pub fn speak(s: &Scheme, loc: Locale) -> String {
                     Body::Math { tex } => math_speech(tex, loc),
                 };
                 parts.push(match &c.name {
-                    Some(n) => format!("{}, {body}", math_speech(&text_tex(n), loc)),
+                    // a name's lines (`\\` breaks them) are read one after the other
+                    Some(n) => format!("{}, {body}", math_speech(&text_tex(&super::layout::split_lines(n).join(" ")), loc)),
                     None => body,
                 });
             }

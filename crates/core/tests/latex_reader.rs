@@ -1950,3 +1950,19 @@ fn setlength_arraycolsep_spaces_the_columns_after_it() {
     assert!(w.iter().any(|w| w.starts_with("E-REC-9")), "{w:?}");
     assert!(convert(r"\setlength{\topsep}{1pt} x", &Options { strict: true, ..Options::default() }).is_err());
 }
+
+#[test]
+fn noalign_reads_vertical_space_and_rules() {
+    // TeX's \noalign between rows: vertical space is left out as the [length] of \\ is, \hrule is a rule
+    assert_eq!(tree(r"\begin{array}{c} a \\ \noalign{\vspace{1ex}} b \end{array}"), tree(r"\begin{array}{c} a \\ b \end{array}"));
+    assert_eq!(tree(r"\begin{array}{c} a \\ \noalign{\hrule} b \end{array}"), tree(r"\begin{array}{c} a \\ \hline b \end{array}"));
+    let (_, w) = tolerant(r"\begin{array}{c} a \\ \noalign{\foo} b \end{array}");
+    assert!(w.iter().any(|w| w.starts_with("E-REC-1") && w.contains(r"\noalign{\foo}")), "{w:?}");
+}
+
+#[test]
+fn vspace_inside_a_formula_is_left_out() {
+    // vertical space in a row of cases is left out, as the [length] of \\ is
+    assert_eq!(tree(r"\begin{cases} a \\ \vspace{2mm} b \end{cases}"), tree(r"\begin{cases} a \\ b \end{cases}"));
+    assert_eq!(tree(r"x \vspace*{1ex} y"), tree(r"x y"));
+}
