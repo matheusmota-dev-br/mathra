@@ -92,7 +92,13 @@ pub fn generate_editor() -> String {
 
     // the window
     let (left, top, right, bottom) = (700.0, 36.0, 1196.0, 284.0);
-    body.push_str(&format!(r#"<rect x="{}" y="{}" width="{}" height="{}" rx="14" fill="{PANEL}" stroke="{DIM}" stroke-opacity="0.5" stroke-width="1.5"/>"#, num(left), num(top), num(right - left), num(bottom - top)));
+    body.push_str(&format!(
+        r#"<rect x="{}" y="{}" width="{}" height="{}" rx="14" fill="{PANEL}" stroke="{DIM}" stroke-opacity="0.5" stroke-width="1.5"/>"#,
+        num(left),
+        num(top),
+        num(right - left),
+        num(bottom - top)
+    ));
     // a row of palette buttons, each drawn by mathra, the empty places in orange
     let place = format!(r"\color{{{ORANGE}}}{{\square}}");
     let buttons = [
@@ -109,7 +115,12 @@ pub fn generate_editor() -> String {
     let row = (right - left - 48.0 - (buttons.len() as f32 - 1.0) * gap) / buttons.len() as f32;
     for (k, tex) in buttons.iter().enumerate() {
         let x = left + 24.0 + k as f32 * (row + gap);
-        body.push_str(&format!(r#"<rect x="{}" y="{}" width="{}" height="{size}" rx="8" fill="{BOARD}" stroke="{DIM}" stroke-opacity="0.35"/>"#, num(x), num(top + 20.0), num(row)));
+        body.push_str(&format!(
+            r#"<rect x="{}" y="{}" width="{}" height="{size}" rx="8" fill="{BOARD}" stroke="{DIM}" stroke-opacity="0.35"/>"#,
+            num(x),
+            num(top + 20.0),
+            num(row)
+        ));
         // a wide button (the matrix) is set smaller, to fit
         let em = 20.0_f32.min(20.0 * (row - 12.0) / measure(tex, 20.0).0);
         body.push_str(&centered(tex, x + row / 2.0, top + 20.0 + size / 2.0, em, CHALK));
@@ -124,7 +135,12 @@ pub fn generate_editor() -> String {
     let per_unit = em / font::font().units_per_em();
     let mark = boxes.iter().find(|b| b.attributes.iter().any(|(k, v)| k == "data-m" && v == "c")).expect("the empty place is marked");
     let caret = x + (mark.x + mark.width) * per_unit + 5.0;
-    body.push_str(&format!(r#"<rect x="{}" y="{}" width="2.5" height="{}" rx="1" fill="{YELLOW}"/>"#, num(caret), num(base + mark.y * per_unit - 2.0), num(mark.height * per_unit + 4.0)));
+    body.push_str(&format!(
+        r#"<rect x="{}" y="{}" width="2.5" height="{}" rx="1" fill="{YELLOW}"/>"#,
+        num(caret),
+        num(base + mark.y * per_unit - 2.0),
+        num(mark.height * per_unit + 4.0)
+    ));
 
     format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="mathra editor: build a formula in a box, drawn by mathra"><rect width="{w}" height="{h}" fill="{BOARD}"/>{body}<rect y="304" width="{w}" height="16" fill="{WOOD}"/><rect x="1120" y="294" width="46" height="10" rx="3" fill="{CHALK}"/><rect x="1176" y="294" width="30" height="10" rx="3" fill="{ORANGE}"/></svg>
