@@ -4,9 +4,9 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
-## Unreleased
+## 1.12.0 - 2026-11-10
 
-What the measured formulas still asked for: commands inside real formulas, and chemfig as its manual writes it.
+Where each marked piece is drawn, chemistry included: what a visual editor needs. And what the measured formulas still asked for: commands inside real formulas, and chemfig as its manual writes it.
 
 - **Inside real formulas.** `\setlength{\arraycolsep}{…}` spaces the columns of the arrays and matrices after it; `\lefteqn` overlaps to the right in display style, as in `eqnarray`; `\linebreak[n]` is a break hint, as `\allowbreak`, and amsthm's `\qedhere` draws nothing, since an equation converted alone is not a proof. Measured on the 174,525 formulas: 39 more convert with no warning (the Stacks Project's `\linebreak[0]`, arXiv's `\qedhere` and `\arraycolsep`), and none is drawn worse.
 - **chemfig as its manual writes it.** A branch may start with defaults of its own, `B([:60]-D-E)`, `([::-30,1.5]-X-Y)`, valid in all of it; `-#(d1,d2)` (or `\#`, `\CFhash`) sets the space a bond leaves before the letters; `**[30,330]5(…)` draws the aromatic circle as an arc, dashed when its TikZ options say so. 17 more examples of the chemfig manual convert with no warning, and none is drawn worse.
