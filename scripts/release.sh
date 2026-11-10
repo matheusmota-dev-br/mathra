@@ -1,6 +1,6 @@
 #!/bin/sh
 # Releases every package whose version in the code is not published yet: creates its tag and pushes
-# all of them at once, and each tag starts its workflow (crates.yml, npm.yml, pypi.yml).
+# all of them at once, and each tag starts its workflow (crates.yml, npm.yml, pypi.yml, editor.yml).
 #
 #   scripts/release.sh            create and push the missing tags
 #   scripts/release.sh --dry-run  only show what would be released
@@ -9,7 +9,8 @@
 # and makes the GitHub release of tag v<version> from it once the tags are pushed.
 #
 # Versions come from the files the workflows check: Cargo.toml (crates mathra and mathra-cli, tag v*),
-# npm/package.json (npm-v*) and crates/python/Cargo.toml (py-v*). A version already on its registry,
+# npm/package.json (npm-v*), crates/python/Cargo.toml (py-v*) and editor/package.json (editor-v*, the
+# editor's own line of versions). A version already on its registry,
 # or a tag that already exists, is skipped with a note.
 set -e
 cd "$(dirname "$0")/.."
@@ -24,6 +25,7 @@ esac
 crates=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 npm=$(sed -n 's/^  "version": "\(.*\)",/\1/p' npm/package.json | head -1)
 python=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/python/Cargo.toml | head -1)
+editor=$(sed -n 's/^  "version": "\(.*\)",/\1/p' editor/package.json | head -1)
 
 # the tags must point at what is on main, so the published code is the code that passed the pipeline
 git fetch --quiet --tags origin main
@@ -47,6 +49,7 @@ published() {
     crates) curl -sf -A "$agent" -o /dev/null "https://crates.io/api/v1/crates/mathra/$2" &&
       curl -sf -A "$agent" -o /dev/null "https://crates.io/api/v1/crates/mathra-cli/$2" ;;
     npm) curl -sf -o /dev/null "https://registry.npmjs.org/@mathlabs%2Fmathra/$2" ;;
+    editor) curl -sf -o /dev/null "https://registry.npmjs.org/@mathlabs%2Fmathra-editor/$2" ;;
     python) curl -sf -o /dev/null "https://pypi.org/pypi/mathra/$2/json" ;;
   esac
 }
@@ -73,6 +76,7 @@ echo "Packages:"
 check crates "$crates" "v$crates"
 check npm "$npm" "npm-v$npm"
 check python "$python" "py-v$python"
+check editor "$editor" "editor-v$editor"
 
 if [ -z "$tags" ]; then
   echo "Nothing to release."
