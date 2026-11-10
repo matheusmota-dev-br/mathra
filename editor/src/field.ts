@@ -1,6 +1,7 @@
 // <mathra-field>: the box where a formula is built. mathra draws it at every change; the boxes it
 // returns place the cursor and the selection and read the clicks.
 
+import { cleanLabel, labelText } from "./structure.ts";
 import { init, render, type Options, type Result } from "@mathlabs/mathra";
 import { Editor, classOfTree, type ChangeKind } from "./model.ts";
 import { arrowAt, arrowPath, atomRect, blockAt, boxesById, caretRect, cellAt, cellRect, cursorAt, selectionRect, type Box, type Rect } from "./geometry.ts";
@@ -24,8 +25,8 @@ ${TOKENS}
   box-sizing: border-box;
   height: 100%;
   display: flex;
-  align-items: center;
-  /* "safe": a formula wider than the box starts at its left edge, where it can scroll from */
+  /* "safe": a formula taller or wider than the box starts at its top or left edge, where it can scroll from */
+  align-items: safe center;
   justify-content: var(--mathra-align, safe center);
   min-height: 1.6em;
   padding: var(--mathra-padding, 0.6em 0.8em);
@@ -33,8 +34,7 @@ ${TOKENS}
   border: 1px solid var(--_border);
   border-radius: var(--_radius);
   cursor: text;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
   touch-action: manipulation;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -87,6 +87,11 @@ textarea { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; 
 .dbar button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
 .dbar .sep { width: 1px; height: 22px; background: var(--_border); margin: 0 4px; }
 .dbar .hint { color: var(--_muted); padding: 0 6px; }
+.dbar.compact .hint, .dbar.compact .line:has(> .hint:only-child) { display: none; }
+.dbar:has(> .line) { flex-direction: column; align-items: flex-start; }
+.dbar .line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dbar input.label { width: 9em; height: 30px; box-sizing: border-box; padding: 0 8px; color: var(--_ink); background: var(--_background); border: 1px solid var(--_border); border-radius: var(--_radius); font: 15px var(--_font); }
+.dbar input.label:focus { outline: 2px solid var(--_focus); outline-offset: 1px; border-color: var(--_focus); }
 .box.dragging-arrow { cursor: crosshair; }
 .live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;
@@ -153,6 +158,7 @@ export const DEFAULT_KEYMAP: Keymap = {
   "Mod+Y": "redo",
   "Mod+Enter": "addRow",
   "Mod+Shift+Enter": "addColumn",
+  "Shift+Enter": "addColumn",
   "Alt+ArrowUp": "arrowUp",
   "Alt+ArrowDown": "arrowDown",
   "Alt+ArrowLeft": "arrowLeft",
@@ -208,8 +214,11 @@ export class MathraField extends HTMLElement {
   private chemDrag: { atom: Raw; k: number; x0: number; y0: number; x: number; y: number; active: boolean } | null = null;
   /** The kind of bond the structure bar draws next. */
   private chemKind = "single";
-  private arrowDrag: { diagram: Diagram; from: [number, number]; to: [number, number] | null; x: number; y: number; active: boolean } | null = null;
+  /** An arrow being drawn by dragging: to a cell (`to`), or out past the cells, to a new neighbour one step that way (`out`). */
+  private arrowDrag: { diagram: Diagram; from: [number, number]; to: [number, number] | null; out?: [number, number] | null; x: number; y: number; active: boolean } | null = null;
   private dbarKey = "";
+  /** The marked LaTeX last drawn. */
+  private drawnMarked = "";
   private ownValue: string | null = null;
 
   constructor() {
@@ -227,12 +236,30 @@ export class MathraField extends HTMLElement {
     this.dgov = root.querySelector(".dgov")!;
     this.dbar = root.querySelector(".dbar")!;
     this.dbar.addEventListener("pointerdown", (e) => {
+      // the label's box takes the focus; the buttons leave it in the formula
+      if ((e.target as HTMLElement).closest("input")) return e.stopPropagation();
       e.preventDefault();
       e.stopPropagation();
     });
     this.dbar.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>("button[data-run]");
       if (b) this.run(b.dataset.run!);
+    });
+    // the atom's label, typed freely: each change goes into the structure at once
+    this.dbar.addEventListener("input", (e) => {
+      const input = e.target as HTMLInputElement;
+      const label = cleanLabel(input.value);
+      if (label !== input.value) input.value = label;
+      this.editor.setChemLabel(label);
+    });
+    this.dbar.addEventListener("keydown", (e) => {
+      if (!(e.target as HTMLElement).closest("input")) return;
+      e.stopPropagation();
+      // Enter or Escape: back to the formula, the atom still picked
+      if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        this.focus();
+      }
     });
     this.blockPanel = root.querySelector(".block")!;
     this.blockSource = root.querySelector("textarea.src")!;
@@ -278,6 +305,7 @@ export class MathraField extends HTMLElement {
       this.arrowDrag = null;
       this.box.classList.remove("dragging-arrow");
       if (drag?.active && drag.to) this.editor.addArrow(drag.diagram, drag.from, drag.to);
+      else if (drag?.active && drag.out) this.editor.arrowToNeighbour(drag.diagram, drag.from, drag.out[0], drag.out[1]);
       else if (drag?.active) this.placeDiagram();
     });
     this.box.addEventListener("dblclick", (e) => {
@@ -458,14 +486,16 @@ export class MathraField extends HTMLElement {
         }
         const at = e.matrixAtCursor();
         const d = at?.matrix.kind === "diagram" ? at.matrix : e.reactionAtCursor()?.reaction ?? null;
+        // a block of LaTeX beside the cursor: its panel
+        const block = d ? null : e.blockAtCursor();
+        if (block) return void this.openBlock(block);
         if (!d) return;
         const raw = e.toBlock(d);
         if (raw) this.openBlock(raw);
       },
       rxArrow: () => e.setReactionArrow(arg),
-      rxState: () => e.setSpeciesState(arg),
       rxSign: () => e.addReactionSign(arg),
-      rxPlace: () => e.enterReactionPlace(arg as "above" | "below" | "coef" | "formula"),
+      rxPlace: () => e.enterReactionPlace(arg === "below" ? "below" : "above"),
       rxRemove: () => e.removeReactionPiece(),
       rxStructure: () => e.addSchemeStructure(),
       editBlock: () => {
@@ -509,7 +539,11 @@ export class MathraField extends HTMLElement {
       this.draw();
       this.ownValue = this.latex;
       this.dispatchEvent(new CustomEvent<InputDetail>("input", { detail: { latex: this.latex }, bubbles: true, composed: true }));
-    } else this.placeOverlays();
+    }
+    // the cursor alone moved: drawn again only where the drawing follows it (an empty place shown
+    // where the cursor is, the conditions of the arrow it is on)
+    else if (this.editor.toLatex({ marked: true }) !== this.drawnMarked) this.draw();
+    else this.placeOverlays();
     this.sendCommand(!!this.editor.commandBeingTyped());
     if (pending && !this.block) this.openBlock(pending.atom, pending.caret);
     else if (this.block) this.placeBlock();
@@ -530,7 +564,8 @@ export class MathraField extends HTMLElement {
     this.editor.decimalComma = decimalComma(locale);
     let r: Result | null = null;
     try {
-      r = render(this.editor.toLatex({ marked: true }), this.drawingOptions);
+      this.drawnMarked = this.editor.toLatex({ marked: true });
+      r = render(this.drawnMarked, this.drawingOptions);
     } catch {
       // mathra refuses the formula with its marks (nested too deep for them): the last drawing stays
     }
@@ -575,6 +610,39 @@ export class MathraField extends HTMLElement {
     this.dispatchEvent(new CustomEvent("mathra-render", { bubbles: true, composed: true }));
   }
 
+  /** The floating bar beside what it edits (`p`, in the box's pixels): under it, else over it; when
+   * neither fits (a small screen), at the edge of the field away from the cursor, never over it. */
+  private placeBar(p: { left: number; top: number; width: number; height: number }): void {
+    const host = this.getBoundingClientRect();
+    const box = this.box.getBoundingClientRect();
+    // a low field (a phone): the bar without its hint, a line less
+    this.dbar.classList.toggle("compact", host.height < 320);
+    const width = this.dbar.offsetWidth;
+    const height = this.dbar.offsetHeight;
+    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
+    left = Math.max(8, Math.min(left, host.width - width - 8));
+    // where it may go, first the best: under what it edits, over it (inside the field); just under or
+    // over the field; the field's bottom or top edge. The first that keeps the cursor's line free and
+    // is on the screen; else the first on the screen
+    const caret = this.caret.getBoundingClientRect();
+    const c0 = caret.top - host.top;
+    const c1 = c0 + caret.height;
+    const free = (t: number) => t + height <= c0 || t >= c1;
+    const inside = (t: number) => t >= 4 && t + height <= host.height - 4;
+    const seen = (t: number) => host.top + t >= 0 && host.top + t + height <= innerHeight;
+    const places: [number, boolean][] = [
+      [box.top - host.top + p.top + p.height + 14, true],
+      [box.top - host.top + p.top - height - 14, true],
+      [host.height + 6, false],
+      [-height - 6, false],
+      [host.height - height - 4, true],
+      [4, true],
+    ];
+    const fits = places.filter(([t, within]) => seen(t) && (!within || inside(t))).map(([t]) => t);
+    const top = fits.find(free) ?? fits[0] ?? Math.max(-host.top, Math.min(host.height + 6, innerHeight - host.top - height));
+    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
+  }
+
   /** From the SVG's coordinates to pixels inside the box. */
   private toBox(rect: Rect): { left: number; top: number; width: number; height: number } | null {
     const svg = this.drawing.querySelector("svg");
@@ -588,7 +656,6 @@ export class MathraField extends HTMLElement {
   }
 
   private placeOverlays(): void {
-    this.placeDiagram();
     const caret = caretRect(this.editor.cursor, this.boxes);
     const p = caret && this.toBox(caret);
     if (p) {
@@ -607,6 +674,8 @@ export class MathraField extends HTMLElement {
     const q = sel && this.toBox(sel);
     this.selectionBox.hidden = !q;
     if (q) Object.assign(this.selectionBox.style, { left: `${q.left}px`, top: `${q.top}px`, width: `${q.width}px`, height: `${q.height}px` });
+    // the bars last: they keep clear of the cursor where it now is
+    this.placeDiagram();
   }
 
   /** Tells screen readers the formula, a moment after typing stops. */
@@ -659,7 +728,9 @@ export class MathraField extends HTMLElement {
       // on an arrow: its label to edit
       const arrow = arrowAt(this.editor, this.boxes, p.x, p.y);
       const cell = cellAt(this.editor, this.boxes, p.x, p.y);
-      if (arrow && !cell) {
+      // an arrow over an empty cell (one it passes, as A → C over an empty middle) is what is seen there
+      const emptyCell = cell && !cell.diagram.cells[cell.i][cell.j].children.length;
+      if (arrow && (!cell || emptyCell)) {
         this.editor.selectArrow(arrow.diagram, arrow.index);
         return;
       }
@@ -696,6 +767,7 @@ export class MathraField extends HTMLElement {
         drag.x = p.x;
         drag.y = p.y;
         drag.to = over && over.diagram === drag.diagram && away ? [over.i, over.j] : null;
+        drag.out = drag.to ? null : this.dragOut(drag);
         this.box.classList.add("dragging-arrow");
         this.placeDiagram();
       }
@@ -738,6 +810,20 @@ export class MathraField extends HTMLElement {
     return null;
   }
 
+  /** Where an arrow dragged past the cells goes: the neighbour of its cell one step that way (in
+   * eight directions), when the pointer is far enough from the cell; a new cell there if it is empty. */
+  private dragOut(drag: { diagram: Diagram; from: [number, number]; x: number; y: number }): [number, number] | null {
+    const r = cellRect(drag.diagram, drag.from[0], drag.from[1], this.boxes);
+    if (!r) return null;
+    const dx = drag.x - (r.x + r.width / 2);
+    const dy = drag.y - (r.y + r.height / 2);
+    // about one and a half cells' height away: a short drag draws nothing
+    if (Math.hypot(dx, dy) < 1500) return null;
+    const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+    const steps: [number, number][] = [[0, 1], [1, 1], [1, 0], [1, -1], [0, -1], [-1, -1], [-1, 0], [-1, 1]];
+    return steps[(a + 8) % 8];
+  }
+
   /** Over the diagram the cursor is in (or an arrow is drawn in): its cells outlined, the arrow being
    * edited highlighted, the arrow being drawn; and its bar of tools. */
   private placeDiagram(): void {
@@ -769,6 +855,9 @@ export class MathraField extends HTMLElement {
           .join("");
         return this.paintReactionBar(rx.reaction);
       }
+      // beside a block of LaTeX (what the editor keeps as written): a bar that says it is edited as LaTeX
+      const block = svg && !this.readOnly && !this.block ? this.editor.blockAtCursor() : null;
+      if (block) return this.paintBlockBar(block);
       this.dbar.hidden = true;
       this.dbarKey = "";
       return;
@@ -799,6 +888,13 @@ export class MathraField extends HTMLElement {
     if (drag) {
       const r = cellRect(d, drag.from[0], drag.from[1], this.boxes);
       if (r) out += `<line class="ghost" x1="${r.x + r.width / 2}" y1="${r.y + r.height / 2}" x2="${drag.x}" y2="${drag.y}"/>`;
+      // past the cells: the new cell, where tikz-cd's spacing puts it
+      if (r && drag.out) out += `<rect class="cell target" x="${r.x + drag.out[1] * 2400 - 60}" y="${r.y + drag.out[0] * 1911 - 60}" width="${r.width + 120}" height="${r.height + 120}" rx="50"/>`;
+      // the bar stays out of the way while an arrow is drawn
+      this.dgov.innerHTML = out;
+      this.dbar.hidden = true;
+      this.dbarKey = "";
+      return;
     }
     this.dgov.innerHTML = out;
     this.paintDiagramBar(d, !!current, current?.arrow.style ?? null, current?.arrow.bend ?? null);
@@ -844,15 +940,7 @@ export class MathraField extends HTMLElement {
     const all = [...cellRects, ...(own ? [own] : [])];
     const r = all.length ? { x: Math.min(...all.map((q) => q.x)), y: Math.min(...all.map((q) => q.y)), width: Math.max(...all.map((q) => q.x + q.width)) - Math.min(...all.map((q) => q.x)), height: Math.max(...all.map((q) => q.y + q.height)) - Math.min(...all.map((q) => q.y)) + 120 } : null;
     const p = r && this.toBox(r);
-    const host = this.getBoundingClientRect();
-    const box = this.box.getBoundingClientRect();
-    if (!p) return;
-    const width = this.dbar.offsetWidth;
-    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
-    left = Math.max(8, Math.min(left, host.width - width - 8));
-    let top = box.top - host.top + p.top + p.height + 14;
-    if (top + this.dbar.offsetHeight > host.height - 4) top = Math.max(4, box.top - host.top + p.top - this.dbar.offsetHeight - 14);
-    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
+    if (p) this.placeBar(p);
   }
 
   /** Where each atom of a structure is drawn (its label's middle; a vertex's point), by index. */
@@ -935,7 +1023,8 @@ export class MathraField extends HTMLElement {
     const l = this.locale;
     const label = s.type === "atom" ? s.graph.atoms[s.index].label : "";
     const kind = s.type === "bond" ? s.graph.bonds[s.index].kind : this.chemKind;
-    const key = `ch|${l}|${s.type}|${label}|${kind}`;
+    // the label is left out of the key: the bar is not made again while it is typed in its box
+    const key = `ch|${l}|${s.type}|${kind}`;
     if (key !== this.dbarKey) {
       this.dbarKey = key;
       const btn = (run: string, text: string, title: string, pressed?: boolean, cls = "") =>
@@ -944,40 +1033,53 @@ export class MathraField extends HTMLElement {
       const kinds: [string, string, keyof typeof UI][] = [["single", "—", "chSingle"], ["double", "=", "chDouble"], ["triple", "≡", "chTriple"], ["wedge", "◀", "chWedge"], ["hash", "⋯", "chHash"]];
       let html = "";
       if (s.type === "atom") {
-        html += btn("chemLabel:", "·", w("chVertex"), label === "") + ["C", "H", "N", "O", "S", "P", "F", "Cl", "Br", "I"].map((el) => btn(`chemLabel:${el}`, el, `${w("chElement")} ${el}`, label === el)).join("");
-        html += '<span class="sep"></span>' + kinds.slice(0, 3).map(([k2, g, t]) => btn(`chemKind:${k2}`, g, t ? w(t) : k2, kind === k2)).join("");
+        html += `<div class="line"><input class="label" type="text" title="${w("chLabel")}" aria-label="${w("chLabel")}" placeholder="${w("chLabelPlaceholder")}" autocomplete="off" autocapitalize="off" spellcheck="false">`;
+        html += btn("chemLabel:", "·", w("chVertex"), false) + ["C", "H", "N", "O", "S", "P", "F", "Cl", "Br", "I"].map((el) => btn(`chemLabel:${el}`, el, `${w("chElement")} ${el}`, false)).join("");
+        html += '</div><div class="line">' + kinds.slice(0, 3).map(([k2, g, t]) => btn(`chemKind:${k2}`, g, t ? w(t) : k2, kind === k2)).join("");
         const dirs: [number, string][] = [[0, "→"], [30, "↗"], [90, "↑"], [150, "↖"], [180, "←"], [210, "↙"], [270, "↓"], [330, "↘"]];
         html += '<span class="sep"></span>' + dirs.map(([a, g]) => btn(`chemBond:${a}`, g, `${w("chBondTo")} ${a}°`)).join("");
-        html += '<span class="sep"></span>' + btn("chemRing:6a", "⌬", w("chBenzene")) + btn("chemRing:6", "⬡", w("chHexagon")) + btn("chemRing:5", "⬠", w("chPentagon"));
+        html += '</div><div class="line">' + btn("chemRing:6a", "⌬", w("chBenzene")) + btn("chemRing:6", "⬡", w("chHexagon")) + btn("chemRing:5", "⬠", w("chPentagon"));
       } else html += kinds.map(([k2, g, t]) => btn(`chemKind:${k2}`, g, w(t), kind === k2)).join("");
       html += btn("chemRemove", icon("clear"), w("chRemove"));
-      html += '<span class="sep"></span>' + btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, "text") + `<span class="hint">${w(s.type === "atom" ? "chAtomHint" : "chBondHint")}</span>`;
+      html += '<span class="sep"></span>' + btn("editAsLatex", w("editLatex"), w("editLatex"), undefined, "text");
+      // an atom's bar is in lines (label, bonds, rings and the rest), its hint the last one
+      html += s.type === "atom" ? `</div><div class="line"><span class="hint">${w("chAtomHint")}</span></div>` : `<span class="hint">${w("chBondHint")}</span>`;
       this.dbar.innerHTML = html;
     }
+    // the label in its box (unless it is being typed there) and the element it is, pressed
+    const input = this.dbar.querySelector<HTMLInputElement>("input.label");
+    // as it is typed: NH3 for chemfig's NH_3
+    if (input && this.shadowRoot!.activeElement !== input) input.value = labelText(label);
+    for (const b of this.dbar.querySelectorAll<HTMLElement>('button[data-run^="chemLabel:"]')) b.setAttribute("aria-pressed", String(b.dataset.run === `chemLabel:${labelText(label)}`));
     this.dbar.hidden = false;
     const r = atomRect(s.atom, this.boxes);
     const p = r && this.toBox({ ...r, height: r.height + 200 });
-    const host = this.getBoundingClientRect();
-    const box = this.box.getBoundingClientRect();
-    if (!p) return;
-    const width = this.dbar.offsetWidth;
-    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
-    left = Math.max(8, Math.min(left, host.width - width - 8));
-    let top = box.top - host.top + p.top + p.height + 14;
-    if (top + this.dbar.offsetHeight > host.height - 4) top = Math.max(4, box.top - host.top + p.top - this.dbar.offsetHeight - 14);
-    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
+    if (p) this.placeBar(p);
   }
 
-  /** The bar of a reaction: the arrow's kind and conditions, a species' state, signs to add. */
+  /** The bar beside a block of LaTeX: open it to edit as written. */
+  private paintBlockBar(block: Raw): void {
+    const l = this.locale;
+    const key = `block|${l}`;
+    if (key !== this.dbarKey) {
+      this.dbarKey = key;
+      const w = (k: keyof typeof UI) => say(UI[k], l);
+      this.dbar.innerHTML = `<button type="button" data-run="editAsLatex" class="text" title="${w("editLatex")}" aria-label="${w("editLatex")}">${w("editLatex")}</button><span class="hint">${w("blockBarHint")}</span>`;
+    }
+    this.dbar.hidden = false;
+    const r = atomRect(block, this.boxes);
+    const p = r && this.toBox({ ...r, height: r.height + 60 });
+    if (p) this.placeBar(p);
+  }
+
+  /** The bar of a reaction: the arrow's kind and conditions, signs to add. */
   private paintReactionBar(reaction: Reaction): void {
     const l = this.locale;
     const at = this.editor.reactionAtCursor();
     const piece = at?.piece ?? null;
-    const beside = !piece && this.editor.cursor.row === reaction.body ? reaction.body.children[this.editor.cursor.offset - 1] : null;
-    const arrow = piece?.kind === "rxarrow" ? piece.arrow : beside?.kind === "rxarrow" ? beside.arrow : null;
-    const state = piece?.kind === "species" ? piece.state.children.map((c) => (c.kind === "char" ? c.ch : "")).join("") : null;
+    const arrow = this.editor.activeArrow()?.arrow ?? null;
     const scheme = !!reaction.scheme;
-    const key = `rx|${l}|${scheme}|${piece?.kind ?? ""}|${arrow}|${state}`;
+    const key = `rx|${l}|${scheme}|${piece?.kind ?? ""}|${arrow}`;
     if (key !== this.dbarKey) {
       this.dbarKey = key;
       const btn = (run: string, label: string, title: string, pressed?: boolean, text = false) =>
@@ -987,11 +1089,7 @@ export class MathraField extends HTMLElement {
         ? [["->", "→", "rxForward"], ["<=>", "⇌", "rxEquilibrium"], ["<->", "↔", "rxResonance"], ["<-", "←", "rxBackward"], ["-/>", "↛", "rxNoReaction"]]
         : [["->", "→", "rxForward"], ["<=>", "⇌", "rxEquilibrium"], ["<=>>", "⥂", "rxEquilibriumRight"], ["<<=>", "⥄", "rxEquilibriumLeft"], ["<->", "↔", "rxResonance"], ["<-", "←", "rxBackward"]];
       let html = arrows.map(([a, glyph, k]) => btn(`rxArrow:${a}`, glyph, w(k), arrow === null ? undefined : arrow === a)).join("");
-      if (piece?.kind === "rxarrow") html += '<span class="sep"></span>' + btn("rxPlace:above", "▔", w("rxAbove"), undefined) + btn("rxPlace:below", "▁", w("rxBelow"), undefined);
-      if (piece?.kind === "species") {
-        html += '<span class="sep"></span>' + [["s", "(s)"], ["l", "(l)"], ["g", "(g)"], ["aq", "(aq)"]].map(([s, label]) => btn(`rxState:${s}`, label, `${w("rxState")} ${label}`, state === s, true)).join("") + btn("rxState:", "∅", w("rxNoState"), state === "");
-        html += btn("rxPlace:coef", "2", w("rxCoefficient"));
-      }
+      if (this.editor.activeArrow()) html += '<span class="sep"></span>' + btn("rxPlace:above", "▔", w("rxAbove"), undefined) + btn("rxPlace:below", "▁", w("rxBelow"), undefined);
       html += '<span class="sep"></span>' + (scheme ? btn("rxStructure", "⌬", w("rxStructure")) + btn("rxSign:+", "+", w("rxPlus")) : btn("rxSign:+", "+", w("rxPlus")) + btn("rxSign:^", "↑", w("rxGas")) + btn("rxSign:v", "↓", w("rxPrecipitate")));
       const current = piece ?? this.editor.cursor.row.children[this.editor.cursor.offset - 1];
       if (current) html += btn("rxRemove", icon("clear"), w("rxRemove"));
@@ -1001,15 +1099,7 @@ export class MathraField extends HTMLElement {
     this.dbar.hidden = false;
     const r = atomRect(reaction, this.boxes);
     const p = r && this.toBox({ ...r, height: r.height + 120 });
-    const host = this.getBoundingClientRect();
-    const box = this.box.getBoundingClientRect();
-    if (!p) return;
-    const width = this.dbar.offsetWidth;
-    let left = box.left - host.left + p.left - this.box.scrollLeft + p.width / 2 - width / 2;
-    left = Math.max(8, Math.min(left, host.width - width - 8));
-    let top = box.top - host.top + p.top + p.height + 14;
-    if (top + this.dbar.offsetHeight > host.height - 4) top = Math.max(4, box.top - host.top + p.top - this.dbar.offsetHeight - 14);
-    Object.assign(this.dbar.style, { left: `${left}px`, top: `${top}px` });
+    if (p) this.placeBar(p);
   }
 
   /** The block of LaTeX under the pointer. */
@@ -1127,6 +1217,10 @@ export class MathraField extends HTMLElement {
       if (this.editor.chemSelection()) this.editor.clearChem();
       else if (this.editor.commandBeingTyped()) this.editor.completeCommand("");
       else if (this.editor.anchor) this.editor.setCursor(this.editor.cursor);
+      // out of an arrow's label, back to the cell it leaves
+      else if (this.editor.arrowAtCursor()) this.editor.leaveArrowLabel();
+      // out of a reaction, after it
+      else if (this.editor.reactionAtCursor()) this.editor.leaveReaction();
     }
     // printable characters arrive through `input`, which also covers phones and dead keys
   }

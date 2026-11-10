@@ -28,6 +28,8 @@ export type DiagramEnv = "tikzcd" | "CD" | "xymatrix";
 
 export interface DiagramData<T> {
   env: DiagramEnv;
+  /** tikz-cd's options for the whole diagram (`[row sep=small]`), kept as written. */
+  options?: string;
   cells: T[][];
   arrows: ArrowData<T>[];
 }
@@ -137,7 +139,10 @@ function directionText(from: [number, number], to: [number, number]): string {
 export function readDiagram(latex: string): DiagramData<string> | null {
   const s = latex.trim();
   let m = /^\\begin\{tikzcd\}(\[[^\]]*\])?([\s\S]*)\\end\{tikzcd\}$/.exec(s);
-  if (m && !m[1]) return readTikz(m[2]);
+  if (m) {
+    const d = readTikz(m[2]);
+    return d && m[1] ? { ...d, options: m[1] } : d;
+  }
   m = /^\\begin\{CD\}([\s\S]*)\\end\{CD\}$/.exec(s);
   if (m) return readCD(m[1]);
   m = /^\\xymatrix\s*\{([\s\S]*)\}$/.exec(s);
@@ -322,12 +327,13 @@ function cdTokens(line: string): (string | CdToken)[] | null {
 function cdArrow(from: [number, number], to: [number, number], t: CdToken): ArrowData<string> {
   const a = emptyArrow(from, to);
   if (t.kind === "=" || t.kind === "|") a.style = "equal";
-  // amscd: above, then below (left, then right for vertical arrows)
-  const up = t.kind === "<" || t.kind === "A";
+  // amscd: above, then below (left, then right for vertical arrows). tikz-cd's usual side is the left
+  // of the direction of travel: above a rightward arrow, below a leftward one, right of a downward
+  // one, left of an upward one; the other side is the swapped label
+  const swapped = t.kind === "<" || t.kind === "V";
   const first = t.first.trim() || null;
   const second = t.second.trim() || null;
-  // the side of a label follows the direction of travel: above a rightward arrow is its usual side
-  if (up) {
+  if (swapped) {
     a.swapLabel = first;
     a.label = second;
   } else {
@@ -449,7 +455,7 @@ export function writeDiagram<T>(d: DiagramData<T>, cell: (c: T, i: number, j: nu
       .replace(/ {2,}/g, " ")
       .trim(),
   );
-  return env === "xymatrix" ? `\\xymatrix{${lines.join(" \\\\ ")}}` : `\\begin{tikzcd}${lines.join(" \\\\ ")}\\end{tikzcd}`;
+  return env === "xymatrix" ? `\\xymatrix{${lines.join(" \\\\ ")}}` : `\\begin{tikzcd}${d.options ?? ""}${lines.join(" \\\\ ")}\\end{tikzcd}`;
 }
 
 function tikzText<T>(a: ArrowData<T>, label: (l: T) => string): string {
@@ -503,8 +509,8 @@ function writeCD<T>(d: DiagramData<T>, cell: (c: T, i: number, j: number) => str
       const a = d.arrows.find((x) => x.from[1] === j && x.to[1] === j && Math.min(x.from[0], x.to[0]) === i);
       if (!a) verticals.push("@.");
       else if (a.style === "equal") verticals.push("@|");
-      else if (a.to[0] > a.from[0]) verticals.push(`@V${L(a.label)}V${L(a.swapLabel)}V`);
-      else verticals.push(`@A${L(a.swapLabel)}A${L(a.label)}A`);
+      else if (a.to[0] > a.from[0]) verticals.push(`@V${L(a.swapLabel)}V${L(a.label)}V`);
+      else verticals.push(`@A${L(a.label)}A${L(a.swapLabel)}A`);
     }
     lines.push(verticals.join(" "));
   }

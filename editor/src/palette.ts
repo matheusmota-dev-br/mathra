@@ -5,6 +5,7 @@ import { init, render } from "@mathlabs/mathra";
 import { FieldClient, TOKENS, html, icon, keepFocus, say, UI } from "./shared.ts";
 import { PALETTES, previewLatex, searchPalettes, type PaletteItem, type PaletteSet } from "./sets.ts";
 import type { MathraField } from "./field.ts";
+import { openMatrixPicker } from "./matrix-picker.ts";
 
 let ready: Promise<void> | null = null;
 const drawn = new Map<string, string>();
@@ -32,16 +33,19 @@ export function mathraReady(): Promise<void> {
 
 /** What a button shows: an icon, a label, or the formula it inserts. */
 export function face(item: PaletteItem): string {
+  if (item.icon && item.label) return `${icon(item.icon)}<span class="label">${html(item.label)}</span>`;
   if (item.icon) return icon(item.icon);
   if (item.label) return `<span class="label">${html(item.label)}</span>`;
   return preview(previewLatex(item));
 }
 
-/** Runs a palette item on a field. */
-export function apply(field: MathraField, item: PaletteItem): void {
+/** Runs a palette item on a field (`button`: where a picker opens). */
+export function apply(field: MathraField, item: PaletteItem, button?: HTMLElement): void {
+  if (item.picker && button) return void openMatrixPicker(button, field, field.locale);
+  // the focus first: what the item opens (a block's LaTeX panel) takes it from there
+  field.focus();
   if (item.action) field.run(item.action);
   else if (item.insert !== undefined) field.run(`latex:${item.insert}`);
-  field.focus();
 }
 
 /** A palette button's HTML. */
@@ -61,6 +65,7 @@ export const BUTTON_STYLE = `
 .grid button:active, .keys button:active { transform: translateY(1px); background: var(--_key-active); }
 .grid button:focus-visible, .keys button:focus-visible, .tabs button:focus-visible { outline: 2px solid var(--_focus); outline-offset: 1px; }
 .grid button.wide { grid-column: span 2; }
+.grid button:has(> svg + .label) { display: flex; justify-content: center; gap: 6px; }
 .grid button svg, .keys button svg { max-width: 100%; height: auto; max-height: calc(var(--mathra-button-size, 44px) - 14px); width: auto; font-size: 15px; }
 .grid g[data-empty], .keys g[data-empty], .menu g[data-empty] { fill: var(--_slot); }
 .label { font-size: 13px; }
@@ -90,7 +95,7 @@ export class MathraPalette extends FieldClient {
     this.grid.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest("button");
       if (!b || !this.field) return;
-      apply(this.field, this.items[Number(b.dataset.i)]);
+      apply(this.field, this.items[Number(b.dataset.i)], b);
     });
   }
 
@@ -177,7 +182,7 @@ export class MathraToolbar extends FieldClient {
         this.field?.focus();
       } else if (e.key === "Enter" && this.shownItems[0] && this.field) {
         e.preventDefault();
-        apply(this.field, this.shownItems[0]);
+        apply(this.field, this.shownItems[0], this.panel.querySelector("button") ?? undefined);
       }
     });
     keepFocus(this.tabs);
@@ -200,7 +205,7 @@ export class MathraToolbar extends FieldClient {
     this.panel.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest("button");
       if (!b || !this.field) return;
-      apply(this.field, this.shownItems[Number(b.dataset.i)]);
+      apply(this.field, this.shownItems[Number(b.dataset.i)], b);
     });
   }
 

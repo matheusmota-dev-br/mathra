@@ -81,8 +81,8 @@ mathra-keyboard { animation: rise 0.2s ease-out; }
 :host([layout="page"]) mathra-field { font-size: calc(var(--zoom, 1) * 2.4em); }
 :host([layout="page"]) .bar { grid-area: bar; padding: 8px max(16px, env(safe-area-inset-left, 0px)); background: var(--_surface); border-bottom: 1px solid var(--_border); }
 :host([layout="page"]) mathra-toolbar { grid-area: tools; margin: 12px 12px 0 16px; }
-:host([layout="page"]) .stage { grid-area: stage; display: grid; padding: 12px 12px 12px 16px; min-height: 0; }
-:host([layout="page"]) .stage mathra-field { height: 100%; }
+:host([layout="page"]) .stage { grid-area: stage; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 12px 12px 12px 16px; min-height: 0; }
+:host([layout="page"]) .stage mathra-field { height: 100%; min-width: 0; min-height: 0; }
 :host([layout="page"]) mathra-keyboard { grid-area: keys; margin: 0 12px 12px 16px; }
 :host([layout="page"]) .side { grid-area: side; width: 380px; margin: 12px 16px 12px 0; grid-template-rows: minmax(0, auto) minmax(160px, 1fr); }
 :host([layout="page"]) .side:has(.settings-panel[hidden]) { grid-template-rows: minmax(0, 1fr); }

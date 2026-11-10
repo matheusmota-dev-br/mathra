@@ -340,11 +340,13 @@ await check("A matrix from its tab; & and Enter fill it", async () => {
   await tab("Matrizes").click();
   await button("Matriz 2×2").click();
   await k.type("1&0");
+  // Enter at the end of a line: the start of the next one
   await k.press("Enter");
-  await k.type("1");
-  await k.press("Shift+Tab");
-  await k.type("0");
+  await k.type("0&1");
   assert.equal(await value(), "\\begin{pmatrix}1 & 0 \\\\ 0 & 1\\end{pmatrix}");
+  // Shift+Tab: the cell before
+  await k.press("Shift+Tab");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.matrixAtCursor()?.j), 0);
   await button("Adicionar linha abaixo").click();
   assert.equal(await page.evaluate(() => document.getElementById("editor").editor.matrixAtCursor()?.matrix.cells.length), 3);
 });
@@ -482,11 +484,17 @@ await check("Chemistry: \\ce typed makes a reaction of boxes; species, +, arrows
   await k.type("2H2(g) + O2(g) ->[faísca] 2H2O(l)");
   assert.equal(await value(), "\\ce{2 H2(g) + O2(g) ->[faísca] 2 H2O(l)}");
   assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
-  // back into the last species: its bar, with the state pressed
+  // a species is typed as math: _ and ^ as anywhere, the charge whole over the index; the bar has no states
+  await k.type(" + SO_4^{2-}");
+  assert.equal(await value(), "\\ce{2 H2(g) + O2(g) ->[faísca] 2 H2O(l) + SO4^2-}");
+  assert.equal(await dbar.locator('[data-run^="rxState"]').count(), 0);
+  // Escape leaves the reaction: what is typed then is math after it
+  await k.press("Escape");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.reactionAtCursor()), null);
   await k.press("ArrowLeft");
-  assert.equal(await dbar.locator('[data-run="rxState:l"]').getAttribute("aria-pressed"), "true");
-  await dbar.locator('[data-run="rxState:aq"]').click();
-  assert.equal(await value(), "\\ce{2 H2(g) + O2(g) ->[faísca] 2 H2O(aq)}");
+  // in the charge, the bar stays; the cursor sits over the index
+  await k.press("ArrowLeft");
+  assert.equal(await dbar.isVisible(), true);
   await settle(page);
   if (shots) await page.screenshot({ path: `${shots}/reaction.png` });
   // the cursor is drawn inside the reaction, beside a letter
@@ -550,13 +558,13 @@ await check("Structures by keyboard: a new one, its atom typed, Alt+arrow bonds,
   await k.type("C");
   await k.press("Alt+ArrowUp");
   await k.type("O");
-  assert.equal(await value(), "\\chemfig{H3C-[:0]C-[:90]O}");
+  assert.equal(await value(), "\\chemfig{H_3C-[:0]C-[:90]O}");
   // down to the carbon, then a double bond from the bar towards the lower right
   await k.press("ArrowDown");
   await dbar.locator('[data-run="chemKind:double"]').click();
   await dbar.locator('[data-run="chemBond:330"]').click();
   await k.type("O");
-  assert.equal(await value(), "\\chemfig{H3C-[:0]C(=[:-30]O)-[:90]O}");
+  assert.equal(await value(), "\\chemfig{H_3C-[:0]C(=[:-30]O)-[:90]O}");
   assert.deepEqual(await page.evaluate(() => document.getElementById("editor").field.output.warnings.map((w) => w.description)), []);
   await settle(page);
   if (shots) await page.screenshot({ path: `${shots}/structure-keys.png` });
@@ -577,6 +585,55 @@ await check("Structures: a template's R typed over; a click on a bond, its kind 
   assert.equal(await value(), "\\chemfig{*6(==-=(-NO_2)-=)}");
   await ed.locator('[data-act="undo"]').click();
   assert.equal(await value(), "\\chemfig{*6(-=-=(-NO_2)-=)}");
+});
+
+await check("Structures: any label in the bar's box, cleaned for chemfig; the box follows the atom picked", async () => {
+  await setValue("");
+  await focus();
+  await tab("Química").click();
+  await button("Anel benzênico com substituinte R").click();
+  const box = dbar.locator("input.label");
+  assert.equal(await box.inputValue(), "R");
+  assert.equal(await dbar.locator(".line").count(), 4);
+  await box.click();
+  await box.fill("");
+  await box.pressSequentially("CH_2 OH(x)");
+  assert.equal(await box.inputValue(), "CH_2OHx");
+  assert.equal(await value(), "\\chemfig{*6(-=-=(-CH_2OHx)-=)}");
+  // the bar is not made again while the box is typed in
+  assert.equal(await page.evaluate(() => document.getElementById("editor").field.shadowRoot.activeElement?.className), "label");
+  // other keys stay in the box; Enter gives the formula back, the atom still picked
+  await box.press("ArrowLeft");
+  assert.equal(await value(), "\\chemfig{*6(-=-=(-CH_2OHx)-=)}");
+  await box.press("Enter");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").field.shadowRoot.activeElement?.tagName), "TEXTAREA");
+  await dbar.locator('button[data-run="chemLabel:N"]').click();
+  assert.equal(await dbar.locator('button[data-run="chemLabel:N"]').getAttribute("aria-pressed"), "true");
+  assert.equal(await box.inputValue(), "N");
+  await box.click();
+  await box.press("Escape");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").field.shadowRoot.activeElement?.tagName), "TEXTAREA");
+  // a keydown on a button of the bar is left to it
+  await dbar.locator('button[data-run="chemLabel:C"]').focus();
+  await page.keyboard.press("Shift");
+  if (shots) await page.screenshot({ path: `${shots}/structure-bar.png` });
+});
+
+await check("Schemes: a click on an arrow shows the boxes over and under it; one clicked takes the conditions", async () => {
+  await setValue("\\schemestart \\chemfig{A} \\arrow{->} \\chemfig{B} \\schemestop");
+  await focus();
+  const empties = () => page.evaluate(() => [...document.getElementById("editor").field.shadowRoot.querySelectorAll(".drawing [data-empty]")].map((g) => { const r = g.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
+  assert.equal((await empties()).length, 0);
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[0].body, offset: 1 }); });
+  const boxes = (await empties()).sort((a, b) => a[1] - b[1]);
+  assert.equal(boxes.length, 2);
+  assert.equal(await dbar.locator('[data-run="rxPlace:above"]').count(), 1);
+  await page.mouse.click(boxes[1][0], boxes[1][1]);
+  await k.type("cat");
+  assert.equal(await value(), "\\schemestart \\chemfig{A} \\arrow{->[][cat]} \\chemfig{B} \\schemestop");
+  // away from the arrow, the empty box goes
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[0].body, offset: 0 }); });
+  assert.equal((await empties()).length, 0);
 });
 
 await check("Structures by mouse: a drag from an atom draws a bond; a click picks an atom", async () => {
@@ -882,6 +939,176 @@ await check("Exponent, index and a matrix's lines and columns from the palettes"
   assert.deepEqual(await size(), [2, 4]);
   await button("Remover esta coluna").click();
   assert.deepEqual(await size(), [2, 3]);
+});
+
+await check("A formula wider or taller than the box: the box keeps its place and scrolls; the page does not widen", async () => {
+  await setValue("\\ce{^{238}_{92}U ->[$\\alpha$][\\qty{4.47e9}{y}] ^{234}_{90}Th ->[$\\beta^-$][\\qty{24.1}{d}] ^{234m}_{91}Pa ->[$\\beta^-$][\\qty{1.17}{min}] ^{234}_{92}U ->[$\\alpha$][\\qty{2.45e5}{y}] ^{230}_{90}Th ->[$\\alpha$][\\qty{7.54e4}{y}] ^{226}_{88}Ra}");
+  await focus();
+  const m = () => page.evaluate(() => {
+    const f = document.getElementById("editor").field;
+    const box = f.shadowRoot.querySelector(".box");
+    const side = document.getElementById("editor").shadowRoot.querySelector(".side").getBoundingClientRect();
+    return { right: box.getBoundingClientRect().right, side: side.left, client: box.clientWidth, scroll: box.scrollWidth, page: document.documentElement.scrollWidth, view: innerWidth, h: box.clientHeight, sh: box.scrollHeight };
+  });
+  let r = await m();
+  assert.ok(r.right <= r.side, `the box reaches ${r.right}, the outputs start at ${r.side}`);
+  assert.ok(r.scroll > r.client, "it scrolls");
+  assert.ok(r.page <= r.view, "the page does not widen");
+  // the isotopes are written as they were
+  assert.match(await value(), /^\\ce\{\^\{238\}_\{92\}U/);
+  // taller than the box: it scrolls down, its top in reach
+  await setValue(`\\begin{aligned}${Array.from({ length: 30 }, (_, i) => `x_{${i}}`).join("\\\\")}\\end{aligned}`);
+  r = await m();
+  assert.ok(r.sh > r.h, "taller than the box");
+});
+
+await check("A matrix of any size from a grid; inside one, the grid gives it a size; Shift+Enter adds a column", async () => {
+  const picker = () => ed.locator("mathra-toolbar").locator(".matrix-picker");
+  const cell = (i, j) => picker().locator(`.cell[data-i="${i}"][data-j="${j}"]`);
+  const any = button("Matriz de qualquer tamanho (ou o tamanho desta)");
+  await setValue("A=");
+  await focus();
+  await k.press("End");
+  await tab("Matrizes").click();
+  await any.click();
+  assert.equal(await picker().locator(".title").textContent(), "Inserir matriz");
+  // the pointer says the size; the grid grows at its edge
+  await cell(2, 3).hover();
+  assert.equal(await picker().locator(".size").textContent(), "3 × 4");
+  await cell(5, 7).hover();
+  assert.equal(await picker().locator(".cell").count(), 7 * 9);
+  if (shots) await page.screenshot({ path: `${shots}/matrix-picker.png` });
+  await cell(2, 3).hover();
+  await picker().locator('[data-env="bmatrix"]').click();
+  await cell(2, 3).click();
+  await picker().waitFor({ state: "detached" });
+  assert.equal(await value(), "A=\\begin{bmatrix} & & & \\\\ & & & \\\\ & & & \\end{bmatrix}");
+  // inside it: its size to start, the arrows and Enter; cells with something cut are said
+  await k.type("1");
+  await k.press("Tab");
+  await k.type("2");
+  await any.click();
+  assert.equal(await picker().locator(".title").textContent(), "Tamanho desta matriz");
+  assert.equal(await picker().locator(".size").textContent(), "3 × 4");
+  const grid = picker().locator(".cells");
+  await grid.press("ArrowRight");
+  await grid.press("ArrowUp");
+  await grid.press("x");
+  assert.equal(await picker().locator(".size").textContent(), "2 × 5");
+  await grid.press("ArrowLeft");
+  await grid.press("ArrowLeft");
+  await grid.press("ArrowLeft");
+  await grid.press("ArrowLeft");
+  await grid.press("ArrowLeft");
+  assert.equal(await picker().locator(".warn").textContent(), "células com conteúdo serão removidas");
+  await grid.press("ArrowDown");
+  for (let i = 0; i < 4; i++) await grid.press("ArrowRight");
+  assert.equal(await picker().locator(".warn").textContent(), "");
+  await grid.press("Enter");
+  assert.equal(await value(), "A=\\begin{bmatrix}1 & 2 & & & \\\\ & & & & \\\\ & & & & \\end{bmatrix}");
+  // in a diagram with arrows: smaller, the arrows to cells that go are said too
+  await setValue('\\begin{tikzcd}A \\arrow[r] & B \\arrow[d] \\\\ & C\\end{tikzcd}');
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[0].cells[0][0], offset: 1 }); });
+  await any.click();
+  await picker().locator(".cells").press("ArrowUp");
+  assert.equal(await picker().locator(".warn").textContent(), "células com conteúdo ou setas serão removidas");
+  await picker().locator(".cells").press("Escape");
+  await setValue("A=\\begin{bmatrix}1 & 2 & & & \\\\ & & & & \\\\ & & & & \\end{bmatrix}");
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root.children[2].cells[0][0], offset: 1 }); });
+  // a delimiter, at once; Escape gives the field back
+  await any.click();
+  await picker().locator('[data-env="vmatrix"]').click();
+  assert.match(await value(), /^A=\\begin\{vmatrix\}/);
+  await picker().locator(".delims").click({ position: { x: 1, y: 1 } });
+  await page.keyboard.press("Escape");
+  await picker().waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.getElementById("editor").field.shadowRoot.activeElement);
+  await k.press("Shift+Enter");
+  assert.equal(await page.evaluate(() => document.getElementById("editor").editor.matrixAtCursor().matrix.cells[0].length), 6);
+  // Space picks too; a click on the grid's gap picks the size shown
+  await setValue("");
+  await focus();
+  await any.click();
+  await picker().locator(".cells").press(" ");
+  assert.equal(await value(), "\\begin{pmatrix}\\end{pmatrix}");
+  await setValue("");
+  await focus();
+  await any.click();
+  await picker().locator(".cells").click({ position: { x: 20, y: 0 } });
+  assert.match(await value(), /^\\begin\{pmatrix\}/);
+  // from the search, Enter opens it
+  await setValue("");
+  const q = ed.locator("mathra-toolbar").locator("input");
+  await q.fill("qualquer tamanho");
+  await q.press("Enter");
+  assert.equal(await picker().count(), 1);
+  await page.keyboard.press("Escape");
+  await q.fill("");
+});
+
+await check("Diagrams: a drag past the cells draws an arrow to a new cell that way (a diagonal too)", async () => {
+  await setValue("\\begin{tikzcd}A \\arrow[r] & B\\end{tikzcd}");
+  await focus();
+  const b = await page.evaluate(() => {
+    const f = document.getElementById("editor").field;
+    const id = f.editor.root.children[0].cells[0][1].id;
+    const g = [...f.shadowRoot.querySelectorAll(".drawing [data-m]")].find((x) => x.getAttribute("data-m") === id).getBoundingClientRect();
+    return [g.x + g.width / 2, g.y + g.height / 2];
+  });
+  await page.mouse.move(b[0], b[1]);
+  await page.mouse.down();
+  await page.mouse.move(b[0] + 60, b[1] + 60, { steps: 4 });
+  await page.mouse.move(b[0] + 150, b[1] + 130, { steps: 4 });
+  // while drawing, the new cell shows and the bar is out of the way
+  assert.equal(await ed.locator("mathra-field").locator(".dgov .cell.target").count(), 1);
+  assert.equal(await dbar.isVisible(), false);
+  // too near the cell: nothing yet
+  await page.mouse.move(b[0] + 10, b[1] + 8, { steps: 2 });
+  assert.equal(await ed.locator("mathra-field").locator(".dgov .cell.target").count(), 0);
+  await page.mouse.move(b[0] + 150, b[1] + 130, { steps: 4 });
+  await page.mouse.up();
+  await k.type("h");
+  assert.equal(await value(), '\\begin{tikzcd}A \\arrow[r] & B \\arrow[dr, "h"] & \\\\ & & {}\\end{tikzcd}');
+  // Escape: out of the label, back to the cell the arrow leaves
+  await k.press("Escape");
+  assert.deepEqual(await page.evaluate(() => { const e = document.getElementById("editor").editor; const m = e.matrixAtCursor(); return [!!e.arrowAtCursor(), m?.i, m?.j]; }), [false, 0, 1]);
+});
+
+await check("Chemistry: undo after an edit as LaTeX goes back to the pieces; a \\pu from the palette is typed in its panel", async () => {
+  await setValue("");
+  await focus();
+  await k.type("\\ce SO4^2-");
+  await dbar.locator('[data-run="editAsLatex"]').click();
+  await blockSource.fill("\\ce{SO4^2- + Ba^2+}");
+  await blockSource.press(`${mod}+Enter`);
+  await k.press(`${mod}+z`);
+  await k.type("x");
+  assert.match(await value(), /^\\ce\{SO4\^2-.*x/);
+  await setValue("");
+  await focus();
+  await tab("Química").click();
+  await ed.locator("mathra-toolbar").locator("button").filter({ hasText: "" }).nth(0);
+  const i = await ed.locator("mathra-toolbar").locator("button").evaluateAll((bs) => bs.findIndex((b) => /\\pu/.test(b.title)));
+  await ed.locator("mathra-toolbar").locator("button").nth(i).click();
+  await k.type("123 kJ/mol");
+  assert.equal(await blockSource.inputValue(), "\\pu{123 kJ/mol}");
+  await blockSource.press("Escape");
+});
+
+await check("A block of LaTeX (siunitx's \\qty) has a bar to edit it as written; a physics matrix is edited in its cells", async () => {
+  await setValue("E=\\qty{1.10}{\\volt}");
+  await focus();
+  assert.match(await dbar.textContent(), /Editar como LaTeX/);
+  await dbar.locator('[data-run="editAsLatex"]').click();
+  await blockSource.fill("\\qty{1.20}{\\volt}");
+  await blockSource.press(`${mod}+Enter`);
+  assert.equal(await value(), "E=\\qty{1.20}{\\volt}");
+  await setValue("\\bmqty{a & b \\\\ c & d}");
+  await focus();
+  const at = await page.evaluate(() => { const f = document.getElementById("editor").field; const id = f.editor.root.children[0].cells[1][1].children[0].id; const g = [...f.shadowRoot.querySelectorAll(".drawing [data-m]")].find((x) => x.getAttribute("data-m") === id).getBoundingClientRect(); return [g.right - 1, g.y + g.height / 2]; });
+  await page.mouse.click(at[0], at[1]);
+  await k.type("+1");
+  assert.equal(await value(), "\\bmqty{a & b \\\\ c & d+1}");
 });
 
 await check("Diagrams: Alt+Left and Alt+Up draw arrows; a label moved to the other side", async () => {
@@ -1232,6 +1459,23 @@ await check("Phone: tapping keys builds a formula", async () => {
   await kb.locator('button[title="Raiz quadrada"]').tap();
   await kb.locator('button[title="2"]').tap();
   assert.equal(await p2.evaluate(() => document.getElementById("editor").value), "\\sqrt{2}");
+});
+await check("Phone: a diagram's bar never covers the cell being edited", async () => {
+  await p2.evaluate(() => {
+    const ed = document.getElementById("editor");
+    ed.value = "\\begin{tikzcd}A \\arrow[r, \"f\"] \\arrow[d] & B \\arrow[d] \\\\ C \\arrow[r] & D\\end{tikzcd}";
+    const e = ed.field.editor;
+    e.setCursor({ row: e.root.children[0].cells[0][0], offset: 1 });
+  });
+  await settle(p2);
+  const r = await p2.evaluate(() => {
+    const f = document.getElementById("editor").field;
+    const bar = f.shadowRoot.querySelector(".dbar").getBoundingClientRect();
+    const caret = f.shadowRoot.querySelector(".caret").getBoundingClientRect();
+    return { bar: [bar.top, bar.bottom], caret: [caret.top, caret.bottom], hidden: f.shadowRoot.querySelector(".dbar").hidden };
+  });
+  assert.equal(r.hidden, false);
+  assert.ok(r.bar[1] <= r.caret[0] || r.bar[0] >= r.caret[1], `bar ${r.bar} over the cursor ${r.caret}`);
 });
 await collect(p2);
 await phone.close();

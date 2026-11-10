@@ -18,6 +18,8 @@ export interface PaletteItem {
   title: Words;
   /** The name typed after `\` that does the same, for the command menu. */
   command?: string;
+  /** Opens a picker instead: `matrix`, a grid to choose a matrix's lines and columns. */
+  picker?: "matrix";
   /** Takes two columns (long formulas). */
   wide?: boolean;
 }
@@ -125,6 +127,7 @@ export const MATRICES: PaletteSet = {
   id: "matrices",
   title: t("Matrices", "Matrizes"),
   items: [
+    { picker: "matrix", icon: "table", label: "m × n", title: t("Matrix of any size (or the size of this one)", "Matriz de qualquer tamanho (ou o tamanho desta)"), wide: true },
     tpl(grid("pmatrix", 2, 2), "2×2 matrix", "Matriz 2×2", { command: "pmatrix" }),
     tpl(grid("pmatrix", 3, 3), "3×3 matrix", "Matriz 3×3"),
     tpl(grid("pmatrix", 2, 3), "2×3 matrix", "Matriz 2×3"),
@@ -462,7 +465,7 @@ export function searchPalettes(query: string, sets: PaletteSet[] = PALETTES): Pa
     for (const item of set.items) {
       const names = typeof item.title === "string" ? [item.title] : Object.values(item.title);
       const hay = [...names, item.command ?? "", item.insert ?? ""].map(fold);
-      const key = item.insert ?? item.action ?? "";
+      const key = item.insert ?? item.action ?? item.picker ?? "";
       if (seen.has(key) || !hay.some((h) => h.includes(q))) continue;
       seen.add(key);
       out.push(item);

@@ -29,7 +29,8 @@ test("parentheses typed: plain around small things, growing around tall ones, `)
 
 test("`/` takes the operand before it", () => {
   assert.equal(typed("x=a+b/2").toLatex(), "x=a+\\frac{b}{2}");
-  assert.equal(typed("x=(a+b)/2").toLatex(), "x=\\frac{(a+b)}{2}");
+  // the parentheses only grouped the numerator
+  assert.equal(typed("x=(a+b)/2").toLatex(), "x=\\frac{a+b}{2}");
   assert.equal(typed("x^2/2").toLatex(), "\\frac{x^{2}}{2}".replace("\\frac", "x^{2}").length ? typed("x^2/2").toLatex() : "");
   assert.equal(typed("=/").toLatex(), "=\\frac{}{}");
 });
@@ -174,13 +175,15 @@ test("matrices: `&` and Tab go to the next cell, Enter to the line below; lines 
   const e = new Editor();
   e.insert("pmatrix");
   e.typeText("a&b");
+  // Enter at the end of a line: the start of the next, as a matrix is typed line by line
   e.enter();
-  assert.equal(e.matrixAtCursor()?.i, 1);
-  e.typeText("d");
-  e.moveLeft();
-  e.moveLeft();
-  e.typeText("c");
+  assert.deepEqual([e.matrixAtCursor()?.i, e.matrixAtCursor()?.j], [1, 0]);
+  e.typeText("c&d");
   assert.equal(e.toLatex(), "\\begin{pmatrix}a & b \\\\ c & d\\end{pmatrix}");
+  // elsewhere, the cell below
+  e.setCursor({ row: e.matrixAtCursor()!.matrix.cells[0][0], offset: 1 });
+  e.enter();
+  assert.deepEqual([e.matrixAtCursor()?.i, e.matrixAtCursor()?.j], [1, 0]);
   e.addColumn();
   e.typeText("e");
   // the new column is right of the cursor's (the first)
@@ -437,11 +440,11 @@ test("blocks: one inserted from a palette, the block after the cursor, emptied o
 });
 
 test("a block whose class mathra cannot tell is ordinary", () => {
-  const e = new Editor("\\pdv{u}{t}");
+  const e = new Editor("\\foo{u}{t}");
   e.classifyRaw = () => {
     throw new Error("unreadable");
   };
-  assert.match(e.toLatex({ marked: true }), /\\htmlData\{m=\w+,raw=1\}\{\\pdv\{u\}\{t\}\}/);
+  assert.match(e.toLatex({ marked: true }), /\\htmlData\{m=\w+,raw=1\}\{\\foo\{u\}\{t\}\}/);
 });
 
 test("the class of LaTeX kept as written: functions and large operators are operators", async () => {
@@ -500,4 +503,28 @@ test("the last line or column of a matrix removed: the matrix goes", () => {
   c.setCursor({ row: n.cells[1][0], offset: 0 });
   c.removeColumn();
   assert.equal(c.toLatex(), "");
+});
+
+test("a matrix given a size: cells added empty, the last ones removed, its delimiters changed", () => {
+  const e = new Editor("\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}");
+  e.moveLeft();
+  assert.deepEqual(e.shapeableMatrix(), { env: "pmatrix", rows: 2, cols: 2, filled: [[true, true], [true, true]], diagram: false });
+  e.shapeMatrix(3, 3, "bmatrix");
+  assert.equal(e.toLatex(), "\\begin{bmatrix}a & b & \\\\ c & d & \\\\ & & \\end{bmatrix}");
+  // the cursor stays in its cell (d), or goes to the nearest one left
+  e.shapeMatrix(1, 1);
+  assert.equal(e.toLatex(), "\\begin{bmatrix}a\\end{bmatrix}");
+  assert.equal(e.cursor.offset, 1);
+  e.undo();
+  assert.equal(e.toLatex(), "\\begin{bmatrix}a & b & \\\\ c & d & \\\\ & & \\end{bmatrix}");
+  // nothing for a size of none, an unknown environment, or outside a shapeable matrix
+  e.shapeMatrix(0, 2);
+  e.shapeMatrix(2, 2, "cases");
+  assert.equal(e.toLatex(), "\\begin{bmatrix}a & b \\\\ c & d\\end{bmatrix}");
+  const c = new Editor("\\begin{cases}a&b\\end{cases}");
+  c.moveLeft();
+  assert.equal(c.shapeableMatrix(), null);
+  c.shapeMatrix(2, 2);
+  assert.equal(c.toLatex(), "\\begin{cases}a & b\\end{cases}");
+  assert.equal(new Editor("x").shapeableMatrix(), null);
 });

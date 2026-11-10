@@ -49,3 +49,42 @@ test("a scheme's arrow with nothing drawn before it: from its labels, or an arro
   const bare = atomRect(arrow, new Map([structure]));
   assert.deepEqual(bare, { x: 400, y: -600, width: 1600, height: 700 });
 });
+
+test("a cell drawn without its own box (its mark dropped): where its atoms are", () => {
+  const e = new Editor("\\begin{tikzcd} A & B \\end{tikzcd}");
+  const d = e.root.children[0] as Diagram;
+  const boxes = drawn(e);
+  const b = d.cells[0][1];
+  const own = boxes.get(b.id)!;
+  boxes.delete(b.id);
+  const r = cellRect(d, 0, 1, boxes)!;
+  assert.ok(Math.abs(centre(r) - centre(own)) < own.width);
+});
+
+test("an empty cell, not marked (the cursor elsewhere): its row is where its column and line are", () => {
+  const e = new Editor("\\begin{tikzcd} A & B \\\\ C & \\end{tikzcd}");
+  const d = e.root.children[0] as Diagram;
+  const boxes = drawn(e);
+  const empty = rowRect(d.cells[1][1], boxes)!;
+  const b = rowRect(d.cells[0][1], boxes)!;
+  const c = rowRect(d.cells[1][0], boxes)!;
+  assert.ok(Math.abs(centre(empty) - centre(b)) < b.width, "under B");
+  assert.ok(empty.y > c.y - c.height && empty.y < c.y + c.height, "beside C");
+  // a row that is no cell of it (an arrow's label, empty): none
+  e.setCursor({ row: d.cells[0][0], offset: 1 });
+  e.arrowFromCursor("right");
+  const label = e.cursor.row;
+  e.setCursor({ row: e.root, offset: 1 });
+  assert.equal(rowRect(label, drawn(e)), null);
+});
+
+test("parallel arrows (shift left, shift right=2) each have a path of its own, apart", async () => {
+  const { arrowPath } = await import("../src/geometry.ts");
+  const e = new Editor('\\begin{tikzcd} A \\arrow[r, "f", shift left] \\arrow[r, "g"\', shift right=2] & B \\end{tikzcd}');
+  const d = e.root.children[0] as Diagram;
+  const boxes = drawn(e);
+  const [f, g] = d.arrows.map((a) => arrowPath(d, a, boxes)!);
+  const mid = (p: { y: number }[]) => p[5].y;
+  // y grows down: the left of a rightward arrow is above it
+  assert.ok(mid(f) < mid(g) - 400, `${mid(f)} ${mid(g)}`);
+});

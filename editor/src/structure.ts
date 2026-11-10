@@ -1,3 +1,5 @@
+import { chemToLatex, latexToChem } from "./reaction.ts";
+
 // Structures (chemfig's \chemfig{…}) edited in place: mathra reads the code into atoms and bonds and
 // says where each is written (its span); every edit here is a splice of the code at those places, so
 // what the person wrote stays as written everywhere else.
@@ -124,10 +126,50 @@ export function addRing(body: string, g: Graph, k: number, size: number, aromati
   if (!span) return body;
   let bonds = "";
   for (let i = 0; i < size; i++) bonds += aromatic && i % 2 === 1 ? "=" : "-";
-  return splice(body, span[1], span[1], `*${size}(${bonds})`);
+  const ring = `*${size}(${bonds})`;
+  // an atom with bonds: the ring hangs from a new bond, away from them (on the atom itself it would lie over them)
+  const touching = g.bonds.filter((b) => b.from === k || b.to === k);
+  // with no bond, or only the one that reaches it, chemfig turns the ring the bond's way: on the atom
+  if (!touching.length || (touching.length === 1 && touching[0].to === k)) return splice(body, span[1], span[1], ring);
+  let sx = 0;
+  let sy = 0;
+  for (const b of touching) {
+    const a = ((b.from === k ? b.angle : b.angle + 180) * Math.PI) / 180;
+    sx += Math.cos(a);
+    sy += Math.sin(a);
+  }
+  // bonds that cancel out (a chain through the atom): across them
+  const away = Math.hypot(sx, sy) < 0.3 ? touching[0].angle + 90 : (Math.atan2(-sy, -sx) * 180) / Math.PI;
+  return addBond(body, g, k, Math.round(away / 30) * 30, "single", ring).body;
 }
 
 /** The atom whose label starts at `at` (after an edit), or -1. */
 export function atomAt(g: Graph, at: number): number {
   return g.atoms.findIndex((a) => a.span && a.span[0] === at);
+}
+
+/** A label as typed in a free box, made safe to write in chemfig's code: the characters that would
+ * end it (bonds, branches, rings, spaces) go, except a sign right after `^` (a charge, `O^-`). */
+export function cleanLabel(text: string): string {
+  let out = "";
+  for (const ch of chars(text)) {
+    if (/[-+]/.test(ch) && out.endsWith("^")) out += ch;
+    else if (!/[-=~<>()*!?@\[\],\s]/.test(ch)) out += ch;
+  }
+  return out;
+}
+
+/** A label as typed (as chemistry is written: `NH3`, `NH4^+`, `H_3C`) as chemfig's code writes it:
+ * a number after an element is its index, `^` a charge, each a group of its own (`NH_3`, `NH_4^+`),
+ * so nothing typed half-way (`NH_`) takes in the bond after it. */
+export function chemfigLabel(text: string): string {
+  return chemToLatex(text)
+    .replace(/_\{([^{}])\}/g, "_$1")
+    .replace(/\^\{([^{}])\}/g, "^$1");
+}
+
+/** A label of chemfig's code as it is typed back: `NH_3` is `NH3`, `NH_4^+` is `NH4^+`. */
+export function labelText(label: string): string {
+  // an index or a charge begun and still empty stays begun (`O^`, then `O^-`)
+  return latexToChem(label.replace(/_([0-9])/g, "_{$1}").replace(/\^([^{}\s])/g, "^{$1}").replace(/([_^])\{\}/g, "$1\u0000")).replace(/\u0000/g, "");
 }

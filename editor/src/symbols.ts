@@ -116,3 +116,42 @@ export function escapeText(ch: string): string {
       return ch;
   }
 }
+
+// ---------- typing as on a calculator ----------
+
+const GREEK = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi pi rho sigma tau upsilon phi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega";
+const FUNCTIONS = "sin cos tan cot sec csc sinh cosh tanh coth arcsin arccos arctan sen log ln exp det gcd lcm max min arg deg dim ker";
+
+/** Words typed in math, without `\`, that become what they name: Greek letters, functions set
+ * upright, roots and large operators. Each is LaTeX as a palette's button writes it (`#?` an
+ * empty place). */
+export const WORDS: Record<string, string> = {
+  sqrt: "\\sqrt{#?}",
+  cbrt: "\\sqrt[3]{#?}",
+  nthroot: "\\sqrt[#?]{#?}",
+  sum: "\\sum_{#?}^{#?}",
+  prod: "\\prod_{#?}^{#?}",
+  int: "\\int",
+  lim: "\\lim_{#?}",
+  infty: "\\infty",
+  infinity: "\\infty",
+  // a relation, made a symbol (`x in A`); typed on, `in` becomes `int` or `infinity`
+  in: "\\in",
+};
+for (const w of `${GREEK} ${FUNCTIONS}`.split(" ")) WORDS[w] = `\\${w}`;
+
+/** Two characters typed one after the other that make one symbol (`<=` is ≤), with the symbol made. */
+export const COMPOSED: Record<string, string> = { "<=": "\\le", ">=": "\\ge", "!=": "\\ne", "->": "\\to", "=>": "\\Rightarrow", "+-": "\\pm", "-+": "\\mp" };
+
+/** Commands whose arguments are math, each edited in a place of its own (physics,
+ * unicode-math, slashed): how many `{…}` they take, at least and at most. An optional `[…]` before
+ * them (`\pdv[2]{f}{x}`) is a place too. */
+export const CALLS: Record<string, [number, number]> = {
+  pdv: [1, 3], dv: [1, 3], dd: [1, 1], fdv: [1, 2],
+  ket: [1, 1], bra: [1, 1], braket: [1, 2], ketbra: [2, 2], expval: [1, 2], ev: [1, 2], mel: [3, 3], matrixel: [3, 3],
+  comm: [2, 2], acomm: [2, 2], pb: [2, 2], abs: [1, 1], norm: [1, 1], vb: [1, 1], va: [1, 1], vu: [1, 1],
+  slashed: [1, 1], symbf: [1, 1], symit: [1, 1], symrm: [1, 1], symsf: [1, 1], symcal: [1, 1],
+};
+
+/** The physics package's matrices: `\pmqty{a & b \\ c & d}`, edited as matrices. */
+export const PHYSICS_MATRICES = new Set(["mqty", "pmqty", "bmqty", "Bmqty", "vmqty", "mdet"]);
