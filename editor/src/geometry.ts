@@ -117,39 +117,74 @@ function schemeArrow(atom: Atom, boxes: Map<string, Box>): Rect | null {
   return { x: Math.min(x0, x1), y: y0, width: Math.abs(x1 - x0), height: y1 - y0 };
 }
 
-/** A character of a reaction's piece (mhchem draws the piece's text as one group): its share of the
- * row's width, a digit in a formula (a subscript) narrower than a letter. */
+/** Is this atom inside a species of a reaction (its formula, an index, a charge)? */
+function inSpecies(atom: Atom): boolean {
+  for (let r = atom.parent; r?.parent; r = r.parent.parent) {
+    if (r.parent.kind === "species") return true;
+    if (r.parent.kind === "reaction") return false;
+  }
+  return false;
+}
+
+/** How wide a piece of chemistry is drawn, in a capital letter's widths (near enough to place a cursor). */
+function chemWeight(a: Atom): number {
+  const t = a.kind === "symbol" ? a.latex : a.kind === "char" ? a.ch : null;
+  if (t !== null) {
+    if (/^[A-Z]$/.test(t)) return 1.2;
+    if (/^[0-9+\-]$/.test(t)) return 1;
+    if (/^[()\[\]]$/.test(t)) return 0.6;
+    return 0.85;
+  }
+  if (a.kind === "scripts") return 0.6 * Math.max(rowWeight(a.sub), rowWeight(a.sup));
+  // a command among conditions (\text{light}, $\alpha$): about as wide as what it shows
+  if (a.kind === "raw") return Math.max(1, a.latex.replace(/\\(text|mathrm|qty|SI|ce)\b/g, "").replace(/\\[A-Za-z]+/g, "x").replace(/[{}$\\]/g, "").length * 0.85);
+  if (a.kind === "delim") return rowWeight(a.body) + 1.2;
+  return 1;
+}
+
+function rowWeight(r: Row | null): number {
+  return r?.children.length ? r.children.reduce((t, a) => t + chemWeight(a), 0) : 0.6;
+}
+
+/** A row of chemistry mhchem draws as one group (a species, an arrow's conditions), or a row inside
+ * a species: where it is, from the group's box and each piece's width. */
+function chemRowRect(row: Row, boxes: Map<string, Box>): Rect | null {
+  const owner = row.parent;
+  if (owner?.kind === "species" || owner?.kind === "rxarrow") return boxes.get(row.id) ?? null;
+  if (!owner || !inSpecies(owner)) return null;
+  const r = piecePart(owner, boxes);
+  if (!r) return null;
+  // an index low, a charge high; the inside of parentheses between them
+  if (owner.kind === "scripts") {
+    const h = r.height * 0.6;
+    return { x: r.x, y: row === owner.sup ? r.y : r.y + r.height - h, width: r.width, height: h };
+  }
+  const inset = owner.kind === "delim" ? (r.width * 0.6) / chemWeight(owner) : 0;
+  return { x: r.x + inset, y: r.y, width: r.width - 2 * inset, height: r.height };
+}
+
+/** A piece of a reaction's species or conditions (mhchem draws each as one group): its share of the
+ * row's width. */
 function piecePart(atom: Atom, boxes: Map<string, Box>): Rect | null {
   const row = atom.parent;
-  const owner = row?.parent;
-  if (!row || atom.kind !== "char" || (owner?.kind !== "species" && owner?.kind !== "rxarrow")) return null;
-  const box = boxes.get(row.id);
+  if (!row || !(inSpecies(atom) || row.parent?.kind === "rxarrow")) return null;
+  const box = chemRowRect(row, boxes);
   if (!box) return null;
-  const subscript = owner.kind === "species" && row === owner.formula;
-  const weight = (a: Atom) => {
-    const ch = a.kind === "char" ? a.ch : "";
-    if (/[0-9]/.test(ch)) return subscript ? 0.6 : 1;
-    if (/[A-Z]/.test(ch)) return 1.2;
-    if (/[+\-]/.test(ch)) return subscript ? 0.6 : 1;
-    return 0.85;
-  };
-  const total = row.children.reduce((t, a) => t + weight(a), 0) || 1;
-  const before = row.children.slice(0, row.children.indexOf(atom)).reduce((t, a) => t + weight(a), 0);
+  const total = row.children.reduce((t, a) => t + chemWeight(a), 0) || 1;
+  const before = row.children.slice(0, row.children.indexOf(atom)).reduce((t, a) => t + chemWeight(a), 0);
   const unit = box.width / total;
-  return { x: box.x + before * unit, y: box.y, width: weight(atom) * unit, height: box.height };
+  return { x: box.x + before * unit, y: box.y, width: chemWeight(atom) * unit, height: box.height };
 }
 
 /** Where a row is drawn: its own box, or where its atoms are; an empty cell of a diagram, by its neighbours. */
 export function rowRect(row: Row, boxes: Map<string, Box>): Rect | null {
   const r = boxes.get(row.id) ?? union(row.children.map((a) => atomRect(a, boxes)).filter((r): r is Rect => !!r));
   if (r) return r;
+  // an empty index or charge in a species, empty parentheses
+  const chem = row.parent && inSpecies(row.parent) ? chemRowRect(row, boxes) : null;
+  if (chem) return chem;
   const d = row.parent;
-  // an empty optional place of a reaction (not drawn): beside the formula, over or under the arrow
-  if (d?.kind === "species" && row !== d.formula) {
-    const f = rowRect(d.formula, boxes) ?? boxes.get(d.id);
-    if (!f) return null;
-    return { x: row === d.coef ? f.x : f.x + f.width, y: f.y, width: 0, height: f.height };
-  }
+  // an empty place over or under an arrow (not drawn): its half of the arrow
   if (d?.kind === "rxarrow") {
     const a = boxes.get(d.id);
     if (!a) return null;
@@ -211,11 +246,19 @@ export function arrowPath(d: Diagram, a: DiagramArrow, boxes: Map<string, Box>):
   const ux = (bx - ax) / len, uy = (by - ay) / len;
   // leave each cell at its edge
   const cut = (r: Rect) => Math.min(Math.abs(r.width / 2 / (ux || 1e-9)), Math.abs(r.height / 2 / (uy || 1e-9))) + 60;
-  const sx = ax + ux * cut(A), sy = ay + uy * cut(A);
-  const ex = bx - ux * cut(B), ey = by - uy * cut(B);
-  // tikz-cd's bend is 30 degrees: the middle moves out by about a quarter of the length
-  const bulge = a.bend ? (a.bend === "left" ? -1 : 1) * len * 0.27 : 0;
-  const cx = (sx + ex) / 2 + -uy * -bulge, cy = (sy + ey) / 2 + ux * -bulge;
+  // `shift left` / `shift right` (twice with `=2`): parallel arrows moved off the line between the cells,
+  // tikz-cd's 0.56ex each, to the left of the direction of travel for `left`
+  let shift = 0;
+  for (const x of a.extra) {
+    const m = /^shift (left|right)(?:\s*=\s*([0-9.]+))?$/.exec(x.trim());
+    if (m) shift += (m[1] === "left" ? 1 : -1) * 240 * Number(m[2] ?? 1);
+  }
+  const sx = ax + ux * cut(A) + uy * shift, sy = ay + uy * cut(A) - ux * shift;
+  const ex = bx - ux * cut(B) + uy * shift, ey = by - uy * cut(B) - ux * shift;
+  // tikz-cd's bend is 30 degrees: the middle moves out by about a quarter of the length, to the left
+  // of the direction of travel for a left bend (above a rightward arrow: y grows down)
+  const bulge = a.bend ? (a.bend === "left" ? 1 : -1) * len * 0.27 : 0;
+  const cx = (sx + ex) / 2 + uy * bulge, cy = (sy + ey) / 2 - ux * bulge;
   const pts: { x: number; y: number }[] = [];
   for (let t = 0; t <= 1.0001; t += 0.1) {
     const m = 1 - t;

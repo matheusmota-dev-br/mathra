@@ -20,6 +20,8 @@ test("every palette button draws and inserts cleanly", () => {
       n++;
       const e = new Editor();
       e.insertLatex(item.insert, { autoDelimiters: true });
+      // the cursor out of it: inside, empty places show (an arrow's conditions) that the plain LaTeX has not
+      e.setCursor({ row: e.root, offset: e.root.children.length });
       const plain = e.toLatex();
       const r = render(plain);
       if (r.warnings.length) problems.push(`${name}: ${plain} ${r.warnings[0].description}`);

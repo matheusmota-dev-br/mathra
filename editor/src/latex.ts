@@ -6,10 +6,12 @@ import { readDiagram, type ArrowData, type DiagramEnv } from "./diagram.ts";
 import { readReaction, readScheme } from "./reaction.ts";
 import {
   ACCENTS,
+  CALLS,
   CHAR_CLASS,
   FRACTIONS,
   LARGE_OPERATORS,
   MATRICES,
+  PHYSICS_MATRICES,
   SPACES,
   STYLES,
   TEXTS,
@@ -30,12 +32,15 @@ export type AtomSpec =
   | { kind: "bigop"; op: string; sub: AtomSpec[] | null; sup: AtomSpec[] | null }
   | { kind: "accent"; cmd: string; body: AtomSpec[] }
   | { kind: "style"; cmd: string; body: AtomSpec[] }
-  | { kind: "matrix"; env: string; cells: AtomSpec[][][] }
+  /** `spec`: an array's columns (`{cc|c}`), as written. */
+  | { kind: "matrix"; env: string; cells: AtomSpec[][][]; spec?: string }
+  /** A command whose arguments are math (`\pdv{f}{x}`, `\ket{\psi}`), each a place; `opt` its `[…]`. */
+  | { kind: "call"; name: string; opt: AtomSpec[] | null; args: AtomSpec[][] }
   | { kind: "raw"; latex: string }
   /** A reaction (mhchem's \ce): pieces, their texts as characters. */
-  | { kind: "reaction"; scheme?: boolean; pieces: ({ kind: "species"; coef: string; formula: string; state: string } | { kind: "rxarrow"; arrow: string; above: string | null; below: string | null } | { kind: "rxtoken"; text: string } | { kind: "chem"; latex: string })[] }
+  | { kind: "reaction"; scheme?: boolean; pieces: ({ kind: "species"; text: string } | { kind: "rxarrow"; arrow: string; above: string | null; below: string | null } | { kind: "rxtoken"; text: string } | { kind: "chem"; latex: string })[] }
   /** A commutative diagram: cells and arrows, labels as atoms. */
-  | { kind: "diagram"; env: DiagramEnv; cells: AtomSpec[][][]; arrows: ArrowData<AtomSpec[]>[] }
+  | { kind: "diagram"; env: DiagramEnv; options?: string; cells: AtomSpec[][][]; arrows: ArrowData<AtomSpec[]>[] }
   | { kind: "command"; name: string }
   /** `#0` in a snippet: where the selection goes. */
   | { kind: "selection" };
@@ -232,6 +237,12 @@ class Reader {
       const save = this.pos;
       const env = this.peek() === "{" ? (this.pos++, this.rawGroup()) : "";
       if (MATRICES.has(env)) return void out.push(this.matrix(env));
+      // an array: its columns as written (the lines of \hline stay in their cells), its cells edited
+      if (env === "array") {
+        this.skipSpaces();
+        const spec = this.peek() === "{" ? (this.pos++, this.rawGroup()) : "";
+        return void out.push({ ...(this.matrix("array") as { kind: "matrix"; env: string; cells: AtomSpec[][][] }), spec });
+      }
       // anything else stays as written, up to its \end; a diagram the editor can edit becomes one
       const end = this.src.indexOf(`\\end{${env}}`, this.pos);
       const stop = end < 0 ? this.src.length : end + `\\end{${env}}`.length;
@@ -320,8 +331,24 @@ class Reader {
       this.pos = stop;
       return;
     }
-    // \xrightarrow[below]{above}: as written (one argument only is an editable label)
-    if (ACCENTS.has(name) && name.startsWith("x") && this.peek() === "[") return void out.push({ kind: "raw", latex: `\\${name}${this.rawArguments()}` });
+    // the physics package's matrices: a matrix inside the braces
+    if (PHYSICS_MATRICES.has(name) && this.peek() === "{") {
+      this.pos++;
+      return void out.push(new Reader(this.rawGroup(), this.auto).matrix(name));
+    }
+    // a command with math arguments (\pdv{f}{x}, \xrightarrow[below]{above}): each argument a place
+    const call = CALLS[name] ?? (ACCENTS.has(name) && name.startsWith("x") && this.peek() === "[" ? [1, 1] : null);
+    if (call) {
+      const save = this.pos;
+      const opt = this.peek() === "[" ? (this.pos++, new Reader(this.rawGroup("[", "]"), this.auto).list()) : null;
+      const args: AtomSpec[][] = [];
+      while (args.length < call[1] && this.peek() === "{") {
+        this.pos++;
+        args.push(new Reader(this.rawGroup(), this.auto).list());
+      }
+      if (args.length >= call[0]) return void out.push({ kind: "call", name, opt, args });
+      this.pos = save;
+    }
     if (ACCENTS.has(name)) return void out.push({ kind: "accent", cmd: `\\${name}`, body: this.argument() });
     if (STYLES.has(name)) return void out.push({ kind: "style", cmd: `\\${name}`, body: this.argument() });
     if (SPACES.has(name)) return void out.push({ kind: "symbol", latex: `\\${name}`, cls: "ord" });
@@ -434,6 +461,7 @@ function diagramSpec(latex: string, auto: boolean): AtomSpec | null {
   return {
     kind: "diagram",
     env: d.env,
+    ...(d.options ? { options: d.options } : {}),
     cells: d.cells.map((line) => line.map(read)),
     arrows: d.arrows.map((a) => ({ ...a, label: a.label === null ? null : read(a.label), swapLabel: a.swapLabel === null ? null : read(a.swapLabel), extra: [...a.extra] })),
   };

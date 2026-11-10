@@ -33,31 +33,33 @@ test("\\chemfig typed: one atom selected; typing its label, Alt+arrow bonds, a r
   e.typeText("\\chemfig ");
   const s = structure(e);
   assert.equal(e.chemSelection()?.index, 0);
+  // typed as chemistry is written: the 3 after H is its index
   e.typeText("H3C");
-  assert.equal(e.toLatex(), "\\chemfig{H3C}");
+  assert.equal(e.toLatex(), "\\chemfig{H_3C}");
   e.addChemBond(0);
   e.typeText("C");
   e.addChemBond(60, "double");
   e.typeText("O");
-  assert.equal(e.toLatex(), "\\chemfig{H3C-[:0]C=[:60]O}");
+  assert.equal(e.toLatex(), "\\chemfig{H_3C-[:0]C=[:60]O}");
   // back to the carbon: a branch down-right
   e.moveChem(240);
   assert.equal(e.chemSelection()?.graph.atoms[e.chemSelection()!.index].label, "C");
   e.addChemBond(-60);
   e.typeText("OH");
-  assert.equal(e.toLatex(), "\\chemfig{H3C-[:0]C(-[:-60]OH)=[:60]O}");
+  assert.equal(e.toLatex(), "\\chemfig{H_3C-[:0]C(-[:-60]OH)=[:60]O}");
   // the double bond made single, then removed with its oxygen
   const g = e.graphOf(s)!;
   e.selectChem(s, "bond", g.bonds.findIndex((b) => b.kind === "double"));
   e.setChemBondKind("single");
-  assert.equal(e.toLatex(), "\\chemfig{H3C-[:0]C(-[:-60]OH)-[:60]O}");
+  assert.equal(e.toLatex(), "\\chemfig{H_3C-[:0]C(-[:-60]OH)-[:60]O}");
   e.backspace();
-  assert.equal(e.toLatex(), "\\chemfig{H3C-[:0]C(-[:-60]OH)}");
+  assert.equal(e.toLatex(), "\\chemfig{H_3C-[:0]C(-[:-60]OH)}");
   e.addChemRing(6, true);
-  assert.equal(e.toLatex(), "\\chemfig{H3C-[:0]C*6(-=-=-=)(-[:-60]OH)}");
+  // a ring on an atom with bonds hangs from a new bond, away from them
+  assert.equal(e.toLatex(), "\\chemfig{H_3C-[:0]C(-[:60]*6(-=-=-=))(-[:-60]OH)}");
   assert.equal(render(e.toLatex()).warnings.length, 0);
   e.undo();
-  assert.equal(e.toLatex(), "\\chemfig{H3C-[:0]C(-[:-60]OH)}");
+  assert.equal(e.toLatex(), "\\chemfig{H_3C-[:0]C(-[:-60]OH)}");
 });
 
 test("a template's substituent R is selected; typing replaces it; the ring stays as written", () => {
@@ -132,4 +134,55 @@ test("a structure mathra cannot read stays a block, not edited in place", () => 
   e.setLatex("\\chemfig{A-B}");
   assert.equal(e.graphOf(structure(e)), null);
   assert.equal(e.toLatex(), "\\chemfig{A-B}");
+});
+
+test("a label typed freely keeps what chemfig can hold: a charge after ^, no bond or branch characters", async () => {
+  const { cleanLabel } = await import("../src/structure.ts");
+  assert.equal(cleanLabel("CH_3"), "CH_3");
+  assert.equal(cleanLabel("O^-"), "O^-");
+  assert.equal(cleanLabel("NH_4^+"), "NH_4^+");
+  assert.equal(cleanLabel("C H-(x)=[y],!"), "CHxy");
+});
+
+test("found by using it: a label typed with _ or ^ never takes in the bond after it; an empty structure goes with Backspace", async () => {
+  const { chemfigLabel, labelText } = await import("../src/structure.ts");
+  const e = editor("\\chemfig{A-B}");
+  e.selectChem(structure(e), "atom", 0);
+  e.typeText("NH_3^+");
+  assert.equal(e.toLatex(), "\\chemfig{NH_3^+-B}");
+  // typed as chemistry is written, in the bar's box too
+  e.setChemLabel("NH4^+");
+  assert.equal(e.toLatex(), "\\chemfig{NH_4^+-B}");
+  assert.equal(chemfigLabel("C12"), "C_{12}");
+  assert.equal(labelText("NH_4^+"), "NH4^+");
+  assert.equal(labelText("O^{}"), "O^");
+  // Backspace takes a letter of the label as typed (the 3 of NH3, not a brace)
+  const b = editor("\\chemfig{A-B}");
+  b.selectChem(structure(b), "atom", 0);
+  b.typeText("NH3");
+  assert.equal(b.toLatex(), "\\chemfig{NH_3-B}");
+  b.backspace();
+  assert.equal(b.toLatex(), "\\chemfig{NH-B}");
+  // an empty structure goes whole
+  const s = editor("\\chemfig{}");
+  s.selectChem(structure(s), "atom", 0);
+  s.backspace();
+  assert.equal(s.toLatex(), "");
+});
+
+test("second round: a ring hangs away from the bonds an atom has; on a chain's end it follows the chain", () => {
+  const ring = (k: number) => {
+    const e = editor("\\chemfig{C-[:30]O-[:-30]}");
+    e.selectChem(structure(e), "atom", k);
+    e.addChemRing(6, false);
+    return e.toLatex();
+  };
+  assert.equal(ring(0), "\\chemfig{C(-[:-150]*6(------))-[:30]O-[:-30]}");
+  assert.equal(ring(1), "\\chemfig{C-[:30]O(-[:90]*6(------))-[:-30]}");
+  assert.equal(ring(2), "\\chemfig{C-[:30]O-[:-30]*6(------)}");
+  // through a chain (bonds that cancel out): across it
+  const e = editor("\\chemfig{A-[:0]B-[:0]C}");
+  e.selectChem(structure(e), "atom", 1);
+  e.addChemRing(5, false);
+  assert.equal(e.toLatex(), "\\chemfig{A-[:0]B(-[:90]*5(-----))-[:0]C}");
 });

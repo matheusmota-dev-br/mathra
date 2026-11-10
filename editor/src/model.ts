@@ -5,9 +5,9 @@
 
 import { readLatex, type AtomSpec } from "./latex.ts";
 import { writeDiagram, type ArrowData, type ArrowStyle, type DiagramEnv } from "./diagram.ts";
-import { REACTION_ARROWS, SCHEME_ARROWS, arrowText, speciesText, writeReaction, type PieceData } from "./reaction.ts";
-import { addBond, addRing, atomAt, editable, markBody, readGraph, removeAtom, setBondKind, setLabel, type Graph } from "./structure.ts";
-import { CHAR_CLASS, CHAR_LATEX, CLOSING, DELIMITERS, LOWER_LIMIT_ONLY, classOfCommand, escapeText, type AtomClass } from "./symbols.ts";
+import { REACTION_ARROWS, SCHEME_ARROWS, arrowText, chemToLatex, conditionPieces, latexToChem, writeReaction, type PieceData } from "./reaction.ts";
+import { addBond, addRing, atomAt, chemfigLabel, editable, labelText, markBody, readGraph, removeAtom, setBondKind, setLabel, type Graph } from "./structure.ts";
+import { CALLS, CHAR_CLASS, CHAR_LATEX, CLOSING, COMPOSED, DELIMITERS, LOWER_LIMIT_ONLY, PHYSICS_MATRICES, WORDS, classOfCommand, escapeText, type AtomClass } from "./symbols.ts";
 
 export type { AtomClass } from "./symbols.ts";
 export type { AtomSpec } from "./latex.ts";
@@ -47,7 +47,10 @@ export interface Accent extends Base { kind: "accent"; cmd: string; body: Row }
 /** `\mathbf`, `\mathbb`, `\operatorname`… over a row. */
 export interface Styled extends Base { kind: "style"; cmd: string; body: Row }
 /** A grid of cells: matrices, `cases`, `aligned`. */
-export interface Matrix extends Base { kind: "matrix"; env: string; cells: Row[][] }
+export interface Matrix extends Base { kind: "matrix"; env: string; cells: Row[][]; /** An array's columns, as written. */ spec?: string }
+
+/** A command whose arguments are math (`\pdv{f}{x}`, `\ket{\psi}`, `\xrightarrow[a]{b}`), each a place; `opt` its `[…]`. */
+export interface Call extends Base { kind: "call"; name: string; opt: Row | null; args: Row[] }
 /** LaTeX the editor does not take apart: drawn as written, moved and deleted whole. */
 export interface Raw extends Base { kind: "raw"; latex: string }
 /** A command being typed after `\`, until a space or Enter turns it into what it names. */
@@ -55,18 +58,18 @@ export interface Command extends Base { kind: "command"; name: string }
 /** An arrow of a diagram: from a cell to a cell, its labels rows to edit. */
 export type DiagramArrow = ArrowData<Row>;
 /** A commutative diagram (tikz-cd, amscd, xymatrix): a grid of cells and the arrows between them. */
-export interface Diagram extends Base { kind: "diagram"; env: DiagramEnv; cells: Row[][]; arrows: DiagramArrow[] }
+export interface Diagram extends Base { kind: "diagram"; env: DiagramEnv; options?: string; cells: Row[][]; arrows: DiagramArrow[] }
 
 /** A reaction (mhchem's \ce): a row of species, arrows and signs. */
 export interface Reaction extends Base { kind: "reaction"; body: Row; /** A chemfig scheme (\schemestart): compounds are structures, arrows chemfig's. */ scheme?: boolean }
-/** A species of a reaction: its coefficient, formula and state, each a row of characters (mhchem draws them). */
-export interface Species extends Base { kind: "species"; coef: Row; formula: Row; state: Row }
+/** A species of a reaction: its formula, edited as math (`2H_2O(l)`, `SO_4^{2-}`) and written as mhchem writes it. */
+export interface Species extends Base { kind: "species"; formula: Row }
 /** An arrow of a reaction (`->`, `<=>`…), with what goes over and under it. */
 export interface ReactionArrow extends Base { kind: "rxarrow"; arrow: string; above: Row; below: Row }
 /** A sign of a reaction: `+`, `^` (a gas), `v` (a precipitate), or an arrow being typed. */
 export interface ReactionToken extends Base { kind: "rxtoken"; text: string }
 
-export type Atom = SymbolAtom | CharAtom | TextAtom | Fraction | Root | Scripts | Delimited | LargeOperator | Accent | Styled | Matrix | Raw | Command | Diagram | Reaction | Species | ReactionArrow | ReactionToken;
+export type Atom = SymbolAtom | CharAtom | TextAtom | Fraction | Root | Scripts | Delimited | LargeOperator | Accent | Styled | Matrix | Call | Raw | Command | Diagram | Reaction | Species | ReactionArrow | ReactionToken;
 
 /** Where a new arrow goes from a cell. */
 export type ArrowDirection = "up" | "down" | "left" | "right";
@@ -218,6 +221,17 @@ export class Editor {
   cursor: Cursor;
   /** The other end of the selection; none when nothing is selected. */
   anchor: Cursor | null = null;
+  /** Typing as on a calculator (on by default): words become what they name (`sqrt`, `pi`, `sin`),
+   * `<=` is ≤, an exponent or index that is a number or a name ends at the operator after it, `/`
+   * takes `(a+b)` without its parentheses, and `(…)` typed alone in an exponent, a root or a
+   * denominator is that place, closed by `)`. Off: each character is itself. */
+  smartTyping = true;
+  /** Places opened with `{` (as LaTeX groups them): `}` leaves them, and nothing typed in them ends them. */
+  private braced = new WeakSet<Row>();
+  /** Atoms a space was typed after: the letters on either side are not one word. */
+  private wordBreaks = new WeakSet<Atom>();
+  /** Where a space was typed: it ends a word, and keeps `<` and `=` apart. */
+  private spacedAt: Cursor | null = null;
   /** The locale writes `3,14` for a decimal (pt-BR, fr, de…): a comma between digits is then part of the number. The field sets it from mathra. */
   decimalComma = false;
   /** The class of LaTeX kept as written (`\pdv{u}{t}` is a fraction), so its mark keeps its spacing. The field asks mathra (`classOfTree(render(latex).tree)`); without it, ordinary. */
@@ -228,6 +242,8 @@ export class Editor {
   private graphs = new Map<string, Graph | null>();
   private chem: { atom: Raw; type: "atom" | "bond"; index: number; fresh: boolean; row: Row; offset: number } | null = null;
   private rawClasses = new Map<string, AtomClass>();
+  /** The formula before boxes became a block to edit as LaTeX (`toBlock`). */
+  private blockOrigin: string | null = null;
   /** A block just inserted that wants its LaTeX edited (the field opens the editor of blocks). */
   private pendingBlock: { atom: Raw; caret: number } | null = null;
   private next = 0;
@@ -379,7 +395,7 @@ export class Editor {
   setChemLabel(label: string): void {
     const s = this.chemSelection();
     if (!s || s.type !== "atom") return;
-    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, label)));
+    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, chemfigLabel(label))));
     if (this.chem) this.chem.fresh = false;
   }
 
@@ -423,6 +439,17 @@ export class Editor {
     const k = s.type === "atom" ? s.index : s.graph.bonds[s.index].to;
     const parent = s.graph.bonds.find((b) => b.to === k)?.from ?? 0;
     const before = s.atom.latex;
+    // an empty structure (one atom, no label): it goes whole, from a scheme or from the formula
+    if (s.graph.atoms.length === 1 && !s.graph.atoms[0].label) {
+      this.clearChem();
+      return this.change(() => {
+        const row = s.atom.parent!;
+        this.removeAtom(s.atom);
+        // a scheme left with nothing goes too
+        const scheme = row.parent;
+        if (scheme?.kind === "reaction" && scheme.scheme && !row.children.some((a) => a.kind === "raw")) this.removeAtom(scheme);
+      });
+    }
     this.change(() => this.setStructure(s.atom, removeAtom(this.chemBody(s.atom), s.graph, k)));
     const g = this.graphOf(s.atom);
     const removed = g && g.atoms.length < s.graph.atoms.length;
@@ -473,9 +500,9 @@ export class Editor {
     if (s.type !== "atom") return true;
     const current = s.graph.atoms[s.index].label;
     // a sign after ^ is a charge (O^-); other bond and branch characters end nothing here
-    if (LABEL_STOPS.test(ch) && !(/[-+]/.test(ch) && current.endsWith("^") && !this.chem.fresh)) return true;
-    const label = this.chem.fresh ? ch : current + ch;
-    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, label)), true);
+    if (LABEL_STOPS.test(ch) && !(/[-+]/.test(ch) && labelText(current).endsWith("^") && !this.chem.fresh)) return true;
+    const label = this.chem.fresh ? ch : labelText(current) + ch;
+    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, chemfigLabel(label))), true);
     this.chem.fresh = false;
     return true;
   }
@@ -489,9 +516,9 @@ export class Editor {
       this.removeChem();
       return true;
     }
-    const chars = Array.from(label);
+    const chars = Array.from(labelText(label));
     chars.pop();
-    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, chars.join(""))), true);
+    this.change(() => this.setStructure(s.atom, setLabel(this.chemBody(s.atom), s.graph, s.index, chemfigLabel(chars.join("")))), true);
     return true;
   }
 
@@ -501,7 +528,19 @@ export class Editor {
     const owner = row.parent;
     if (owner?.kind === "reaction") return { reaction: owner, piece: null };
     if ((owner?.kind === "species" || owner?.kind === "rxarrow") && owner.parent?.parent?.kind === "reaction") return { reaction: owner.parent.parent, piece: owner };
+    // deeper in a species (its index, its charge): the species
+    const species = this.speciesAround();
+    if (species?.parent?.parent?.kind === "reaction") return { reaction: species.parent.parent, piece: species };
     return null;
+  }
+
+  /** The arrow of a reaction or scheme the cursor is on: in its conditions, or beside it (after it, or before it, where a click on it puts the cursor). */
+  activeArrow(): ReactionArrow | null {
+    const { row, offset } = this.cursor;
+    if (row.parent?.kind === "rxarrow") return row.parent;
+    if (row.parent?.kind !== "reaction") return null;
+    const beside = [row.children[offset - 1], row.children[offset]].find((a) => a?.kind === "rxarrow");
+    return (beside as ReactionArrow | undefined) ?? null;
   }
 
   /** The matrix or diagram around the cursor, with the cell it is in. */
@@ -516,6 +555,39 @@ export class Editor {
       }
     }
     return null;
+  }
+
+  /** The matrix around the cursor that `shapeMatrix` can shape (one with delimiters or none, not
+   * cases or alignments), with its size and which cells hold something. */
+  shapeableMatrix(): { env: string; rows: number; cols: number; filled: boolean[][]; diagram: boolean; arrows?: number[][][] } | null {
+    const at = this.matrixAtCursor();
+    // a diagram's grid too (its delimiters are none), and the physics package's matrices (by the
+    // environment of the same delimiters)
+    if (!at || (at.matrix.kind === "matrix" && !MATRIX_SHAPES.has(at.matrix.env) && !PHYSICS_MATRICES.has(at.matrix.env))) return null;
+    const cells = at.matrix.cells;
+    const diagram = at.matrix.kind === "diagram";
+    // a diagram's arrows by their ends, to say which a smaller size takes away
+    const arrows = at.matrix.kind === "diagram" ? at.matrix.arrows.map((a) => [a.from, a.to]) : undefined;
+    return { env: PHYSICS_AS_ENV[at.matrix.env] ?? at.matrix.env, rows: cells.length, cols: cells[0].length, filled: cells.map((line) => line.map((c) => c.children.length > 0)), diagram, ...(arrows ? { arrows } : {}) };
+  }
+
+  /** Gives the matrix around the cursor `rows` lines and `cols` columns, empty cells added at the
+   * end, the last lines and columns removed (with what they held: one step of undo); `env` changes
+   * its delimiters. The cursor stays in its cell, or the nearest one left. */
+  shapeMatrix(rows: number, cols: number, env?: string): void {
+    const at = this.matrixAtCursor();
+    if (!this.shapeableMatrix() || rows < 1 || cols < 1) return;
+    const m = at!.matrix;
+    this.change(() => {
+      m.cells = Array.from({ length: rows }, (_, i) => Array.from({ length: cols }, (_, j) => m.cells[i]?.[j] ?? this.row(m)));
+      // a diagram's arrows to cells that went, go with them
+      if (m.kind === "diagram") m.arrows = m.arrows.filter((a) => [a.from, a.to].every(([i, j]) => i < rows && j < cols));
+      // a physics matrix stays one where the package has those delimiters
+      else if (env && MATRIX_SHAPES.has(env)) m.env = PHYSICS_MATRICES.has(m.env) ? (ENV_AS_PHYSICS[env] ?? env) : env;
+      const cell = m.cells[Math.min(at!.i, rows - 1)][Math.min(at!.j, cols - 1)];
+      if (cell !== this.cursor.row) this.cursor = { row: cell, offset: cell.children.length };
+      this.anchor = null;
+    });
   }
 
   /** Called after every change: `content` when the formula changed, `cursor` when only the cursor or the selection moved. Returns a function that removes it. */
@@ -549,14 +621,19 @@ export class Editor {
    * command that a space or Enter finishes. In text, every character is itself. */
   type(ch: string): void {
     if (this.typeInStructure(ch)) return;
-    if (this.reactionAtCursor() && !this.commandBeingTyped() && ch !== "\\") return this.typeInReaction(ch);
+    const species = this.speciesAround();
+    // a space anywhere in a species (its index too) ends it
+    if (species && ch === " " && !this.commandBeingTyped()) return this.change(() => this.afterPiece(species));
+    // over or under an arrow, `\` is a character too: the conditions are mhchem's text (`->[\Delta]`)
+    const rx = this.reactionAtCursor();
+    if (rx && !this.commandBeingTyped() && (ch !== "\\" || rx.piece?.kind === "rxarrow") && !this.speciesTakes(ch)) return this.typeInReaction(ch);
     if (this.inText() && !this.commandBeingTyped()) {
       if (ch === "\n") return;
       return this.change(() => this.replaceSelectionWith([{ kind: "char", ch }]), true);
     }
     const command = this.commandBeingTyped();
     if (command) {
-      if (/^[A-Za-z]$/.test(ch)) return this.change(() => void (command.name += ch));
+      if (/^[A-Za-z]$/.test(ch)) return this.change(() => void (command.name += ch), true);
       // `\` then one other character: the command is that character (`\,`, `\{`, `\|`)
       if (command.name === "" && ",:;! {}|#$%&_".includes(ch) && ch !== " ") {
         return this.change(() => {
@@ -572,7 +649,32 @@ export class Editor {
       // the space or the brace that ended \ce goes: the block's editor takes it from there
       if (ch === " " || (opened && ch === "{")) return;
     }
-    if (ch === " " || ch === "\n") return;
+    const spaced = this.spacedAt?.row === this.cursor.row && this.spacedAt.offset === this.cursor.offset;
+    this.spacedAt = null;
+    const smart = this.smartTyping && !this.anchor && this.cursor.row.parent?.kind !== "style" && !species;
+    const letter = /^[A-Za-z]$/.test(ch);
+    if (ch === " " || ch === "\n") {
+      if (smart && ch === " ") {
+        // a space ends a word (letters on either side are not one word) and a place a calculator ends
+        const before = this.cursor.row.children[this.cursor.offset - 1];
+        if (before) this.wordBreaks.add(before);
+        this.leavePlace(ch);
+        this.spacedAt = { ...this.cursor };
+      }
+      return;
+    }
+    if (this.smartTyping && !this.anchor && this.typeBrace(ch)) return;
+    if (smart && !spaced && this.compose(ch)) return;
+    if (smart && this.typeInLimit(ch)) return;
+    if (smart) this.leavePlace(ch);
+    if (species && this.smartTyping && !this.anchor && this.typeInSpecies(ch)) return;
+    if (smart && letter) {
+      return this.change(() => {
+        if (!spaced) this.reopenWord(ch);
+        this.replaceSelectionWith([{ kind: "symbol", latex: ch, cls: "ord" }]);
+        this.convertWord();
+      }, true);
+    }
     if (ch === "\\") return this.change(() => this.replaceSelectionWith([{ kind: "command", name: "" }]));
     if (ch === "/") return this.change(() => this.fractionOfOperand());
     if (ch === "^") return this.script("sup");
@@ -591,6 +693,187 @@ export class Editor {
     if (ch.trim()) this.insertSymbol(ch, "ord");
   }
 
+  // ---------- typing as on a calculator (`smartTyping`) ----------
+
+  /** The species the cursor is in, at any depth (its index, its charge). */
+  private speciesAround(): Species | null {
+    for (let r: Row = this.cursor.row; r.parent; r = r.parent.parent!) {
+      if (r.parent.kind === "species") return r.parent;
+      if (r.parent.kind === "reaction") return null;
+    }
+    return null;
+  }
+
+  /** Does the species the cursor is in take this character as math? Not `->` or `<`, which start an arrow. */
+  private speciesTakes(ch: string): boolean {
+    const at = this.reactionAtCursor();
+    if (at?.piece?.kind !== "species") return false;
+    const { row, offset } = this.cursor;
+    const last = row.children[offset - 1];
+    const atEnd = offset === row.children.length;
+    return !(atEnd && (ch === "<" || (ch === ">" && last?.kind === "symbol" && last.latex === "-")));
+  }
+
+  /** Typing in a species, as chemistry is written: a number after an element or a closing is its
+   * index (`H2` is H₂); in an index or a charge that is done, a letter or an opening goes on after it,
+   * and `^` after an index starts the charge over it (`SO4^2-`). */
+  private typeInSpecies(ch: string): boolean {
+    const { row, offset } = this.cursor;
+    const owner = row.parent;
+    if (owner?.kind === "scripts" && offset === row.children.length && !this.braced.has(row)) {
+      const text = row.children.map((a) => (a.kind === "symbol" ? a.latex : "?")).join("");
+      const index = row === owner.sub && /^[0-9]+$/.test(text);
+      // a letter or an opening ends a number; after an index, a sign or a dot too (NH4+, CH3-CH3, CuSO4.5H2O)
+      const done = (/^[0-9]+$/.test(text) && /^[A-Za-z(\[^]$/.test(ch) && !(ch === "^" && !index)) || (index && /^[-+*.=,]$/.test(ch)) || (/^[0-9]*[+-]$/.test(text) && /^[A-Za-z(\[]$/.test(ch));
+      if (!done) return false;
+      const outer = owner.parent!;
+      this.change(() => (this.cursor = { row: outer, offset: outer.children.indexOf(owner) + 1 }));
+      // what ends it is typed after it, as chemistry
+      return this.typeInSpecies(ch);
+    }
+    // a slash in chemistry is a coefficient's (1/2 O2), not a fraction; a star the dot of a hydrate (CuSO4*5H2O)
+    if (ch === "/" || ch === "*") {
+      this.change(() => this.replaceSelectionWith([{ kind: "symbol", latex: ch, cls: "ord" }]), true);
+      return true;
+    }
+    const before = row.children[offset - 1];
+    const element = before && ((before.kind === "symbol" && (/^[A-Za-z]$/.test(before.latex) || before.cls === "close")) || before.kind === "delim");
+    if (!/^[0-9]$/.test(ch) || !element || owner?.kind === "scripts") return false;
+    this.change(() => {
+      this.addScript("sub");
+      this.replaceSelectionWith([{ kind: "symbol", latex: ch, cls: "ord" }]);
+    }, true);
+    return true;
+  }
+
+  /** The letters just before the cursor (one-letter ordinary symbols), as one word. */
+  private lettersBefore(): string {
+    const { row, offset } = this.cursor;
+    let text = "";
+    for (let i = offset - 1; i >= 0; i--) {
+      const a = row.children[i];
+      if (a.kind !== "symbol" || a.cls !== "ord" || !/^[A-Za-z]$/.test(a.latex) || (i < offset - 1 && this.wordBreaks.has(a))) break;
+      text = a.latex + text;
+    }
+    return text;
+  }
+
+  /** The `n` letters before the cursor become this LaTeX: the cursor in its first empty place, or after it. */
+  private replaceLetters(n: number, latex: string): void {
+    const { row, offset } = this.cursor;
+    row.children.splice(offset - n, n);
+    this.cursor = { row, offset: offset - n };
+    this.insertSpecs(readLatex(latex), { cursorAfter: !latex.includes("#?") });
+  }
+
+  /** After a letter: the letters typed since the last non-letter (or space) become what they name,
+   * when they are a whole word (`pi`, `sqrt`, `sin`); inside a longer run (`point`, `xpi`) nothing is
+   * read, so words of a language and products of variables stay as typed. */
+  private convertWord(): void {
+    const text = this.lettersBefore();
+    if (Object.hasOwn(WORDS, text)) this.replaceLetters(text.length, WORDS[text]);
+  }
+
+  /** A letter right after a word made into a symbol that it carries on (`\sin` and `h`): the word is letters again, to make the longer one. */
+  private reopenWord(ch: string): void {
+    const { row, offset } = this.cursor;
+    const before = row.children[offset - 1];
+    if (before?.kind !== "symbol") return;
+    const w = before.latex.slice(1);
+    if (WORDS[w] !== before.latex || !WORD_LIST.some((x) => x.startsWith(w + ch))) return;
+    row.children.splice(offset - 1, 1);
+    this.cursor = { row, offset: offset - 1 };
+    this.replaceSelectionWith([...w].map((c) => ({ kind: "symbol" as const, latex: c, cls: "ord" as const })));
+  }
+
+  /** `<` then `=` is ≤ (see `COMPOSED`), three dots are `\ldots`. */
+  private compose(ch: string): boolean {
+    const { row, offset } = this.cursor;
+    const before = row.children[offset - 1];
+    if (before?.kind !== "symbol") return false;
+    const dots = ch === "." && before.latex === "." && (row.children[offset - 2] as SymbolAtom | undefined)?.latex === ".";
+    const made = dots ? "\\ldots" : COMPOSED[before.latex + ch];
+    if (!made) return false;
+    const n = dots ? 2 : 1;
+    this.change(() => {
+      row.children.splice(offset - n, n);
+      this.cursor = { row, offset: offset - n };
+      this.replaceSelectionWith([{ kind: "symbol", latex: made, cls: classOfCommand(made.slice(1)) }]);
+    }, true);
+    return true;
+  }
+
+  /** `{` in an empty exponent, index, root or part of a fraction groups it, as in LaTeX (nothing
+   * drawn); `}` at its end leaves it: to the denominator from a numerator, else after the structure. */
+  private typeBrace(ch: string): boolean {
+    const { row, offset } = this.cursor;
+    const owner = row.parent;
+    if (ch === "{" && !row.children.length && (owner?.kind === "scripts" || owner?.kind === "bigop" || owner?.kind === "sqrt" || owner?.kind === "frac")) {
+      this.braced.add(row);
+      return true;
+    }
+    if (ch !== "}") return false;
+    // the group `}` closes: this place, or one it ends in (the denominator of x^{2/3} ends the exponent)
+    let r = row;
+    let at = offset;
+    while (!this.braced.has(r)) {
+      const up = r.parent;
+      const rows = up ? childRows(up) : [];
+      if (!up || at !== r.children.length || rows[rows.length - 1] !== r) return false;
+      const around = up.parent!;
+      at = around.children.indexOf(up) + 1;
+      r = around;
+    }
+    if (at !== r.children.length) return false;
+    const place = r.parent!;
+    const outer = place.parent!;
+    this.braced.delete(r);
+    this.change(() => (this.cursor = place.kind === "frac" && r === place.num ? { row: place.den, offset: place.den.children.length } : { row: outer, offset: outer.children.indexOf(place) + 1 }));
+    return true;
+  }
+
+  /** At the end of a place a calculator ends by itself, a character typed goes on after it. An
+   * exponent, an index, a denominator or a root holding a number or a name (`2`, `-1`, `n`, `2x`):
+   * an operator, a relation, a comma, an opening, `/` or a space ends it, and a letter after a
+   * number. A large operator's limit (`i=1`, `x\to0`): a space. Never a place opened with `{`. */
+  private leavePlace(ch: string): void {
+    const { row, offset } = this.cursor;
+    const owner = row.parent;
+    const atoms = row.children;
+    if (!owner || offset !== atoms.length || !atoms.length || this.braced.has(row)) return;
+    const last = atoms[atoms.length - 1];
+    // a function waits for its argument (`\frac{\sin}{…}` is never meant)
+    if (last.kind === "symbol" && last.cls === "op") return;
+    const limit = owner.kind === "bigop" && (row === owner.sub || row === owner.sup);
+    const place = owner.kind === "scripts" || (owner.kind === "frac" && row === owner.den) || (owner.kind === "sqrt" && row === owner.body && !owner.index);
+    if (limit) {
+      if (ch !== " ") return;
+    } else {
+      if (!place) return;
+      const plain = (a: Atom, i: number) => a.kind === "symbol" && ((a.cls === "ord" && /^([A-Za-z0-9.]|\\[A-Za-z]+)$/.test(a.latex)) || (i === 0 && a.latex === "-" && atoms.length > 1));
+      if (!atoms.every(plain)) return;
+      const number = atoms.every((a) => /^[-0-9.]$/.test((a as SymbolAtom).latex));
+      // a letter after a number ends an exponent or an index (x^2y, H_2O), not a denominator (2a) or a root
+      if (!/^[-+*=<>,;:(\[/ ]$/.test(ch) && !(number && owner.kind === "scripts" && /^[A-Za-z\\]$/.test(ch))) return;
+    }
+    const outer = owner.parent!;
+    this.change(() => (this.cursor = { row: outer, offset: outer.children.indexOf(owner) + 1 }));
+  }
+
+  /** In a large operator's limit: `_` where the cursor already is does nothing, `^` goes to the upper
+   * limit and `_` to the lower one (`\sum_{k=1}^n`, `\int_0^1`), not an exponent of what is there. */
+  private typeInLimit(ch: string): boolean {
+    const owner = this.cursor.row.parent;
+    if (owner?.kind !== "bigop" || (ch !== "^" && ch !== "_")) return false;
+    const which = ch === "^" ? "sup" : "sub";
+    if (owner[which] === this.cursor.row) return !this.cursor.row.children.length;
+    this.change(() => {
+      const target = owner[which] ?? (owner[which] = this.row(owner));
+      this.cursor = { row: target, offset: target.children.length };
+    });
+    return true;
+  }
+
   /** Typing in a reaction: the pieces build themselves (see `type`). */
   private typeInReaction(ch: string): void {
     const at = this.reactionAtCursor()!;
@@ -598,33 +881,38 @@ export class Editor {
     const piece = at.piece;
     const chars = (text: string): AtomSpec[] => [...text].map((c) => ({ kind: "char" as const, ch: c }));
     if (ch === "\n") return;
-    // in a species
+    // at the end of a species, `->` or `<` (the rest is typed as math): out of it, an arrow begins
     if (piece?.kind === "species") {
-      // a space, or ) at the end of the state: out of the species
-      if (ch === " " || (ch === ")" && row === piece.state)) return this.change(() => this.afterPiece(piece));
-      // ( at the end of the formula: into the state
-      if (ch === "(" && row === piece.formula && offset === row.children.length) return this.change(() => (this.cursor = { row: piece.state, offset: piece.state.children.length }));
-      // a letter in the coefficient: on into the formula
-      if (row === piece.coef && !/[0-9./]/.test(ch)) return this.change(() => {
-        this.cursor = { row: piece.formula, offset: 0 };
-        this.replaceSelectionWith(chars(ch));
-      }, true);
-      // a digit at the start of an empty formula, with no coefficient: the coefficient
-      if (row === piece.formula && offset === 0 && /[0-9]/.test(ch) && piece.formula.children.length === 0 && piece.coef.children.length === 0)
-        return this.change(() => {
-          this.cursor = { row: piece.coef, offset: 0 };
-          this.replaceSelectionWith(chars(ch));
-        }, true);
-      return this.change(() => this.replaceSelectionWith(chars(ch)), true);
+      return this.change(() => {
+        if (ch === ">") row.children.splice(offset - 1, 1);
+        this.afterPiece(piece);
+        this.putPiece({ id: this.id(), parent: piece.parent!, kind: "rxtoken", text: ch === ">" ? "->" : "<" });
+        const token = this.cursor.row.children[this.cursor.offset - 1] as ReactionToken;
+        if (ch === ">") this.toReactionArrow(token);
+      });
     }
     // over or under an arrow: characters (mhchem reads them as chemistry or words)
     if (piece?.kind === "rxarrow") {
       if (ch === "]") return this.change(() => this.afterPiece(piece));
       return this.change(() => this.replaceSelectionWith(chars(ch)), true);
     }
-    // between pieces
-    if (ch === " ") return;
+    // between pieces: a space is remembered (`[` after it starts a species, not the arrow's conditions)
+    const spaced = this.spacedAt?.row === row && this.spacedAt.offset === offset;
+    this.spacedAt = null;
+    if (ch === " ") return void (this.spacedAt = { row, offset });
     const before = row.children[offset - 1];
+    // `^` then a number or `{`: not a gas, the start of an isotope (^{14}_{6}C)
+    if (before?.kind === "rxtoken" && before.text === "^" && /^[{0-9]$/.test(ch)) {
+      this.change(() => {
+        row.children.splice(offset - 1, 1);
+        this.cursor = { row, offset: offset - 1 };
+        const sp = this.newSpecies(row);
+        this.putPiece(sp);
+        this.cursor = { row: sp.formula, offset: 0 };
+      }, true);
+      this.type("^");
+      return this.type(ch);
+    }
     const scheme = !!at.reaction.scheme;
     const arrows = scheme ? SCHEME_ARROWS : REACTION_ARROWS;
     // an arrow being typed: -> <=> <-> grow from - < =
@@ -652,24 +940,35 @@ export class Editor {
       return this.change(() => this.putPiece({ id: this.id(), parent: row, kind: "rxtoken", text: ch }));
     if (ch === "[") {
       const prev = row.children[this.cursor.offset - 1];
-      // the first [ goes over the arrow, the second under it
-      if (prev?.kind === "rxarrow") {
+      // the first [ goes over the arrow, the second under it (right after it: after a space, a species begins)
+      if (prev?.kind === "rxarrow" && !spaced) {
         const target = prev.above.children.length ? prev.below : prev.above;
         return this.change(() => (this.cursor = { row: target, offset: target.children.length }));
       }
     }
-    // anything else starts a species: a digit its coefficient, other characters its formula
+    // anything else starts a species, typed in it as math
     this.change(() => {
-      const digit = /[0-9]/.test(ch);
-      const sp: Species = { id: this.id(), parent: row, kind: "species", coef: null!, formula: null!, state: null! };
-      sp.coef = this.row(sp);
-      sp.formula = this.row(sp);
-      sp.state = this.row(sp);
+      const sp = this.newSpecies(row);
       this.putPiece(sp);
-      const c: CharAtom = { id: this.id(), parent: digit ? sp.coef : sp.formula, kind: "char", ch };
-      (digit ? sp.coef : sp.formula).children.push(c);
-      this.cursor = digit ? { row: sp.coef, offset: 1 } : { row: sp.formula, offset: 1 };
+      this.cursor = { row: sp.formula, offset: 0 };
     }, true);
+    this.type(ch);
+  }
+
+  private newSpecies(parent: Row): Species {
+    const sp: Species = { id: this.id(), parent, kind: "species", formula: null! };
+    sp.formula = this.row(sp);
+    return sp;
+  }
+
+  /** Where new pieces go in the reaction the cursor is in: after the piece it is in; from an arrow's
+   * conditions, after what the arrow leads to (a + there is the product's, not the arrow's). */
+  private pieceOffset(at: { reaction: Reaction; piece: Species | ReactionArrow | null }): number {
+    const body = at.reaction.body;
+    if (!at.piece) return this.cursor.offset;
+    const i = body.children.indexOf(at.piece);
+    const next = body.children[i + 1];
+    return at.piece.kind === "rxarrow" && next && next.kind !== "rxarrow" ? i + 2 : i + 1;
   }
 
   /** Puts a piece of a reaction at the cursor (replacing a selection), the cursor after it. */
@@ -685,9 +984,8 @@ export class Editor {
   setReactionArrow(arrow: string): void {
     const at = this.reactionAtCursor();
     if (!at) return;
-    // the arrow the cursor is on, or right after
-    const prev = !at.piece && this.cursor.row === at.reaction.body ? at.reaction.body.children[this.cursor.offset - 1] : null;
-    const target = at.piece?.kind === "rxarrow" ? at.piece : prev?.kind === "rxarrow" ? prev : null;
+    // the arrow the cursor is on, or beside
+    const target = this.activeArrow();
     this.change(() => {
       if (target) {
         target.arrow = arrow;
@@ -704,23 +1002,12 @@ export class Editor {
     });
   }
 
-  /** The state of the species the cursor is in (`s`, `l`, `g`, `aq`; empty for none). */
-  setSpeciesState(state: string): void {
-    const at = this.reactionAtCursor();
-    if (at?.piece?.kind !== "species") return;
-    const sp = at.piece;
-    this.change(() => {
-      sp.state.children = [...state].map((ch) => ({ id: this.id(), parent: sp.state, kind: "char" as const, ch }));
-      if (this.cursor.row === sp.state) this.cursor = { row: sp.formula, offset: sp.formula.children.length };
-    });
-  }
-
   /** A new structure after the piece the cursor is on, in a scheme; its atom picked. */
   addSchemeStructure(): void {
     const at = this.reactionAtCursor();
     if (!at?.reaction.scheme) return;
     const body = at.reaction.body;
-    const offset = at.piece ? body.children.indexOf(at.piece) + 1 : this.cursor.offset;
+    const offset = this.pieceOffset(at);
     this.change(() => {
       this.cursor = { row: body, offset };
       this.anchor = null;
@@ -737,15 +1024,12 @@ export class Editor {
     if (!at) return;
     this.change(() => {
       const body = at.reaction.body;
-      let offset = at.piece ? body.children.indexOf(at.piece) + 1 : this.cursor.offset;
+      let offset = this.pieceOffset(at);
       body.children.splice(offset++, 0, { id: this.id(), parent: body, kind: "rxtoken", text });
       this.cursor = { row: body, offset };
       this.anchor = null;
       if (text === "+" && !at.reaction.scheme) {
-        const sp: Species = { id: this.id(), parent: body, kind: "species", coef: null!, formula: null!, state: null! };
-        sp.coef = this.row(sp);
-        sp.formula = this.row(sp);
-        sp.state = this.row(sp);
+        const sp = this.newSpecies(body);
         body.children.splice(offset, 0, sp);
         this.cursor = { row: sp.formula, offset: 0 };
       }
@@ -754,14 +1038,12 @@ export class Editor {
     if (text === "+" && at.reaction.scheme) this.addSchemeStructure();
   }
 
-  /** The cursor into a place of the reaction piece it is on: over or under its arrow, a species' coefficient. */
-  enterReactionPlace(place: "above" | "below" | "coef" | "formula"): void {
-    const at = this.reactionAtCursor();
-    const p = at?.piece ?? (at && this.cursor.row.children[this.cursor.offset - 1]);
+  /** The cursor over or under the arrow it is on (or beside). */
+  enterReactionPlace(place: "above" | "below"): void {
+    const p = this.activeArrow();
     if (!p) return;
     this.change(() => {
-      if (p.kind === "rxarrow" && (place === "above" || place === "below")) this.cursor = { row: p[place], offset: p[place].children.length };
-      else if (p.kind === "species" && (place === "coef" || place === "formula")) this.cursor = { row: p[place], offset: p[place].children.length };
+      this.cursor = { row: p[place], offset: p[place].children.length };
       this.anchor = null;
     });
   }
@@ -773,9 +1055,13 @@ export class Editor {
     if (!at || !p) return;
     this.change(() => {
       const body = at.reaction.body;
-      const i = body.children.indexOf(p);
+      let i = body.children.indexOf(p);
       if (i < 0) return;
-      body.children.splice(i, 1);
+      // a species takes its + with it: the one after it, or else the one before it
+      const plus = (a: Atom | undefined) => a?.kind === "rxtoken" && a.text === "+";
+      if (p.kind !== "rxtoken" && plus(body.children[i + 1])) body.children.splice(i, 2);
+      else if (p.kind !== "rxtoken" && plus(body.children[i - 1])) body.children.splice(--i, 2);
+      else body.children.splice(i, 1);
       this.cursor = { row: body, offset: i };
       this.anchor = null;
     });
@@ -819,7 +1105,9 @@ export class Editor {
     if (!at) return;
     this.change(() => {
       if (at.i === at.matrix.cells.length - 1) this.insertMatrixRow(at.matrix, at.i + 1);
-      const target = at.matrix.cells[at.i + 1][at.j];
+      // from the end of a line, the start of the next (a matrix typed line by line); else the cell below
+      const last = at.j === at.matrix.cells[at.i].length - 1;
+      const target = at.matrix.cells[at.i + 1][last ? 0 : at.j];
       this.cursor = { row: target, offset: target.children.length };
       this.anchor = null;
     });
@@ -866,10 +1154,15 @@ export class Editor {
       const specs = readLatex(latex, options);
       // a reaction's pieces into the reaction the cursor is in, after the piece it is in
       const at = this.reactionAtCursor();
-      if (at) {
+      // a scheme into a reaction (or a reaction into a scheme): beside it, whole
+      if (at && specs.length === 1 && specs[0].kind === "reaction" && !!specs[0].scheme !== !!at.reaction.scheme) {
+        const outer = at.reaction.parent!;
+        this.cursor = { row: outer, offset: outer.children.indexOf(at.reaction) + 1 };
+        this.anchor = null;
+      } else if (at) {
         if (specs.length === 1 && specs[0].kind === "reaction") {
           const body = at.reaction.body;
-          let offset = at.piece ? body.children.indexOf(at.piece) + 1 : this.cursor.offset;
+          let offset = this.pieceOffset(at);
           if (!at.piece && this.anchor) {
             this.deleteSelection();
             offset = this.cursor.offset;
@@ -884,8 +1177,8 @@ export class Editor {
           if (made.body.children.length === 1 && last.kind === "rxarrow" && latex.includes("[")) this.cursor = { row: last.above, offset: last.above.children.length };
           return;
         }
-        // other math inside a piece: its LaTeX as text (mhchem reads it)
-        if (at.piece) {
+        // other math over or under an arrow: its LaTeX as text (mhchem reads it); in a species, math
+        if (at.piece?.kind === "rxarrow") {
           this.replaceSelectionWith([...latex.replace(/#[?0]/g, "")].map((ch) => ({ kind: "char" as const, ch })));
           return;
         }
@@ -894,6 +1187,19 @@ export class Editor {
       // a scheme from a palette: its first structure's R (or first atom) picked
       const after = this.cursor.row.children[this.cursor.offset - 1];
       if (after?.kind === "reaction" && after.scheme) this.pickFirstStructure(after);
+      // a diagram from a palette: its first object picked, to type over (as a structure's R)
+      else if (after?.kind === "diagram" && after.cells[0]?.[0]?.children.length) {
+        const first = after.cells[0][0];
+        this.anchor = { row: first, offset: 0 };
+        this.cursor = { row: first, offset: first.children.length };
+      }
+      // a reaction or a species from a palette: the cursor at its end, to go on typing it; over its
+      // arrow when it is an arrow with conditions to fill
+      else if (after?.kind === "reaction") {
+        const pieces = after.body.children;
+        const last = pieces[pieces.length - 1];
+        this.cursor = pieces.length === 1 && last.kind === "rxarrow" && latex.includes("[") ? { row: last.above, offset: 0 } : { row: after.body, offset: pieces.length };
+      }
       // a structure from a palette: its first substituent to fill (R), or its first atom, selected
       const made = this.cursor.row.children[this.cursor.offset - 1];
       const g = made?.kind === "raw" && !this.anchor ? this.graphOf(made) : null;
@@ -914,8 +1220,14 @@ export class Editor {
   toBlock(atom: Atom): Raw | null {
     const row = atom.parent;
     if (!row) return null;
+    // the formula as it was: what undo and cancel go back to
+    this.blockOrigin = this.snapshot();
     const raw: Raw = { id: this.id(), parent: row, kind: "raw", latex: this.listLatex([atom], false) };
-    row.children.splice(row.children.indexOf(atom), 1, raw);
+    const i = row.children.indexOf(atom);
+    row.children.splice(i, 1, raw);
+    // the cursor leaves the atom that went (it may have been inside it)
+    this.cursor = { row, offset: i + 1 };
+    this.anchor = null;
     return raw;
   }
 
@@ -937,7 +1249,10 @@ export class Editor {
 
   /** Edits a block's LaTeX: each change shows at once, and all of them are one step of undo. */
   editBlock(atom: Raw, caret = atom.latex.length): BlockSession {
-    const before = this.snapshot();
+    // a block made from boxes (`toBlock`): undo and cancel go back to the boxes
+    const origin = this.blockOrigin;
+    this.blockOrigin = null;
+    const before = origin ?? this.snapshot();
     const original = atom.latex;
     const editor = this;
     return {
@@ -957,7 +1272,8 @@ export class Editor {
           // read back: LaTeX the editor can take apart (a diagram) becomes boxes again
           const specs = readLatex(atom.latex);
           const i = row.children.indexOf(atom);
-          if (specs.length === 1 && specs[0].kind !== "raw") {
+          // over or under an arrow, a piece of the conditions stays LaTeX as written (mhchem reads it)
+          if (specs.length === 1 && specs[0].kind !== "raw" && row.parent?.kind !== "rxarrow") {
             const made = editor.adoptInto(row, specs, [], i);
             row.children.splice(i + made.length, 1);
             editor.cursor = { row, offset: i + made.length };
@@ -972,6 +1288,11 @@ export class Editor {
         editor.emit("content");
       },
       cancel() {
+        if (origin) {
+          editor.restore(origin);
+          editor.emit("content");
+          return;
+        }
         atom.latex = original;
         // a block that was empty when it opened (\ce typed) goes
         const row = atom.parent;
@@ -989,11 +1310,29 @@ export class Editor {
 
   /** The arrow whose label the cursor is in, with its diagram. */
   arrowAtCursor(): { diagram: Diagram; arrow: DiagramArrow; index: number } | null {
-    const row = this.cursor.row;
+    // the label the cursor is in, at any depth (the index of f_1 too)
+    let row = this.cursor.row;
+    while (row.parent && row.parent.kind !== "diagram") row = row.parent.parent!;
     const d = row.parent;
     if (d?.kind !== "diagram") return null;
     const index = d.arrows.findIndex((a) => a.label === row || a.swapLabel === row);
     return index < 0 ? null : { diagram: d, arrow: d.arrows[index], index };
+  }
+
+  /** Out of the reaction the cursor is in, after it (Escape). */
+  leaveReaction(): void {
+    const at = this.reactionAtCursor();
+    if (!at) return;
+    const outer = at.reaction.parent!;
+    this.setCursor({ row: outer, offset: outer.children.indexOf(at.reaction) + 1 });
+  }
+
+  /** From an arrow's label back to the cell it leaves (Escape). */
+  leaveArrowLabel(): void {
+    const at = this.arrowAtCursor();
+    if (!at) return;
+    const cell = at.diagram.cells[at.arrow.from[0]][at.arrow.from[1]];
+    this.setCursor({ row: cell, offset: cell.children.length });
   }
 
   /** Draws an arrow between two cells of a diagram; the cursor goes to its label. */
@@ -1012,10 +1351,16 @@ export class Editor {
   arrowFromCursor(direction: ArrowDirection, style: ArrowStyle = "plain"): void {
     const at = this.matrixAtCursor();
     if (!at || at.matrix.kind !== "diagram") return;
-    const d = at.matrix;
+    const [di, dj] = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[direction];
+    this.arrowToNeighbour(at.matrix, [at.i, at.j], di, dj, style);
+  }
+
+  /** An arrow from a cell to its neighbour one step away (`di`, `dj` each -1, 0 or 1: diagonals too);
+   * past the edge, a line or a column is added for it. The cursor goes to its label. */
+  arrowToNeighbour(d: Diagram, from: [number, number], di: number, dj: number, style: ArrowStyle = "plain"): void {
+    if (!di && !dj) return;
     this.change(() => {
-      let { i, j } = at;
-      const [di, dj] = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[direction];
+      let [i, j] = from;
       if (i + di < 0) {
         this.insertMatrixRow(d, 0);
         i++;
@@ -1126,7 +1471,9 @@ export class Editor {
       const rows = this.rows();
       const here = rows.indexOf(this.cursor.row);
       const order = back ? rows.slice(0, here).reverse() : rows.slice(here + 1);
-      const empty = order.find((r) => r.children.length === 0);
+      // an empty label of an arrow is not a place to fill (an arrow needs none)
+      const label = (r: Row) => r.parent?.kind === "diagram" && !r.parent.cells.some((line) => line.includes(r));
+      const empty = order.find((r) => r.children.length === 0 && !label(r));
       if (empty) return void (this.cursor = { row: empty, offset: 0 });
       const at = this.matrixAtCursor();
       if (at) {
@@ -1297,6 +1644,8 @@ export class Editor {
   undo(): void {
     const state = this.undoStack.pop();
     if (state === undefined) return;
+    // what is typed next is a step of its own, not part of the one undone
+    this.typingRun = false;
     this.redoStack.push(this.snapshot());
     this.restore(state);
     this.emit("content");
@@ -1305,6 +1654,7 @@ export class Editor {
   redo(): void {
     const state = this.redoStack.pop();
     if (state === undefined) return;
+    this.typingRun = false;
     this.undoStack.push(this.snapshot());
     this.restore(state);
     this.emit("content");
@@ -1444,12 +1794,18 @@ export class Editor {
         return a;
       }
       case "matrix": {
-        const a: Matrix = { ...base, kind: "matrix", env: spec.env, cells: [] };
+        const a: Matrix = { ...base, kind: "matrix", env: spec.env, cells: [], ...(spec.spec !== undefined ? { spec: spec.spec } : {}) };
         a.cells = spec.cells.map((line) => line.map((cell) => rowOf(a, cell)!));
         return a;
       }
+      case "call": {
+        const a: Call = { ...base, kind: "call", name: spec.name, opt: null, args: [] };
+        a.opt = rowOf(a, spec.opt);
+        a.args = spec.args.map((x) => rowOf(a, x)!);
+        return a;
+      }
       case "diagram": {
-        const a: Diagram = { ...base, kind: "diagram", env: spec.env, cells: [], arrows: [] };
+        const a: Diagram = { ...base, kind: "diagram", env: spec.env, ...(spec.options ? { options: spec.options } : {}), cells: [], arrows: [] };
         a.cells = spec.cells.map((line) => line.map((cell) => rowOf(a, cell)!));
         a.arrows = spec.arrows.map((x) => ({ ...x, from: [...x.from] as [number, number], to: [...x.to] as [number, number], extra: [...x.extra], label: rowOf(a, x.label), swapLabel: rowOf(a, x.swapLabel) }));
         return a;
@@ -1457,18 +1813,17 @@ export class Editor {
       case "reaction": {
         const a: Reaction = { ...base, kind: "reaction", body: null!, ...(spec.scheme ? { scheme: true } : {}) };
         a.body = this.row(a);
-        const chars = (t: string | null): AtomSpec[] => [...(t ?? "")].map((ch) => ({ kind: "char" as const, ch }));
         for (const p of spec.pieces) {
           if (p.kind === "species") {
-            const sp: Species = { id: this.id(), parent: a.body, kind: "species", coef: null!, formula: null!, state: null! };
-            sp.coef = rowOf(sp, chars(p.coef))!;
-            sp.formula = rowOf(sp, chars(p.formula))!;
-            sp.state = rowOf(sp, chars(p.state))!;
+            const sp = this.newSpecies(a.body);
+            this.adoptInto(sp.formula, readLatex(chemToLatex(p.text)), []);
             a.body.children.push(sp);
           } else if (p.kind === "rxarrow") {
             const ar: ReactionArrow = { id: this.id(), parent: a.body, kind: "rxarrow", arrow: p.arrow, above: null!, below: null! };
-            ar.above = rowOf(ar, chars(p.above))!;
-            ar.below = rowOf(ar, chars(p.below))!;
+            // conditions: characters, a command or $…$ whole
+            const pieces = (t: string | null): AtomSpec[] => conditionPieces(t ?? "").map((x) => ("ch" in x ? { kind: "char" as const, ch: x.ch } : { kind: "raw" as const, latex: x.latex }));
+            ar.above = rowOf(ar, pieces(p.above))!;
+            ar.below = rowOf(ar, pieces(p.below))!;
             a.body.children.push(ar);
           } else if (p.kind === "chem") a.body.children.push({ id: this.id(), parent: a.body, kind: "raw", latex: p.latex });
           else a.body.children.push({ id: this.id(), parent: a.body, kind: "rxtoken", text: p.text });
@@ -1558,7 +1913,9 @@ export class Editor {
       else if (rx?.kind === "raw") this.pendingBlock = { atom: rx, caret: rx.latex.length - 1 };
       return true;
     }
-    const snippet = TEMPLATES[name];
+    // typed, a derivative has its two places (what, and by what); other commands as many as they need
+    const places = /^(pdv|dv|fdv)$/.test(name) ? 2 : CALLS[name]?.[0] ?? 0;
+    const snippet = TEMPLATES[name] ?? (CALLS[name] ? `\\${name}{#0}${"{#?}".repeat(places - 1)}` : PHYSICS_MATRICES.has(name) ? `\\${name}{#?&#?\\\\#?&#?}` : undefined);
     if (snippet) this.insertSpecs(readLatex(snippet, { autoDelimiters: true }));
     // a large operator typed alone: with its limits, as the palette inserts it
     else if (LOWER_LIMIT_ONLY.has(name)) this.insertSpecs(readLatex(`\\${name}_{#?}`));
@@ -1596,7 +1953,8 @@ export class Editor {
   /** `/`: the operand before the cursor (back to an operator, a relation or an opening) becomes the numerator. */
   private fractionOfOperand(): void {
     if (this.selection()) return this.insertSpecs(readLatex("\\frac{#0}{#?}"));
-    const { row, offset } = this.cursor;
+    const row = this.cursor.row;
+    let offset = this.cursor.offset;
     let start = offset;
     let depth = 0;
     while (start > 0) {
@@ -1605,8 +1963,18 @@ export class Editor {
       else if (a.kind === "symbol" && a.cls === "open") {
         if (depth === 0) break;
         depth--;
-      } else if (depth === 0 && (a.kind === "command" || a.kind === "bigop" || (a.kind === "symbol" && a.cls !== "ord"))) break;
+      // a function (\sin, \log) goes with its argument: sin(x)/x is (sin x)/x
+      } else if (depth === 0 && (a.kind === "command" || a.kind === "bigop" || (a.kind === "symbol" && a.cls !== "ord" && a.cls !== "op"))) break;
       start--;
+    }
+    // `(a+b)/`: the parentheses only grouped the numerator
+    const only = row.children[start];
+    if (this.smartTyping && offset - start === 1 && only.kind === "delim" && only.left === "(" && only.right === ")" && only.body.children.length) {
+      const kept = only.body.children;
+      for (const a of kept) a.parent = row;
+      row.children.splice(start, 1, ...kept);
+      offset = start + kept.length;
+      this.cursor = { row, offset };
     }
     this.anchor = start < offset ? { row, offset: start } : null;
     this.insertSpecs(readLatex(start < offset ? "\\frac{#0}{#?}" : "\\frac{#?}{#?}"));
@@ -1623,6 +1991,18 @@ export class Editor {
       const outer = owner.parent!;
       const at = outer.children.indexOf(owner);
       if (owner.kind === "delim" && owner.right === closer) {
+        // `(…)` typed alone in an exponent, an index, a root or a denominator: it was that place, and `)` leaves it
+        const place = outer.parent;
+        const fills = place?.kind === "scripts" || place?.kind === "bigop" || (place?.kind === "sqrt" && place.body === outer) || (place?.kind === "frac" && place.den === outer);
+        if (this.smartTyping && fills && owner.left === "(" && outer.children.length === 1 && owner.body.children.length) {
+          this.change(() => {
+            outer.children = owner.body.children;
+            for (const a of outer.children) a.parent = outer;
+            const around = place.parent!;
+            this.cursor = { row: around, offset: around.children.indexOf(place) + 1 };
+          });
+          return true;
+        }
         this.change(() => (this.cursor = { row: outer, offset: at + 1 }));
         return true;
       }
@@ -1659,6 +2039,23 @@ export class Editor {
     if (m.kind === "diagram") for (const a of m.arrows) for (const p of [a.from, a.to]) if (p[1] >= j) p[1]++;
   }
 
+  /** The column, else the line, of cell (i, j) goes when all its cells are empty and no arrow touches
+   * it (and the diagram keeps one). Which went, if one did. */
+  private dropEmptyLines(d: Diagram, i: number, j: number): "column" | "line" | null {
+    const touches = (axis: 0 | 1, k: number) => d.arrows.some((a) => a.from[axis] === k || a.to[axis] === k);
+    if (j >= 0 && d.cells[0].length > 1 && d.cells.every((line) => !line[j]?.children.length) && !touches(1, j)) {
+      for (const line of d.cells) line.splice(j, 1);
+      this.dropFromDiagram(d, 1, j);
+      return "column";
+    }
+    if (d.cells.length > 1 && d.cells[i].every((c) => !c.children.length) && !touches(0, i)) {
+      d.cells.splice(i, 1);
+      this.dropFromDiagram(d, 0, i);
+      return "line";
+    }
+    return null;
+  }
+
   /** A diagram loses a line or a column: the arrows that touch it go, the others follow their cells. */
   private dropFromDiagram(d: Diagram, axis: 0 | 1, k: number): void {
     d.arrows = d.arrows.filter((a) => a.from[axis] !== k && a.to[axis] !== k);
@@ -1679,8 +2076,12 @@ export class Editor {
     const next = row.children[side > 0 ? offset : offset - 1];
     if (next) {
       const rows = childRows(next);
-      if (rows.length) {
-        const r = side > 0 ? rows[0] : rows[rows.length - 1];
+      // an arrow of a reaction with no conditions: passed over (its places show beside it, to click into)
+      const empty = next.kind === "rxarrow" && rows.every((r) => r.children.length === 0);
+      if (rows.length && !empty) {
+        // into an arrow's conditions: the one that has something (an empty one is passed)
+        const places = next.kind === "rxarrow" ? rows.filter((r) => r.children.length) : rows;
+        const r = side > 0 ? places[0] : places[places.length - 1];
         this.cursor = { row: r, offset: side > 0 ? 0 : r.children.length };
       } else this.cursor = { row, offset: offset + side };
       return;
@@ -1798,6 +2199,8 @@ export class Editor {
       if (k >= 0 && side < 0 && row.children.length === 0) {
         const [a] = owner.arrows.splice(k, 1);
         const cell = owner.cells[a.from[0]][a.from[1]];
+        // the empty cell it reached (made for it) goes, with its column and its line, when nothing else is there
+        if (this.dropEmptyLines(owner, a.to[0], a.to[1]) === "column") this.dropEmptyLines(owner, a.to[0], -1);
         this.cursor = { row: cell, offset: cell.children.length };
         return;
       }
@@ -1808,6 +2211,16 @@ export class Editor {
         const at = outer.children.indexOf(owner);
         outer.children.splice(at, 1);
         this.cursor = { row: outer, offset: at };
+        return;
+      }
+      // Backspace in an empty cell whose column (or line) is empty, without arrows: it goes
+      const i = owner.cells.findIndex((line) => line.includes(row));
+      const j = i < 0 ? -1 : owner.cells[i].indexOf(row);
+      const dropped = side < 0 && row.children.length === 0 && i >= 0 ? this.dropEmptyLines(owner, i, j) : null;
+      if (dropped) {
+        // to the cell left of the column that went, or above the line that went
+        const cell = dropped === "column" ? owner.cells[i][Math.max(0, j - 1)] : owner.cells[Math.max(0, i - 1)][j];
+        this.cursor = { row: cell, offset: cell.children.length };
         return;
       }
       return this.leave(row, side);
@@ -1831,8 +2244,16 @@ export class Editor {
       this.cursor = { row: outer, offset: at };
       return;
     }
+    // Backspace in an empty denominator: the fraction goes, its numerator stays
+    if (side < 0 && owner.kind === "frac" && owner.den === row && row.children.length === 0) {
+      const kept = owner.num.children;
+      for (const a of kept) a.parent = outer;
+      outer.children.splice(at, 1, ...kept);
+      this.cursor = { row: outer, offset: at + kept.length };
+      return;
+    }
     // a delimiter or a style around something: Backspace at its start takes it off, keeping what it holds
-    if (side < 0 && row.children.length && (owner.kind === "delim" || owner.kind === "style" || owner.kind === "accent" || owner.kind === "text") && childRows(owner).length === 1) {
+    if (side < 0 && row.children.length && (owner.kind === "delim" || owner.kind === "style" || owner.kind === "accent" || owner.kind === "text" || owner.kind === "sqrt") && childRows(owner).length === 1) {
       const kept = row.children.splice(0);
       outer.children.splice(at, 1, ...kept);
       for (const a of kept) a.parent = outer;
@@ -1887,6 +2308,9 @@ export class Editor {
       const atom = atoms[i];
       // \underbrace{…}_{n}: a mark around it would turn the label below into an index
       const bare = marked && atom.kind === "accent" && /^\\(under|over)brace$/.test(atom.cmd) && atoms[i + 1]?.kind === "scripts";
+      // after a command with arguments (\ket{\psi}), a letter keeps a space: macros that end in a
+      // command (\rangle) would otherwise take it into their name
+      if (atoms[i - 1]?.kind === "call" && atom.kind === "symbol" && /^[A-Za-z]/.test(atom.latex)) out += " ";
       out = join(out, bare ? `${atom.cmd}{${this.rowLatex(atom.body, true)}}` : this.atomLatex(atom, marked, atoms[i - 1], atoms[i + 1]));
     }
     return out;
@@ -1947,8 +2371,9 @@ export class Editor {
       case "bigop":
         return mark(`${atom.op}${atom.sub ? `_{${r(atom.sub)}}` : ""}${atom.sup ? `^{${r(atom.sup)}}` : ""}`);
       case "scripts": {
-        // on the atom before it; at the start of a row, or after another script, on an empty base
-        const base = !before || before.kind === "scripts" ? "{}" : "";
+        // on the atom before it; at the start of a row, after another script or a large operator's
+        // limits, on an empty base
+        const base = !before || before.kind === "scripts" || before.kind === "bigop" ? "{}" : "";
         return `${base}${atom.sup ? `^{${r(atom.sup)}}` : ""}${atom.sub ? `_{${r(atom.sub)}}` : ""}`;
       }
       case "delim": {
@@ -1961,21 +2386,22 @@ export class Editor {
         return `${side(left.open, "open", "l")}${r(atom.body)}${side(right.close, "close", "r")}`;
       }
       case "reaction": {
-        const text = (row: Row) => row.children.map((c) => (c.kind === "char" ? c.ch : "")).join("");
-        // a place: the characters, marked; an empty one shows as a box only where the cursor is
+        const text = (row: Row) => row.children.map((c) => (c.kind === "char" ? c.ch : c.kind === "raw" ? c.latex : "")).join("");
+        // a place: the characters, marked; an empty one shows as a box where the cursor is, and over
+        // and under the arrow the cursor is on, to say that conditions go there (and to click into)
+        const active = this.activeArrow();
         const place = (row: Row) => {
           const t = text(row);
           if (!marked) return t;
           if (t) return `\\htmlData{m=${row.id}}{${t}}`;
-          return this.hasCursor(row) ? `\\htmlData{m=${row.id},empty=1}{$\\square$}` : "";
+          return this.hasCursor(row) || (active && row.parent === active) ? `\\htmlData{m=${row.id},empty=1}{$\\square$}` : "";
         };
         const piece = (p: Atom): string => {
           if (p.kind === "species") {
-            const coef = place(p.coef);
-            const formula = place(p.formula) || (marked ? `\\htmlData{m=${p.formula.id},empty=1}{$\\square$}` : "");
-            const state = place(p.state);
-            const body = `${coef ? `${coef} ` : ""}${formula}${state ? (marked ? state.replace(/\{([^{}]*)\}$/, "{($1)}") : `(${state})`) : ""}`;
-            return marked ? `\\htmlData{m=${p.id}}{${body}}` : speciesText(text(p.coef), text(p.formula), text(p.state));
+            if (!marked) return this.speciesText(p);
+            // one mark around the formula's text: marks inside it would change how mhchem draws it
+            const formula = p.formula.children.length ? `\\htmlData{m=${p.formula.id}}{${this.speciesText(p)}}` : `\\htmlData{m=${p.formula.id},empty=1}{$\\square$}`;
+            return `\\htmlData{m=${p.id}}{${formula}}`;
           }
           if (p.kind === "rxarrow") {
             if (!marked) return arrowText(p.arrow, text(p.above), text(p.below));
@@ -1995,15 +2421,22 @@ export class Editor {
               return g ? `\\chemfig{${markBody(this.chemBody(p), g, (k) => `${p.id}a${k}`)}}` : p.latex;
             }
             if (p.kind === "rxarrow") {
-              const above = place(p.above);
-              const below = place(p.below);
+              // chemfig writes conditions as text: a formula in them (H2SO4, H_2O) is set as mhchem's
+              const chem = (row: Row) => {
+                const t = text(row);
+                const formula = /[A-Z][a-z]?[0-9]|[_^]/.test(t) && !/[$\\]/.test(t);
+                if (!marked) return formula ? `\\ce{${t}}` : t;
+                return t ? `\\htmlData{m=${row.id}}{${formula ? `\\ce{${t}}` : t}}` : place(row);
+              };
+              const above = chem(p.above);
+              const below = chem(p.below);
               return `\\arrow{${p.arrow}${above || below ? `[${above}]` : ""}${below ? `[${below}]` : ""}}`;
             }
             if (p.kind === "rxtoken") return p.text === "+" ? "\\+" : "";
             return "";
           };
           const items = atom.body.children.map(item).filter(Boolean).join(" ");
-          const latex = `\\schemestart ${items} \\schemestop`;
+          const latex = items ? `\\schemestart ${items} \\schemestop` : "\\schemestart \\schemestop";
           return marked ? mark(latex) : latex;
         }
         const inner = writeReaction(atom.body.children, piece);
@@ -2039,7 +2472,17 @@ export class Editor {
           .map((line) => line.map((cell) => this.rowLatex(cell, marked, true)).join(" & "))
           .join(" \\\\ ")
           .replace(/ {2,}/g, " ");
-        return mark(`\\begin{${atom.env}}${body}\\end{${atom.env}}`);
+        if (PHYSICS_MATRICES.has(atom.env)) return mark(`\\${atom.env}{${body}}`);
+        return mark(`\\begin{${atom.env}}${atom.spec !== undefined ? `{${atom.spec}}` : ""}${body}\\end{${atom.env}}`);
+      }
+      case "call": {
+        const latex = (m: boolean) => `\\${atom.name}${atom.opt ? `[${this.rowLatex(atom.opt, m)}]` : ""}${atom.args.map((x) => `{${this.rowLatex(x, m)}}`).join("")}`;
+        if (!marked) return latex(false);
+        // its class is the one mathra reads it into (\pdv a fraction, \abs delimited)
+        const cls = this.rawClass(latex(false));
+        const m = mark(latex(true));
+        const wrapper = cls === "op" ? "\\mathop" : CLASS_WRAPPER[cls];
+        return wrapper ? `${wrapper}{${m}}` : m;
       }
     }
   }
@@ -2092,18 +2535,25 @@ export class Editor {
       case "style":
         return { kind: a.kind, cmd: a.cmd, body: l(a.body)! };
       case "matrix":
-        return { kind: "matrix", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)) };
+        return { kind: "matrix", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)), ...(a.spec !== undefined ? { spec: a.spec } : {}) };
+      case "call":
+        return { kind: "call", name: a.name, opt: l(a.opt), args: a.args.map((x) => l(x)!) };
       case "reaction":
         return { kind: "reaction", ...(a.scheme ? { scheme: true } : {}), pieces: a.body.children.map((p) => this.pieceData(p)) };
       case "diagram":
-        return { kind: "diagram", env: a.env, cells: a.cells.map((line) => line.map((c) => l(c)!)), arrows: a.arrows.map((x) => ({ ...x, from: [...x.from] as [number, number], to: [...x.to] as [number, number], extra: [...x.extra], label: l(x.label), swapLabel: l(x.swapLabel) })) };
+        return { kind: "diagram", env: a.env, ...(a.options ? { options: a.options } : {}), cells: a.cells.map((line) => line.map((c) => l(c)!)), arrows: a.arrows.map((x) => ({ ...x, from: [...x.from] as [number, number], to: [...x.to] as [number, number], extra: [...x.extra], label: l(x.label), swapLabel: l(x.swapLabel) })) };
     }
+  }
+
+  /** A species as mhchem writes it: `2 H2O(l)`, `SO4^2-`. */
+  private speciesText(p: Species): string {
+    return latexToChem(this.listLatex(p.formula.children, false));
   }
 
   /** A piece of a reaction as data. */
   private pieceData(p: Atom): PieceData {
-    const text = (row: Row) => row.children.map((c) => (c.kind === "char" ? c.ch : "")).join("");
-    if (p.kind === "species") return { kind: "species", coef: text(p.coef), formula: text(p.formula), state: text(p.state) };
+    const text = (row: Row) => row.children.map((c) => (c.kind === "char" ? c.ch : c.kind === "raw" ? c.latex : "")).join("");
+    if (p.kind === "species") return { kind: "species", text: this.speciesText(p) };
     if (p.kind === "rxarrow") return { kind: "rxarrow", arrow: p.arrow, above: text(p.above), below: text(p.below) };
     if (p.kind === "raw") return { kind: "chem", latex: p.latex };
     return { kind: "rxtoken", text: p.kind === "rxtoken" ? p.text : "" };
@@ -2145,6 +2595,15 @@ export class Editor {
 }
 
 /** Commands that act on the alignment around them (mathtools, amsmath): never inside a mark. */
+/** The physics package's matrices by the environment with the same delimiters, and back. */
+const PHYSICS_AS_ENV: Record<string, string> = { mqty: "matrix", pmqty: "pmatrix", bmqty: "bmatrix", Bmqty: "Bmatrix", vmqty: "vmatrix", mdet: "vmatrix" };
+const ENV_AS_PHYSICS: Record<string, string> = { matrix: "mqty", pmatrix: "pmqty", bmatrix: "bmqty", Bmatrix: "Bmqty", vmatrix: "vmqty" };
+
+/** The matrices a size can be given to: those that are only a grid with delimiters (or none). */
+export const MATRIX_SHAPES = new Set(["matrix", "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix"]);
+
+const WORD_LIST = Object.keys(WORDS);
+
 const UNMARKED = /^\\(MoveEqLeft|shortvdotswithin|vdotswithin|Aboxed|intertext|shortintertext|tag\*?|notag|nonumber|label|hline|noalign)\b/;
 
 /** LaTeX with its braces balanced: a `}` without its `{` dropped, the `}` missing at the end added. */
@@ -2211,12 +2670,14 @@ export function childRows(atom: Atom): Row[] {
       return [atom.body];
     case "matrix":
       return atom.cells.flat();
+    case "call":
+      return atom.opt ? [atom.opt, ...atom.args] : atom.args;
     case "diagram":
       return [...atom.cells.flat(), ...atom.arrows.flatMap((a) => [a.label, a.swapLabel].filter((r): r is Row => r !== null))];
     case "reaction":
       return [atom.body];
     case "species":
-      return [atom.coef, atom.formula, atom.state];
+      return [atom.formula];
     case "rxarrow":
       return [atom.above, atom.below];
     default:
@@ -2232,6 +2693,10 @@ function rowsOf(atom: Atom): Row[] {
 /** An atom's rows from top to bottom, for up and down. */
 function verticalRows(atom: Atom): Row[] {
   switch (atom.kind) {
+    case "call":
+      return /^(pdv|dv|fdv)$/.test(atom.name) ? atom.args : [];
+    case "rxarrow":
+      return [atom.above, atom.below];
     case "frac":
       return [atom.num, atom.den];
     case "scripts":
