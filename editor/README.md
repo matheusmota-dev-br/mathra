@@ -1,8 +1,26 @@
+<p align="center"><img src="https://raw.githubusercontent.com/matheusmota-dev-br/mathra/main/docs/editor-banner.svg" alt="mathra editor: build a formula in a box, drawn by mathra" width="100%"></p>
+
 # @mathlabs/mathra-editor
 
-Components to build a formula inside a box, drawn by [mathra](../README.md): a cursor, empty places to fill, palettes, a command menu, a keyboard on the screen and the outputs. What you edit is what mathra draws, because mathra draws the box itself at every change (about a millisecond per key in a browser).
+[![npm](https://img.shields.io/npm/v/@mathlabs/mathra-editor)](https://www.npmjs.com/package/@mathlabs/mathra-editor)
 
-Web Components: they work in React, Vue, Svelte, Angular or plain HTML. Every piece can be used alone, restyled, or replaced; the editor underneath has no DOM.
+A math editor for the web: build a formula inside a box, with a cursor, empty places to fill, palettes, a command menu, a keyboard on the screen and every output. **[Try it on mathra's site](https://matheusmota-dev-br.github.io/mathra/editor.html)**, and see **[how it works, drawn and live](https://matheusmota-dev-br.github.io/mathra/editor-docs.html)**: every key, chemistry, diagrams, putting it in your page.
+
+What you edit is what [mathra](https://github.com/matheusmota-dev-br/mathra#readme) draws, because mathra draws the box itself at every change (about a millisecond per key in a browser). Web Components: they work in React, Vue, Svelte, Angular or plain HTML. Every piece can be used alone, restyled, or replaced; the editor underneath has no DOM.
+
+- **Typed as on a calculator.** `sqrt`, `pi`, `sum`, `int`, `lim` become what they name; `<=` is ≤, `->` is →; `/` makes a fraction of what is before it; `^` and `_` end on their own: `x^2+1` needs no braces. Or `\` and a command, as in LaTeX.
+- **Every structure.** Fractions, roots, large operators, matrices sized on a grid (as a table in a word processor), cases, alignments, accents, physics' derivatives and Dirac notation, each with its places.
+- **Chemistry and diagrams as boxes.** Reactions typed as they are written (`2H2 + O2 -> 2H2O`), structures drawn atom by atom and bond by bond, reaction schemes, and commutative diagrams with arrows dragged between cells.
+- **Every output.** LaTeX, MathML, SVG, PNG, speech in 16 languages and braille, from the same formula.
+- **LaTeX in, LaTeX out.** Paste any formula: what the editor takes apart is edited in place, the rest stays as written, and the LaTeX it writes back draws what it drew.
+
+## Install
+
+```sh
+npm install @mathlabs/mathra-editor @mathlabs/mathra
+```
+
+`@mathlabs/mathra` (1.12 or later) is a peer dependency: the components load its WebAssembly themselves (`init()`). With a bundler, nothing else is needed; without one, map `@mathlabs/mathra` in an import map, as `demo/index.html` and the [site's page](https://github.com/matheusmota-dev-br/mathra/blob/main/site/editor.html) do.
 
 ## Quick start
 
@@ -21,7 +39,12 @@ Web Components: they work in React, Vue, Svelte, Angular or plain HTML. Every pi
 </script>
 ```
 
-The components load mathra's WebAssembly themselves (`init()` from `@mathlabs/mathra`, a peer dependency). With a bundler, nothing else is needed; without one, map `@mathlabs/mathra` in an import map, as `demo/index.html` does.
+Only a box, for an answer in a form:
+
+```html
+<mathra-field id="answer" inline placeholder="Your answer"></mathra-field>
+<mathra-toolbar for="answer" palettes="structures greek"></mathra-toolbar>
+```
 
 ## The components
 

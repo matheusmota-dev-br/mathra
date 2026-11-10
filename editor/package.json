@@ -10,6 +10,8 @@
     "mathra"
   ],
   "license": "MIT OR Apache-2.0",
+  "homepage": "https://matheusmota-dev-br.github.io/mathra/editor.html",
+  "bugs": "https://github.com/matheusmota-dev-br/mathra/issues",
   "type": "module",
   "repository": {
     "type": "git",
