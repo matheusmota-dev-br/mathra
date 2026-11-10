@@ -29,6 +29,14 @@ jobs:
       # must match the wasm-bindgen version in Cargo.lock
       - run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: site/build.sh
+      # the editor page: mathra for browsers and the editor, built from main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - run: site/build-editor.sh
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
