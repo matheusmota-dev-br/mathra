@@ -4,6 +4,10 @@ What changed in each release of mathra: the crates `mathra` and `mathra-cli`, `@
 
 Each release has a headline (the line under its title), what changed, and the equations that show it (`Equations:`): a name from the gallery ([`corpus/gallery.json`](corpus/gallery.json)) or the LaTeX itself, drawn by the site with today's mathra. `scripts/release.sh` will not release a version without its section here, and makes the GitHub release from it.
 
+## Unreleased
+
+- **Fixes.** In text, a text accent with an empty argument is the accent alone, as LaTeX sets it: `\text{x\^{}2}` is xˆ2 and `\~{}user` is ˜user (L-TXT-6). The accent took the `}` that closes its argument as its letter, drawing a stray brace under it ([#306](https://github.com/matheusmota-dev-br/mathra/issues/306)).
+
 ## 1.12.0 - 2026-11-10
 
 Where each marked piece is drawn, chemistry included: what a visual editor needs. And what the measured formulas still asked for: commands inside real formulas, and chemfig as its manual writes it.

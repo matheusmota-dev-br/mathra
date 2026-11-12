@@ -191,6 +191,46 @@ fn l_txt_1_tex_quotes_become_typographic_in_text() {
 }
 
 #[test]
+fn l_txt_6_text_accents_on_a_letter() {
+    // one character where Unicode has it, braces or not; i without its dot
+    assert_eq!(en(r"\text{caf\'e, \~n, \c{c}, \v s, \'i}").text, "café, ñ, ç, š, í");
+    // the letter and the combining accent where it has none
+    assert_eq!(en(r"\text{\k{x}}").text, "x\u{0328}");
+}
+
+#[test]
+fn l_txt_6_an_empty_argument_is_the_accent_alone() {
+    // #306: the accent's spacing character, never an accent on the `}` that closes its argument
+    for (mark, alone) in [
+        (r"\'", "\u{00B4}"),
+        (r"\`", "`"),
+        (r"\^", "\u{02C6}"),
+        (r"\~", "\u{02DC}"),
+        ("\\\"", "\u{00A8}"),
+        (r"\=", "\u{00AF}"),
+        (r"\.", "\u{02D9}"),
+        (r"\c", "\u{00B8}"),
+        (r"\u", "\u{02D8}"),
+        (r"\v", "\u{02C7}"),
+        (r"\H", "\u{02DD}"),
+        (r"\r", "\u{02DA}"),
+        (r"\k", "\u{02DB}"),
+        // no spacing character: the combining accent on a no-break space (a space in the linear text)
+        (r"\b", " \u{0331}"),
+        (r"\d", " \u{0323}"),
+        (r"\t", " \u{0361}"),
+    ] {
+        let r = en(&format!(r"\text{{a{mark}{{}}b}}"));
+        assert_eq!(r.text, format!("a{alone}b"), "{mark}{{}}");
+        assert!(r.warnings.is_empty(), "{mark}{{}}: {:?}", r.warnings);
+    }
+    // a caret and a tilde as text is written with them; the group around keeps its brace
+    assert_eq!(en(r"\text{x\^{}2 and \~{}user}").text, "x\u{02C6}2 and \u{02DC}user");
+    assert_eq!(en(r"\text{{a\^{}}b}").text, "a\u{02C6}b");
+    assert_eq!(en(r"\text{a\^ {} b}").text, "a\u{02C6} b");
+}
+
+#[test]
 fn l_uni_4_siunitx_in_text() {
     // in text as in math, with no warning
     for (tex, math) in [

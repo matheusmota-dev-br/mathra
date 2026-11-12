@@ -427,6 +427,19 @@ fn text_accents_compose_into_one_character() {
 }
 
 #[test]
+fn text_accents_alone_are_their_spacing_characters() {
+    // L-TXT-6: `\^{}` and the other accents with an empty argument
+    for (mark, alone) in
+        [('\'', '´'), ('`', '`'), ('^', 'ˆ'), ('~', '˜'), ('"', '¨'), ('c', '¸'), ('=', '¯'), ('.', '˙'), ('u', '˘'), ('v', 'ˇ'), ('H', '˝'), ('r', '˚'), ('k', '˛')]
+    {
+        assert_eq!(symbols::text_spacing(mark), Some(alone), "{mark}");
+    }
+    for mark in ['b', 'd', 't', 'x'] {
+        assert_eq!(symbols::text_spacing(mark), None, "{mark}");
+    }
+}
+
+#[test]
 fn siunitx_units_and_prefixes() {
     let units = [
         ("meter", "m"),
