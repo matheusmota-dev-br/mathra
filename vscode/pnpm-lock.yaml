@@ -35,6 +35,9 @@ importers:
       markdown-it:
         specifier: 14.3.3
         version: 14.3.3
+      playwright-core:
+        specifier: 1.64.1
+        version: 1.64.1
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -700,6 +703,11 @@ packages:
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
+
+  playwright-core@1.64.1:
+    resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   powershell-utils@0.2.1:
     resolution: {integrity: sha512-C+y9x90UElAddDZmV4qOx9W53B61PO7cIqWz2dQsWlwswuq4mr8NEwytdGKboYbQlGZ3awrkTeNvcZiZNHnQ8A==}
@@ -1457,6 +1465,8 @@ snapshots:
   pend@1.2.0: {}
 
   picomatch@4.0.7: {}
+
+  playwright-core@1.64.1: {}
 
   powershell-utils@0.2.1: {}
 
