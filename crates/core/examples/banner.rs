@@ -1,8 +1,9 @@
 //! README banners, drawn by mathra itself: every letter, the tagline and the equations come
 //! from the embedded font, with no text or external font. The same version always writes the same bytes.
 //!
-//! `cargo run -p mathra --example banner` writes `docs/banner.svg` (mathra's) and
-//! `docs/editor-banner.svg` (the editor's); `tests/banner.rs` checks that both are up to date.
+//! `cargo run -p mathra --example banner` writes `docs/banner.svg` (mathra's),
+//! `docs/editor-banner.svg` (the editor's) and `docs/vscode-banner.svg` (the VS Code extension's);
+//! `tests/banner.rs` checks that they are up to date.
 
 use mathra::{convert, font, Options};
 
@@ -150,10 +151,73 @@ pub fn generate_editor() -> String {
     )
 }
 
+/// The VS Code extension's banner: its name on the left, on the right an editor window with a line of
+/// LaTeX and, under the pointer, the hover that draws it with what a screen reader says.
+pub fn generate_vscode() -> String {
+    let mut body = String::new();
+
+    body.push_str(&equation(r"\mathit{mathra}", 84.0, 150.0, 104.0, CHALK).0);
+    body.push_str(&equation(r"\text{for VS Code}", 90.0, 214.0, 46.0, YELLOW).0);
+    body.push_str(&equation(r"\text{Equations drawn as you write Markdown and LaTeX}", 90.0, 266.0, 24.0, DIM).0);
+
+    // the window, its title bar with a tab
+    let (left, top, right, bottom) = (680.0, 28.0, 1200.0, 286.0);
+    body.push_str(&format!(
+        r#"<rect x="{}" y="{}" width="{}" height="{}" rx="14" fill="{PANEL}" stroke="{DIM}" stroke-opacity="0.5" stroke-width="1.5"/>"#,
+        num(left),
+        num(top),
+        num(right - left),
+        num(bottom - top)
+    ));
+    for (k, color) in [PINK, YELLOW, DIM].iter().enumerate() {
+        body.push_str(&format!(r#"<circle cx="{}" cy="{}" r="6" fill="{color}"/>"#, num(left + 22.0 + k as f32 * 20.0), num(top + 19.0)));
+    }
+    body.push_str(&equation(r"\text{notes.md}", left + 96.0, top + 24.0, 15.0, CHALK).0);
+    body.push_str(&format!(r#"<rect x="{}" y="{}" width="{}" height="1" fill="{DIM}" fill-opacity="0.35"/>"#, num(left), num(top + 38.0), num(right - left)));
+
+    // a line of the document: its number and its LaTeX, as written
+    let tex = r"\int_0^1 x^2\,dx = \frac{1}{3}";
+    let base = top + 74.0;
+    body.push_str(&equation(r"\text{1}", left + 20.0, base, 16.0, DIM).0);
+    let source = r"\texttt{\$\textbackslash int\_0\textasciicircum 1 x\textasciicircum 2\textbackslash ,dx = \textbackslash frac\{1\}\{3\}\$}";
+    let code = left + 48.0;
+    body.push_str(&equation(source, code, base, 17.0, CHALK).0);
+
+    // the hover under it: the equation drawn, then the sentence a screen reader says
+    let (hl, ht, hr, hb) = (left + 40.0, base + 22.0, right - 28.0, bottom - 18.0);
+    body.push_str(&format!(
+        r#"<rect x="{}" y="{}" width="{}" height="{}" rx="8" fill="{BOARD}" stroke="{DIM}" stroke-opacity="0.5"/>"#,
+        num(hl),
+        num(ht),
+        num(hr - hl),
+        num(hb - ht)
+    ));
+    body.push_str(&centered(tex, (hl + hr) / 2.0, ht + 52.0, 32.0, CHALK));
+    body.push_str(&format!(r#"<rect x="{}" y="{}" width="{}" height="1" fill="{DIM}" fill-opacity="0.35"/>"#, num(hl), num(hb - 42.0), num(hr - hl)));
+    let speech = convert(tex, &Options::default()).expect("the banner equations are valid").speech;
+    body.push_str(&equation(&format!(r"\textit{{{speech}}}",), hl + 18.0, hb - 16.0, 15.0, DIM).0);
+
+    // the pointer, its tip just under the LaTeX it hovers
+    let (px, py) = (code + 84.0, base + 3.0);
+    body.push_str(&format!(
+        r#"<path transform="translate({} {})" d="M0 0 L0 19 L4.6 14.8 L7.7 21.6 L10.6 20.3 L7.6 13.7 L13.6 13.5 Z" fill="{CHALK}" stroke="{BOARD}" stroke-width="1.4" stroke-linejoin="round"/>"#,
+        num(px),
+        num(py)
+    ));
+
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="mathra for VS Code: equations drawn as you write Markdown and LaTeX"><rect width="{w}" height="{h}" fill="{BOARD}"/>{body}<rect y="304" width="{w}" height="16" fill="{WOOD}"/><rect x="1120" y="294" width="46" height="10" rx="3" fill="{CHALK}"/><rect x="1176" y="294" width="30" height="10" rx="3" fill="{YELLOW}"/></svg>
+"#,
+        w = num(WIDTH),
+        h = num(HEIGHT),
+    )
+}
+
 #[allow(dead_code)]
 fn main() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs");
     std::fs::write(format!("{dir}/banner.svg"), generate()).expect("writes docs/banner.svg");
     std::fs::write(format!("{dir}/editor-banner.svg"), generate_editor()).expect("writes docs/editor-banner.svg");
-    println!("docs/banner.svg docs/editor-banner.svg");
+    std::fs::write(format!("{dir}/vscode-banner.svg"), generate_vscode()).expect("writes docs/vscode-banner.svg");
+    println!("docs/banner.svg docs/editor-banner.svg docs/vscode-banner.svg");
 }
