@@ -1248,6 +1248,27 @@ pub fn text_combining(mark: char) -> Option<char> {
     })
 }
 
+/// L-TXT-6: the accent alone, for a text accent with an empty argument (`\^{}`): its spacing character.
+/// `\b`, `\d` and `\t` have none.
+pub fn text_spacing(mark: char) -> Option<char> {
+    Some(match mark {
+        '\'' => '\u{00B4}',
+        '`' => '`',
+        '^' => '\u{02C6}',
+        '~' => '\u{02DC}',
+        '"' => '\u{00A8}',
+        'c' => '\u{00B8}',
+        '=' => '\u{00AF}',
+        '.' => '\u{02D9}',
+        'u' => '\u{02D8}',
+        'v' => '\u{02C7}',
+        'H' => '\u{02DD}',
+        'r' => '\u{02DA}',
+        'k' => '\u{02DB}',
+        _ => return None,
+    })
+}
+
 fn compose(base: char, combining: char) -> Option<char> {
     const TABLE: &[(char, char, char)] = &[
         ('a', '\u{0301}', 'á'),

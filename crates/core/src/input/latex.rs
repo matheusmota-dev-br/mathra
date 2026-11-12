@@ -2738,11 +2738,21 @@ impl Reader<'_> {
                     let mark = c.get(i).copied().unwrap_or(' ');
                     if "'`^~\"=.".contains(mark) || (matches!(mark, 'c' | 'u' | 'v' | 'H' | 'r' | 'k' | 'b' | 'd' | 't') && c.get(i + 1).is_some_and(|x| *x == '{' || *x == ' ')) {
                         i += 1;
+                        let mut braced = false;
                         while c.get(i) == Some(&' ') || c.get(i) == Some(&'{') {
+                            braced |= c[i] == '{';
                             i += 1;
                         }
                         let letter = c.get(i).copied().unwrap_or(' ');
                         i += 1;
+                        // L-TXT-6: an empty argument (`\^{}`) is the accent alone, not an accent on its `}` (#306)
+                        if braced && letter == '}' {
+                            match symbols::text_spacing(mark) {
+                                Some(alone) => current.push(alone),
+                                None => current.extend(['\u{00A0}'].into_iter().chain(symbols::text_combining(mark))),
+                            }
+                            continue;
+                        }
                         if c.get(i) == Some(&'}') {
                             i += 1;
                         }

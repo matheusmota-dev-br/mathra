@@ -140,6 +140,12 @@ Inside `\text{…}` (and every text argument), `\textit{…}` and `\emph{…}` s
 
 `\mathit{…}`'s font is a text font too: its letters make one word, with no italic correction between them (TeXbook, Appendix G, rule 17), where the math italic of `$ff$` has one after each letter.
 
+### L-TXT-6 · Accents inside text
+
+Inside `\text{…}` (and every text argument), LaTeX's text accents put their mark on the letter after them, with or without braces: `\'e`, `` \`a ``, `\^o`, `\~n`, `\"u`, `\=a`, `\.z`, and `\c{c}`, `\u{a}`, `\v{s}`, `\H{o}`, `\r{a}`, `\k{e}`, `\b{b}`, `\d{d}`, `\t{oo}` with their argument. The accented letter is one character where Unicode has it (é, ñ, ç, š), and an `i` takes the accent without its dot (`\'i` is í, as on ı); elsewhere it is the letter followed by the combining accent.
+
+An accent with an empty argument, `\^{}`, is the accent alone, as LaTeX sets it: the usual way to write a caret or a tilde in text (`x\^{}2`, `\~{}user`). It is the accent's spacing character: ´ ` ˆ ˜ ¨ ¯ ˙ ¸ ˘ ˇ ˝ ˚ ˛ for `\'` `` \` `` `\^` `\~` `\"` `\=` `\.` `\c` `\u` `\v` `\H` `\r` `\k`, and the combining accent on a no-break space for `\b`, `\d` and `\t`, which have none (#306).
+
 ## Macros
 
 ### L-MAC-1 · Substitution macros
