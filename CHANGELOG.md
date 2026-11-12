@@ -6,7 +6,11 @@ Each release has a headline (the line under its title), what changed, and the eq
 
 ## Unreleased
 
+A caret or a tilde written alone in text, as LaTeX writes them.
+
 - **Fixes.** In text, a text accent with an empty argument is the accent alone, as LaTeX sets it: `\text{x\^{}2}` is xˆ2 and `\~{}user` is ˜user (L-TXT-6). The accent took the `}` that closes its argument as its letter, drawing a stray brace under it ([#306](https://github.com/matheusmota-dev-br/mathra/issues/306)).
+
+Equations: `\text{x\^{}2 and \~{}user}`
 
 ## 1.12.0 - 2026-11-10
 
