@@ -70,12 +70,15 @@ const STYLE = `
 ${TOKENS}
 :host { display: block; color: var(--_ink); background: var(--_surface); border: 1px solid var(--_border); border-radius: var(--_radius); padding: 6px; user-select: none; -webkit-user-select: none; }
 :host([hidden]) { display: none; }
-.keys { display: grid; gap: 5px; }
+/* the keys' width follows the keyboard's: the words on them (abc, f(x), 123) with it, down to 10px in a
+   narrow sidebar, 15px from a phone's width up */
+.keys { display: grid; gap: 5px; container-type: inline-size; }
 .line { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); gap: 5px; }
 .keys button { min-height: var(--mathra-key-height, 42px); font: 17px Georgia, "Times New Roman", serif; touch-action: manipulation; }
 .keys button[data-layer], .keys button[data-action] { background: var(--_surface); }
 .keys button.on { border-color: var(--_accent); color: var(--_accent); }
-.keys button .label { font-size: 15px; }
+.keys button .label { font-size: clamp(10px, 4.3cqi, 15px); white-space: nowrap; }
+.keys button:has(> .label) { padding-inline: clamp(1px, 1cqi, 4px); }
 ${BUTTON_STYLE}
 `;
 

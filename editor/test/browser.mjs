@@ -1356,6 +1356,36 @@ await check("Keyboard alone: letters, capitals for one key, layers by attribute 
   assert.equal(await v3("c"), "Abz\\heartsuit");
 });
 
+await check("Keyboard in a narrow column: the words on the keys stay inside them", async () => {
+  // as wide as a 300 px sidebar (Google Docs' and Slides'), and as a phone
+  const kb = p3.locator('mathra-keyboard[for="c"]');
+  // the keyboard's own layers again, after the test above gave it others
+  await p3.evaluate(() => {
+    const kb = document.querySelector('mathra-keyboard[for="c"]');
+    kb.removeAttribute("layers");
+    kb.layers = null;
+  });
+  for (const width of ["276px", "358px"]) {
+    await p3.evaluate((w) => (document.querySelector('mathra-keyboard[for="c"]').style.width = w), width);
+    for (const layer of ["Letras", "Funções e símbolos", "Números"]) {
+      await kb.locator(`button[title="${layer}"]`).first().click();
+      const out = await kb.evaluate((el) =>
+        [...el.shadowRoot.querySelectorAll("button")].flatMap((b) => {
+          const label = b.querySelector(".label");
+          if (!label) return [];
+          const [l, k] = [label.getBoundingClientRect(), b.getBoundingClientRect()];
+          return l.left < k.left - 0.5 || l.right > k.right + 0.5 ? [label.textContent] : [];
+        }),
+      );
+      assert.deepEqual(out, [], `${width}, ${layer}: ${out.join(" ")} past their keys`);
+    }
+  }
+  // a phone's width keeps the words at their size
+  const size = await kb.evaluate((el) => getComputedStyle(el.shadowRoot.querySelector("button .label")).fontSize);
+  assert.equal(size, "15px");
+  await p3.evaluate(() => (document.querySelector('mathra-keyboard[for="c"]').style.width = ""));
+});
+
 await check("Command menu alone: the commands of given palettes, and none once it leaves the field", async () => {
   const menu = p3.locator('mathra-command-menu[for="b"]');
   await p3.evaluate(() => {
