@@ -3,7 +3,7 @@
   "displayName": "mathra",
   "version": "0.1.0",
   "description": "Math in Markdown and LaTeX drawn by mathra: hovers that show each equation, the Markdown preview's math, a visual editor, and the equation saved as SVG or PNG, copied as MathML, speech or braille, or explained rule by rule.",
-  "publisher": "mathlabs",
+  "publisher": "matheusmota-dev-br",
   "license": "(MIT OR Apache-2.0) AND OFL-1.1",
   "homepage": "https://matheusmota-dev-br.github.io/mathra/",
   "bugs": "https://github.com/matheusmota-dev-br/mathra/issues",
