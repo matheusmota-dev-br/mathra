@@ -39,3 +39,15 @@ fn vscode_banner_is_deterministic_and_up_to_date() {
     let committed = std::fs::read_to_string(path).expect("docs/vscode-banner.svg exists");
     assert!(committed == generated, "docs/vscode-banner.svg is stale: run with MATHRA_UPDATE_BANNER=1");
 }
+
+#[test]
+fn vscode_icon_is_deterministic_and_up_to_date() {
+    let generated = banner::generate_icon();
+    assert_eq!(generated, banner::generate_icon(), "same version, same bytes");
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/vscode-icon.svg");
+    if std::env::var_os("MATHRA_UPDATE_BANNER").is_some() {
+        std::fs::write(path, &generated).unwrap();
+    }
+    let committed = std::fs::read_to_string(path).expect("docs/vscode-icon.svg exists");
+    assert!(committed == generated, "docs/vscode-icon.svg is stale: run with MATHRA_UPDATE_BANNER=1");
+}

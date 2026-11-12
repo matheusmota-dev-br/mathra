@@ -2,8 +2,8 @@
 //! from the embedded font, with no text or external font. The same version always writes the same bytes.
 //!
 //! `cargo run -p mathra --example banner` writes `docs/banner.svg` (mathra's),
-//! `docs/editor-banner.svg` (the editor's) and `docs/vscode-banner.svg` (the VS Code extension's);
-//! `tests/banner.rs` checks that they are up to date.
+//! `docs/editor-banner.svg` (the editor's) and `docs/vscode-banner.svg` (the VS Code extension's), and
+//! `docs/vscode-icon.svg` (the extension's icon); `tests/banner.rs` checks that they are up to date.
 
 use mathra::{convert, font, Options};
 
@@ -213,11 +213,23 @@ pub fn generate_vscode() -> String {
     )
 }
 
+/// The VS Code extension's icon: mathra's italic m in chalk on the board, over the ledge with its chalk.
+pub fn generate_icon() -> String {
+    let size = 256.0;
+    let m = centered(r"\mathit{m}", size / 2.0, 112.0, 210.0, CHALK);
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {s} {s}" width="{s}" height="{s}" role="img" aria-label="mathra"><clipPath id="icon-board"><rect width="{s}" height="{s}" rx="44"/></clipPath><g clip-path="url(#icon-board)"><rect width="{s}" height="{s}" fill="{BOARD}"/>{m}<rect y="214" width="{s}" height="42" fill="{WOOD}"/><rect x="146" y="196" width="50" height="18" rx="5" fill="{CHALK}"/><rect x="204" y="196" width="30" height="18" rx="5" fill="{YELLOW}"/></g></svg>
+"#,
+        s = num(size),
+    )
+}
+
 #[allow(dead_code)]
 fn main() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs");
     std::fs::write(format!("{dir}/banner.svg"), generate()).expect("writes docs/banner.svg");
     std::fs::write(format!("{dir}/editor-banner.svg"), generate_editor()).expect("writes docs/editor-banner.svg");
     std::fs::write(format!("{dir}/vscode-banner.svg"), generate_vscode()).expect("writes docs/vscode-banner.svg");
-    println!("docs/banner.svg docs/editor-banner.svg docs/vscode-banner.svg");
+    std::fs::write(format!("{dir}/vscode-icon.svg"), generate_icon()).expect("writes docs/vscode-icon.svg");
+    println!("docs/banner.svg docs/editor-banner.svg docs/vscode-banner.svg docs/vscode-icon.svg");
 }
