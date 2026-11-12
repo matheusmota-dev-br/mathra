@@ -80,6 +80,8 @@ textarea { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; 
 .dgov .ghost { fill: none; stroke: var(--_slot); stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
 .dbar { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: calc(100% - 16px); padding: 6px; background: var(--_background); border: 1px solid var(--_border); border-radius: calc(var(--_radius) + 2px); box-shadow: 0 8px 24px rgb(0 0 0 / 0.14); font: 12px var(--_font); animation: drop 0.14s ease-out; }
 .dbar[hidden] { display: none; }
+/* the bar is for editing: it goes with the caret when the field loses the focus, so it never sits over the page */
+:host(:not(:focus-within)) .dbar { display: none; }
 .dbar button { display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 8px; color: var(--_ink); background: var(--_key); border: 1px solid var(--_border); border-radius: var(--_radius); font: 15px var(--_font); cursor: pointer; }
 .dbar button.text { font-size: 12px; }
 .dbar button[aria-pressed="true"] { border-color: var(--_accent); color: var(--_accent); background: color-mix(in srgb, var(--_accent) 10%, transparent); }

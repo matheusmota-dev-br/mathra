@@ -37,6 +37,8 @@
     "./dist/command-menu.js",
     "./dist/keyboard.js",
     "./dist/output.js",
+    "./dist/settings.js",
+    "./dist/gallery-view.js",
     "./dist/editor.js",
     "./dist/index.js"
   ],
