@@ -527,6 +527,20 @@ await check("Chemistry: a click on an arrow, its kind changed from the bar; a co
   assert.doesNotMatch(await value(), /Pt/);
 });
 
+await check("The bar beside a block shows while the field has the focus, and goes with it", async () => {
+  // a formula that is one block: the cursor is always beside it
+  await setValue("\\pu{123 kJ}");
+  await focus();
+  await page.evaluate(() => { const e = document.getElementById("editor").editor; e.setCursor({ row: e.root, offset: 1 }); });
+  await dbar.locator('[data-run="editAsLatex"]').waitFor();
+  assert.equal(await dbar.isVisible(), true);
+  // the focus elsewhere on the page: no bar over it
+  await page.evaluate(() => document.activeElement.blur());
+  assert.equal(await dbar.isVisible(), false);
+  await focus();
+  assert.equal(await dbar.isVisible(), true);
+});
+
 await check("Chemistry: edit a reaction as LaTeX, and back to boxes when done", async () => {
   await setValue("\\ce{H2O -> H2 + O2}");
   await focus();
