@@ -80,6 +80,13 @@ jobs:
           pnpm typecheck
           pnpm coverage
           pnpm build
+      # the Google Docs and Slides add-on: Code.js in Node and the sidebar in Chromium (installed for the
+      # editor above), every line and function run
+      - working-directory: gworkspace
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm coverage
 
   python:
     runs-on: ubuntu-latest
