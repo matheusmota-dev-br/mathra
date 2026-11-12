@@ -65,6 +65,10 @@
   name(editor.getAttribute("locale"));
   editor.addEventListener("mathra-locale", (e) => { write("mathra-locale", e.detail.locale); name(e.detail.locale); });
   editor.addEventListener("mathra-theme", (e) => write("mathra-theme", e.detail.theme));
+  // a formula in the address (#latex=…), as the Google Docs and Slides add-on links its equations:
+  // opened in the editor; the part after # stays in the browser
+  const latex = new URLSearchParams(location.hash.slice(1)).get("latex");
+  if (latex) editor.setAttribute("value", latex);
   editor.focus();
 </script>
 </body>
