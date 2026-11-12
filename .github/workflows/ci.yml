@@ -72,6 +72,14 @@ jobs:
           pnpm typecheck
           pnpm coverage
           pnpm package
+      # the Chrome and Edge extension, on the same package and editor: every line, branch and function of
+      # browser/src run, and the extension it builds
+      - working-directory: browser
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm coverage
+          pnpm build
 
   python:
     runs-on: ubuntu-latest
