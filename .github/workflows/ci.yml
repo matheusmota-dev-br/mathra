@@ -64,6 +64,14 @@ jobs:
           pnpm build
           pnpm exec playwright-core install --with-deps chromium
           node --no-warnings scripts/coverage.mjs --fail-under 100
+      # the VS Code extension, on the same package: every line, branch and function of vscode/src run,
+      # and the .vsix it makes
+      - working-directory: vscode
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm coverage
+          pnpm package
 
   python:
     runs-on: ubuntu-latest

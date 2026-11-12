@@ -5,7 +5,7 @@
 #   scripts/check.sh            every check
 #   scripts/check.sh rust       fmt, clippy and the Rust tests, every line and function run
 #   scripts/check.sh wasm       the wasm tests, the site, the npm package as users get it, and the editor
-#                               on it (its tests in Node and Chromium, every line and function run)
+#                               and the VS Code extension on it (every line and function run)
 #   scripts/check.sh python     the Python module with pytest
 #
 # Needs: rustup with the wasm32-unknown-unknown target and the llvm-tools-preview component, cargo-llvm-cov,
@@ -36,6 +36,13 @@ check_wasm() {
     pnpm install --frozen-lockfile --silent
     pnpm build
     node --no-warnings scripts/coverage.mjs --fail-under 100
+  )
+  (
+    cd vscode
+    pnpm install --frozen-lockfile --silent
+    pnpm typecheck
+    pnpm coverage
+    pnpm package
   )
 }
 
